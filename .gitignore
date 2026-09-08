@@ -1,0 +1,39 @@
+node_modules/
+.next/
+out/
+
+# Generated build resources (the icons come from scripts/make-icon.mjs), but
+# the macOS entitlements are source and must ship — a fresh clone without them
+# fails code signing. Negation needs `build/*`, not `build/`: git cannot
+# re-include a file whose parent directory is excluded.
+build/*
+!build/entitlements.mac.plist
+!build/entitlements.mac.inherit.plist
+
+# desktop packaging output
+desktop-build/
+dist-installer/
+prisma/schema.sql
+
+# local database + generated client
+*.db
+prisma/test.db
+*.db-journal
+*.db-wal
+*.db-shm
+src/generated/
+
+# uploads (local disk storage adapter)
+/storage/
+
+.env
+.env*.local
+
+# Licence signing keys. The public key is committed (src/lib/license/public-key.ts);
+# the private key signs every licence ever issued and must never be in the repo.
+license-keys/
+*.private.pem
+
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store

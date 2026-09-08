@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime entitlements for the Developer ID build.
+
+  Notarization requires the hardened runtime, and the hardened runtime turns off
+  exactly the things this app is built on. Each key below is here for a specific
+  reason; none of them is boilerplate.
+
+  Distribution is direct download, not the Mac App Store, so the App Sandbox is
+  not in use and sandbox-only keys (com.apple.security.network.*) would be
+  ignored. They are deliberately absent rather than copied in from a template.
+-->
+<plist version="1.0">
+<dict>
+  <!--
+    V8 compiles JavaScript to machine code at runtime. Without these the
+    renderer dies on launch.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!--
+    The launcher passes NODE_ENV, PORT, DATABASE_URL and the session and
+    encryption keys to the server it spawns. The hardened runtime strips
+    environment variables from child processes without this.
+  -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!--
+    The server is a bundled Node binary that loads better_sqlite3.node, a native
+    module compiled by npm rather than produced by this build. Library
+    validation refuses to load code it did not see signed as part of the app,
+    which is precisely this case.
+  -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

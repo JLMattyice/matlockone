@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      No remote anything. This window edits passwords on the local database and
+      has no business talking to the network.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"
+    />
+    <title>Reset a password</title>
+    <style>
+      :root {
+        --bg: #0b1120;
+        --surface: #111a2e;
+        --line: #243049;
+        --ink: #e6edf7;
+        --muted: #94a3b8;
+        --brand: #2563eb;
+        --danger: #f87171;
+        --success: #4ade80;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+      }
+
+      h1 { margin: 0 0 4px; font-size: 17px; }
+
+      p.lede { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+
+      label { display: block; margin-bottom: 6px; font-weight: 500; }
+
+      .field { margin-bottom: 16px; }
+
+      select, input {
+        width: 100%;
+        padding: 9px 10px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        font: inherit;
+      }
+
+      select:focus, input:focus {
+        outline: 2px solid var(--brand);
+        outline-offset: -1px;
+      }
+
+      .password-wrap { position: relative; }
+      .password-wrap input { padding-right: 68px; }
+
+      .reveal {
+        position: absolute;
+        top: 50%;
+        right: 6px;
+        transform: translateY(-50%);
+        padding: 4px 8px;
+        background: transparent;
+        border: 0;
+        border-radius: 4px;
+        color: var(--muted);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .reveal:hover { color: var(--ink); }
+
+      .hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 22px;
+      }
+
+      button.primary, button.ghost {
+        padding: 9px 16px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      button.primary { background: var(--brand); color: #fff; }
+      button.primary:disabled { opacity: .55; cursor: default; }
+      button.ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+
+      .message { margin-top: 16px; font-size: 13px; min-height: 20px; }
+      .message.error { color: var(--danger); }
+      .message.ok { color: var(--success); }
+
+      .note {
+        margin-top: 18px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Reset a password</h1>
+    <p class="lede">
+      For when nobody can sign in. Use Team &rsaquo; Reset password instead when
+      you can.
+    </p>
+
+    <form id="form" autocomplete="off">
+      <div class="field">
+        <label for="account">Account</label>
+        <select id="account" required></select>
+      </div>
+
+      <div class="field">
+        <label for="password">New password</label>
+        <div class="password-wrap">
+          <input id="password" type="password" required autocomplete="new-password" />
+          <button type="button" class="reveal" id="reveal">Show</button>
+        </div>
+        <p class="hint">
+          At least 8 characters, with a letter and a number.
+        </p>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="ghost" id="cancel">Cancel</button>
+        <button type="submit" class="primary" id="submit">Set password</button>
+      </div>
+
+      <p class="message" id="message" role="status" aria-live="polite"></p>
+    </form>
+
+    <p class="note">
+      This signs that account out on every device, and restarts Matlock One so the
+      new password takes effect straight away.
+    </p>
+
+    <script>
+      const form = document.getElementById("form");
+      const account = document.getElementById("account");
+      const password = document.getElementById("password");
+      const reveal = document.getElementById("reveal");
+      const submit = document.getElementById("submit");
+      const message = document.getElementById("message");
+      const cancel = document.getElementById("cancel");
+
+      function say(text, kind) {
+        message.textContent = text;
+        message.className = `message ${kind ?? ""}`;
+      }
+
+      reveal.addEventListener("click", () => {
+        const shown = password.type === "text";
+        password.type = shown ? "password" : "text";
+        reveal.textContent = shown ? "Show" : "Hide";
+      });
+
+      cancel.addEventListener("click", () => window.recovery.cancel());
+
+      (async () => {
+        const result = await window.recovery.listAccounts();
+
+        if (!result.ok) {
+          say(result.error, "error");
+          submit.disabled = true;
+          return;
+        }
+
+        if (result.accounts.length === 0) {
+          say("This installation has no accounts yet.", "error");
+          submit.disabled = true;
+          return;
+        }
+
+        for (const person of result.accounts) {
+          const option = document.createElement("option");
+          option.value = person.email;
+          const inactive = person.isActive ? "" : " — deactivated";
+          option.textContent =
+            `${person.name} · ${person.email} (${person.role})${inactive}`;
+          account.append(option);
+        }
+      })();
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        say("Resetting…");
+
+        const result = await window.recovery.reset(account.value, password.value);
+
+        if (!result.ok) {
+          say(result.error, "error");
+          submit.disabled = false;
+          return;
+        }
+
+        say(
+          `Done. ${result.name} can sign in with the new password. Restarting Matlock One…`,
+          "ok",
+        );
+      });
+    </script>
+  </body>
+</html>

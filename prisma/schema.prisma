@@ -1,0 +1,951 @@
+// Matlock One — field service management platform
+// Multi-tenant: every business-domain row carries organizationId.
+// Money is stored as integer cents; tax/discount rates as basis points (825 = 8.25%).
+// SQLite has no native enum/array/json support, so those columns are String
+// validated against the unions in src/lib/constants.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------- tenancy ---
+
+model Organization {
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  legalName String?
+
+  email   String?
+  phone   String?
+  website String?
+
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String  @default("US")
+
+  // branding
+  logoUrl      String?
+  primaryColor String  @default("#2563eb")
+  accentColor  String  @default("#0f172a")
+
+  // locale
+  currency String @default("USD")
+  locale   String @default("en-US")
+  timeZone String @default("America/New_York")
+
+  // configurable terminology
+  labelJobSingular    String @default("Job")
+  labelJobPlural      String @default("Jobs")
+  labelClientSingular String @default("Client")
+  labelClientPlural   String @default("Clients")
+
+  // documents & numbering
+  defaultTaxRateBp         Int     @default(0)
+  invoicePrefix            String  @default("INV-")
+  invoiceNextNumber        Int     @default(1001)
+  estimatePrefix           String  @default("EST-")
+  estimateNextNumber       Int     @default(1001)
+  jobPrefix                String  @default("JOB-")
+  jobNextNumber            Int     @default(1001)
+  defaultPaymentTermsDays  Int     @default(30)
+  defaultEstimateValidDays Int     @default(30)
+  invoiceFooter            String?
+  estimateFooter           String?
+
+  // The signed licence this business runs under, verified offline against the
+  // public key compiled into the build. Null means demo mode — a limited
+  // workspace rather than a locked one, so an unlicensed install is still
+  // something you can look at and decide about.
+  licenseKey String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  groups         Group[]
+  clients        Client[]
+  addresses      Address[]
+  leads          Lead[]
+  jobs           Job[]
+  jobMaterials   JobMaterial[]
+  timeEntries    TimeEntry[]
+  recurrences    RecurrenceRule[]
+  estimates      Estimate[]
+  invoices       Invoice[]
+  payments       Payment[]
+  expenses       Expense[]
+  attachments    Attachment[]
+  notes          Note[]
+  notifications  Notification[]
+  outbox         OutboxMessage[]
+  auditLogs      AuditLog[]
+  priceBookItems PriceBookItem[]
+  integrations   Integration[]
+}
+
+// ------------------------------------------------------------------- auth ---
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  email        String
+  passwordHash String
+  name         String
+  phone        String?
+  avatarUrl    String?
+
+  role            String  @default("EMPLOYEE") // OWNER | ADMIN | MANAGER | EMPLOYEE
+  position        String?
+  hourlyRateCents Int?
+  isActive        Boolean @default(true)
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sessions         Session[]
+  assignments      JobAssignment[]
+  groupMemberships GroupMember[]
+  ledGroups        Group[]         @relation("GroupLead")
+  timeEntries      TimeEntry[]
+  notifications    Notification[]
+  assignedLeads    Lead[]          @relation("LeadAssignee")
+  createdLeads     Lead[]          @relation("LeadCreator")
+  createdClients   Client[]        @relation("ClientCreator")
+  createdJobs      Job[]           @relation("JobCreator")
+  createdEstimates Estimate[]      @relation("EstimateCreator")
+  createdInvoices  Invoice[]       @relation("InvoiceCreator")
+  recordedPayments Payment[]       @relation("PaymentRecorder")
+  paidExpenses     Expense[]       @relation("ExpensePayer")
+  createdExpenses  Expense[]       @relation("ExpenseCreator")
+  uploadedFiles    Attachment[]    @relation("AttachmentUploader")
+  authoredNotes    Note[]          @relation("NoteAuthor")
+  auditLogs        AuditLog[]
+  queuedMessages   OutboxMessage[] @relation("OutboxCreator")
+  integrations     Integration[]   @relation("IntegrationCreator")
+
+  @@unique([organizationId, email])
+  @@index([organizationId, isActive])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  // Whether the person asked to stay signed in on this machine. A remembered
+  // session slides its expiry forward as it is used; a plain one does not.
+  // Nullable so an existing installation can add the column without a rewrite,
+  // and because rows that predate this were all long-lived by default.
+  remembered Boolean?
+
+  @@index([userId])
+}
+
+// ----------------------------------------------------------------- groups ---
+
+/**
+ * A standing group of people — a shift, a territory, a department.
+ *
+ * Deliberately not a hierarchy. A business this size organises itself around
+ * who works together, which changes far more often than an org chart, and a
+ * person can belong to more than one group at a time.
+ */
+model Group {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  // Whoever answers for the group's work. Optional, and SetNull rather than
+  // Cascade: losing the lead must never delete the group and its membership.
+  leadId String?
+  lead   User?   @relation("GroupLead", fields: [leadId], references: [id], onDelete: SetNull)
+
+  isActive Boolean @default(true)
+
+  members GroupMember[]
+  jobs    Job[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+}
+
+model GroupMember {
+  id      String @id @default(cuid())
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  addedAt DateTime @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- clients ---
+
+model Client {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  type         String  @default("PERSON") // PERSON | BUSINESS
+  firstName    String?
+  lastName     String?
+  businessName String?
+  displayName  String // denormalized for search + sort
+
+  email       String?
+  phone       String?
+  mobilePhone String?
+  website     String?
+
+  status    String  @default("ACTIVE") // ACTIVE | INACTIVE | ARCHIVED
+  source    String?
+  taxExempt Boolean @default(false)
+
+  createdById String?
+  createdBy   User?   @relation("ClientCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  addresses   Address[]
+  jobs        Job[]
+  estimates   Estimate[]
+  invoices    Invoice[]
+  payments    Payment[]
+  expenses    Expense[]
+  attachments Attachment[]
+  notes       Note[]
+  leads       Lead[]
+
+  @@index([organizationId, displayName])
+  @@index([organizationId, status])
+}
+
+model Address {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  label      String?
+  line1      String
+  line2      String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String  @default("US")
+
+  isPrimary Boolean @default(false)
+  isBilling Boolean @default(false)
+  latitude  Float?
+  longitude Float?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs      Job[]
+  estimates Estimate[]
+  invoices  Invoice[]
+
+  @@index([organizationId, clientId])
+}
+
+// ------------------------------------------------------------------ leads ---
+
+model Lead {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name         String
+  businessName String?
+  email        String?
+  phone        String?
+
+  source String? // REFERRAL | WEBSITE | GOOGLE | SOCIAL | REPEAT | WALK_IN | OTHER
+  status String  @default("NEW") // NEW | CONTACTED | QUALIFIED | ESTIMATE_SENT | WON | LOST
+
+  estimatedValueCents Int?
+  lostReason          String?
+
+  assignedToId String?
+  assignedTo   User?   @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdById  String?
+  createdBy    User?   @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  clientId    String?
+  client      Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  convertedAt DateTime?
+
+  lastContactedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  notes       Note[]
+  attachments Attachment[]
+
+  @@index([organizationId, status])
+}
+
+// -------------------------------------------------------- jobs / schedule ---
+
+model Job {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  number      String
+  kind        String  @default("JOB") // JOB | APPOINTMENT
+  title       String
+  description String?
+
+  clientId  String?
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  addressId String?
+  address   Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  // The group answerable for this job. The individual assignments below stay
+  // the record of who is actually going: picking a group fills them in, and
+  // they can then be changed without the group losing responsibility.
+  groupId String?
+  group   Group?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  status   String  @default("SCHEDULED") // SCHEDULED | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED
+  priority String  @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  colorHex String?
+
+  scheduledStart   DateTime?
+  scheduledEnd     DateTime?
+  allDay           Boolean   @default(false)
+  estimatedMinutes Int?
+
+  startedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  recurrenceRuleId   String?
+  recurrenceRule     RecurrenceRule? @relation(fields: [recurrenceRuleId], references: [id], onDelete: SetNull)
+  recurrenceParentId String?
+  recurrenceParent   Job?            @relation("JobRecurrence", fields: [recurrenceParentId], references: [id], onDelete: SetNull)
+  recurrenceChildren Job[]           @relation("JobRecurrence")
+
+  createdById String?
+  createdBy   User?   @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments    JobAssignment[]
+  materials      JobMaterial[]
+  timeEntries    TimeEntry[]
+  expenses       Expense[]
+  attachments    Attachment[]
+  notes          Note[]
+  invoices       Invoice[]
+  sourceEstimate Estimate?       @relation("EstimateConvertedJob")
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, scheduledStart])
+}
+
+model JobAssignment {
+  id     String @id @default(cuid())
+  jobId  String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isLead     Boolean  @default(false)
+  assignedAt DateTime @default(now())
+
+  @@unique([jobId, userId])
+  @@index([userId])
+}
+
+model JobMaterial {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  name          String
+  description   String?
+  quantity      Float   @default(1)
+  unit          String  @default("ea")
+  unitCostCents Int     @default(0)
+  totalCents    Int     @default(0)
+  billable      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model TimeEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  startedAt       DateTime
+  endedAt         DateTime?
+  minutes         Int       @default(0)
+  hourlyRateCents Int       @default(0)
+  billable        Boolean   @default(true)
+  notes           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+  @@index([userId, startedAt])
+}
+
+model RecurrenceRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  frequency  String    @default("WEEKLY") // DAILY | WEEKLY | MONTHLY | YEARLY
+  interval   Int       @default(1)
+  byWeekday  String? // JSON array of weekday numbers, 0=Sun
+  byMonthDay Int?
+  count      Int?
+  until      DateTime?
+
+  createdAt DateTime @default(now())
+
+  jobs Job[]
+}
+
+// -------------------------------------------------------------- estimates ---
+
+model Estimate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  number String
+  title  String?
+  status String @default("DRAFT") // DRAFT | SENT | VIEWED | ACCEPTED | DECLINED | EXPIRED
+
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  addressId String?
+  address   Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  issueDate     DateTime  @default(now())
+  expiresAt     DateTime?
+  sentAt        DateTime?
+  viewedAt      DateTime?
+  acceptedAt    DateTime?
+  declinedAt    DateTime?
+  declineReason String?
+
+  subtotalCents Int    @default(0)
+  discountType  String @default("NONE") // NONE | PERCENT | FIXED
+  discountValue Int    @default(0) // basis points when PERCENT, cents when FIXED
+  discountCents Int    @default(0)
+  taxRateBp     Int    @default(0)
+  taxCents      Int    @default(0)
+  totalCents    Int    @default(0)
+
+  notes       String?
+  terms       String?
+  publicToken String  @unique @default(cuid())
+
+  convertedJobId String? @unique
+  convertedJob   Job?    @relation("EstimateConvertedJob", fields: [convertedJobId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lineItems   EstimateLineItem[]
+  invoices    Invoice[]
+  attachments Attachment[]
+  notes_      Note[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+}
+
+model EstimateLineItem {
+  id         String   @id @default(cuid())
+  estimateId String
+  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  kind           String  @default("SERVICE") // SERVICE | MATERIAL | LABOR | OTHER
+  name           String
+  description    String?
+  quantity       Float   @default(1)
+  unit           String  @default("ea")
+  unitPriceCents Int     @default(0)
+  taxable        Boolean @default(true)
+  totalCents     Int     @default(0)
+  sortOrder      Int     @default(0)
+
+  @@index([estimateId])
+}
+
+// --------------------------------------------------------------- invoices ---
+
+model Invoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  number String
+  title  String?
+  status String @default("DRAFT") // DRAFT | SENT | VIEWED | PAID | PARTIALLY_PAID | OVERDUE | CANCELLED
+
+  clientId   String
+  client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  addressId  String?
+  address    Address?  @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  jobId      String?
+  job        Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  estimateId String?
+  estimate   Estimate? @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+
+  issueDate        DateTime  @default(now())
+  dueDate          DateTime?
+  paymentTermsDays Int       @default(30)
+  sentAt           DateTime?
+  viewedAt         DateTime?
+  paidAt           DateTime?
+  cancelledAt      DateTime?
+
+  subtotalCents   Int    @default(0)
+  discountType    String @default("NONE")
+  discountValue   Int    @default(0)
+  discountCents   Int    @default(0)
+  taxRateBp       Int    @default(0)
+  taxCents        Int    @default(0)
+  totalCents      Int    @default(0)
+  amountPaidCents Int    @default(0)
+  balanceCents    Int    @default(0)
+
+  notes       String?
+  terms       String?
+  publicToken String  @unique @default(cuid())
+
+  /// A link to pay this invoice, hosted by the customer's own processor.
+  ///
+  /// The page lives on paypal.com or stripe.com, not here: a client at home
+  /// can reach it even when Matlock One is only on the office network, and no
+  /// card details ever touch this application.
+  paymentUrl       String?
+  paymentProvider  String?
+  /// The processor's id for the request, used to ask whether it was paid.
+  paymentRef       String?
+  paymentLinkedAt  DateTime?
+  paymentCheckedAt DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("InvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lineItems   InvoiceLineItem[]
+  payments    Payment[]
+  attachments Attachment[]
+  notes_      Note[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+}
+
+model InvoiceLineItem {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  kind           String  @default("SERVICE")
+  name           String
+  description    String?
+  quantity       Float   @default(1)
+  unit           String  @default("ea")
+  unitPriceCents Int     @default(0)
+  taxable        Boolean @default(true)
+  totalCents     Int     @default(0)
+  sortOrder      Int     @default(0)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  amountCents Int
+  method      String   @default("CASH") // CASH | CHECK | CARD | BANK_TRANSFER | ONLINE | OTHER
+  receivedAt  DateTime @default(now())
+  reference   String?
+  notes       String?
+
+  /// Which processor this came from, when it was not entered by hand.
+  provider String?
+  /// The processor's own id for the transaction.
+  ///
+  /// Reconciliation polls, and polling repeats. This is what stops the same
+  /// PayPal capture being recorded twice and showing an invoice as overpaid.
+  externalId String?
+
+  recordedById String?
+  recordedBy   User?   @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, provider, externalId])
+  @@index([organizationId, receivedAt])
+  @@index([invoiceId])
+}
+
+// --------------------------------------------------------------- expenses ---
+
+model Expense {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  description String
+  category    String  @default("OTHER") // see EXPENSE_CATEGORIES in src/lib/constants.ts
+  vendor      String?
+
+  /// What left the bank, tax included. `taxCents` is the recoverable slice of
+  /// it, not an addition — a receipt total is the number people type in.
+  amountCents Int
+  taxCents    Int      @default(0)
+  method      String   @default("CARD") // CASH | CHECK | CARD | BANK_TRANSFER | ONLINE | OTHER
+  reference   String?
+  spentAt     DateTime @default(now())
+
+  // Cost attribution. An expense booked against a job is what makes its
+  // margin real rather than a revenue figure with no cost side.
+  jobId    String?
+  job      Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  /// Meant to be passed on to the client. Kept as a flag rather than a link to
+  /// an invoice line so an expense can be marked billable before the invoice
+  /// it will eventually ride on exists.
+  billable Boolean @default(false)
+  /// Paid personally by a team member and owed back to them.
+  reimbursable Boolean   @default(false)
+  reimbursedAt DateTime?
+
+  paidById String?
+  paidBy   User?   @relation("ExpensePayer", fields: [paidById], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation("ExpenseCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments Attachment[]
+  notes       Note[]
+
+  @@index([organizationId, spentAt])
+  @@index([organizationId, category])
+  @@index([jobId])
+}
+
+// ------------------------------------------------------ files, notes, log ---
+
+model Attachment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  kind       String  @default("DOCUMENT") // DOCUMENT | PHOTO | CONTRACT
+  photoStage String? // BEFORE | DURING | AFTER | OTHER
+
+  fileName     String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  caption      String?
+
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  jobId      String?
+  job        Job?      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  estimateId String?
+  estimate   Estimate? @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  invoiceId  String?
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  expenseId  String?
+  expense    Expense?  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  uploadedById String?
+  uploadedBy   User?   @relation("AttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, kind])
+  @@index([jobId])
+  @@index([clientId])
+}
+
+model Note {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  body       String
+  visibility String  @default("INTERNAL") // INTERNAL | SHARED
+  pinned     Boolean @default(false)
+
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  jobId      String?
+  job        Job?      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  estimateId String?
+  estimate   Estimate? @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  invoiceId  String?
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  expenseId  String?
+  expense    Expense?  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  authorId String?
+  author   User?   @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, createdAt])
+}
+
+model Notification {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type       String // JOB_REMINDER | APPOINTMENT_REMINDER | SCHEDULE_CHANGE | JOB_ASSIGNED | INVOICE_DUE | INVOICE_OVERDUE | PAYMENT_RECEIVED
+  title      String
+  body       String?
+  entityType String?
+  entityId   String?
+  actionUrl  String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model OutboxMessage {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  channel   String // EMAIL | SMS
+  toAddress String
+  toName    String?
+  subject   String?
+  body      String
+
+  status            String    @default("QUEUED") // QUEUED | SENT | FAILED | CANCELLED
+  scheduledFor      DateTime?
+  sentAt            DateTime?
+  failedAt          DateTime?
+  error             String?
+  provider          String    @default("stub")
+  providerMessageId String?
+
+  relatedType String?
+  relatedId   String?
+
+  createdById String?
+  createdBy   User?   @relation("OutboxCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, status])
+}
+
+/**
+ * A sale of Matlock One itself.
+ *
+ * Deliberately the one table with no organizationId. Every other record here
+ * belongs to a business using the software; a purchase happens before there is
+ * a business — someone pays, and only later installs and creates a workspace.
+ * Hanging it off an organization would mean inventing one at checkout, and the
+ * tenancy rules that protect customer data would then be guarding a sales
+ * record they were never designed for.
+ *
+ * This table only exists on the hosted deployment. A desktop install has no
+ * signing key and never sells anything.
+ */
+model Purchase {
+  id String @id @default(cuid())
+
+  provider   String // MANUAL | PAYPAL | STRIPE
+  /** The processor's own id for this purchase. */
+  externalId String
+
+  email   String
+  orgName String?
+
+  plan   String // starter | business | pro
+  seats  Int? // null means unlimited
+  months Int    @default(12)
+
+  amountCents Int
+  currency    String @default("USD")
+
+  status String @default("PAID") // PAID | REFUNDED | FAILED
+
+  // The licence issued for this purchase, kept so it can be resent without
+  // being signed a second time. A customer who lost the email must get the
+  // same key back, not a new one.
+  licenseId  String?
+  licenseKey String?
+  issuedAt   DateTime?
+
+  deliveredAt   DateTime?
+  deliveryError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The same guarantee the payment ledger has: a repeated webhook, a retried
+  // callback or a double-clicked button cannot issue two licences for one sale.
+  // The database refuses it; nothing depends on a check that could race.
+  @@unique([provider, externalId])
+  @@index([email])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action     String
+  entityType String
+  entityId   String
+  summary    String?
+  metadata   String? // JSON
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+}
+
+/**
+ * A connected outside service: an email account today, a payment processor
+ * next. One row per kind per organization.
+ *
+ * The secret is stored encrypted (see src/lib/secret-box.ts); everything a
+ * screen needs to *display* the connection lives in plain columns so the
+ * settings page never has to decrypt anything just to render.
+ */
+model Integration {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  kind     String // EMAIL | PAYMENT
+  provider String // SMTP | RESEND | STRIPE | SQUARE | PAYPAL
+  isActive Boolean @default(true)
+
+  /** Non-secret settings as JSON: host, port, from address, and so on. */
+  config String?
+
+  /** AES-256-GCM parts. Null until a secret is saved. */
+  secretCipher String?
+  secretNonce  String?
+  secretTag    String?
+  /** Last four characters, so the UI can show what is stored. */
+  secretHint   String?
+
+  lastTestedAt DateTime?
+  lastTestOk   Boolean?
+  lastError    String?
+
+  createdById String?
+  createdBy   User?   @relation("IntegrationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One connection per kind: choosing SMTP replaces Resend rather than
+  // leaving two live and ambiguous.
+  @@unique([organizationId, kind])
+}
+
+model PriceBookItem {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  kind           String  @default("SERVICE") // SERVICE | MATERIAL | LABOR | OTHER
+  name           String
+  description    String?
+  unit           String  @default("ea")
+  unitPriceCents Int     @default(0)
+  taxable        Boolean @default(true)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, kind])
+}

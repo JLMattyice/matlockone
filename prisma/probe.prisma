@@ -1,0 +1,10 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/probe"
+}
+datasource db {
+  provider = "sqlite"
+}
+model Ping {
+  id String @id @default(cuid())
+}

@@ -1,0 +1,269 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens.
+ *
+ * `--brand` is written onto <html> at request time from the organization's
+ * saved primaryColor, so re-skinning the whole app for a prospect is one field
+ * in Settings rather than a rebuild. Everything else is a fixed neutral ramp.
+ */
+
+@theme {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-accent: var(--accent);
+
+  /* Matlock Software's own two colors, sampled from matlocksoftware.com. */
+  --color-gold: var(--gold);
+  --color-forest: var(--forest);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-card: 0.75rem;
+}
+
+:root {
+  color-scheme: light;
+
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-3: #f1f5f9;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --ink: #0f172a;
+  --ink-muted: #475569;
+  --ink-subtle: #94a3b8;
+
+  --brand: #2563eb;
+  --brand-ink: #ffffff;
+  --accent: #0f172a;
+
+  /* Studio brand constants, so the utilities resolve outside .matlock-one too. */
+  --gold: #c9a55b;
+  --forest: #0f3d2e;
+
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --info: #1d4ed8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --surface: #0b1120;
+    --surface-2: #111a2e;
+    --surface-3: #1a2438;
+    --line: #24304a;
+    --line-strong: #334158;
+    --ink: #e8edf7;
+    --ink-muted: #a3b0c7;
+    --ink-subtle: #6b7a94;
+
+    --brand-ink: #ffffff;
+    --accent: #e8edf7;
+
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #60a5fa;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface: #0b1120;
+  --surface-2: #111a2e;
+  --surface-3: #1a2438;
+  --line: #24304a;
+  --line-strong: #334158;
+  --ink: #e8edf7;
+  --ink-muted: #a3b0c7;
+  --ink-subtle: #6b7a94;
+
+  --brand-ink: #ffffff;
+  --accent: #e8edf7;
+
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #60a5fa;
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--surface-2);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* One visible focus treatment for every interactive element. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+  }
+
+  ::placeholder {
+    color: var(--ink-subtle);
+  }
+
+  /* Numeric columns line up in tables and money fields. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * The surfaces the browser draws are part of the design system too. Left
+   * alone they ship as the platform's own blue, which belongs to nobody's
+   * brand and reads as an unfinished page.
+   */
+  ::selection {
+    background-color: color-mix(in oklab, var(--brand) 22%, transparent);
+    color: var(--ink);
+  }
+
+  :where(input, textarea, [contenteditable]) {
+    caret-color: var(--brand);
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+/*
+ * Matlock One — the public product site.
+ *
+ * The application is a light, blue, re-skinnable workspace. The marketing site
+ * is a committed dark one, and it is deliberately not themeable: it is an
+ * argument, not a workspace, and it should look the same to everyone who is
+ * shown it.
+ *
+ * Rather than a parallel set of class names, this re-points the same design
+ * tokens the whole app already reads. `bg-surface`, `text-ink-muted` and
+ * `border-line` keep working unchanged inside this scope — they just resolve to
+ * the Matlock palette. Overriding here beats :root and both [data-theme]
+ * blocks, so the site stays dark whatever the visitor's toggle says.
+ *
+ * Green and gold are sampled from matlocksoftware.com. --brand is the one value
+ * that is not: the brand's green is a ground there, far too dark to carry text
+ * on a button, so this is a lighter sibling at the same hue.
+ */
+.matlock-one {
+  color-scheme: dark;
+
+  /*
+   * Both halves are required, and the reason is a real Tailwind v4 trap.
+   *
+   * @theme emits `--color-surface: var(--surface)` at :root, and a custom
+   * property is substituted where it is DECLARED, not where it is used. So
+   * --color-surface has already resolved to the light value by the time this
+   * rule matches, and overriding --surface alone re-themes nothing: the
+   * utilities keep painting the light palette. The app's own dark mode gets
+   * away with overriding --surface only because it does it at :root, where the
+   * theme variable re-resolves.
+   *
+   * The --color-* half is what the utilities read. The bare half is what
+   * hand-written var() references read, in SVG fills and inline styles.
+   */
+  --color-surface: #080a09;
+  --color-surface-2: #0c110e;
+  --color-surface-3: #101512;
+  --color-line: #1a231d;
+  --color-line-strong: #27332b;
+  --color-ink: #f5f1e8;
+  --color-ink-muted: #8e968c;
+  --color-ink-subtle: #7c8479;
+
+  --color-brand: #2ca36f;
+  --color-brand-ink: #04120b;
+  --color-accent: #c9a55b;
+
+  --color-success: #4ade80;
+  --color-warning: #e2b566;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
+
+  --color-gold: #c9a55b;
+  --color-forest: #0f3d2e;
+
+  --surface: #080a09;
+  --surface-2: #0c110e;
+  --surface-3: #101512;
+  --line: #1a231d;
+  --line-strong: #27332b;
+  --ink: #f5f1e8;
+  --ink-muted: #8e968c;
+  --ink-subtle: #7c8479;
+
+  --brand: #2ca36f;
+  --brand-ink: #04120b;
+  --accent: #c9a55b;
+
+  /* The studio's own two colors, kept under their own names. */
+  --forest: #0f3d2e;
+  --gold: #c9a55b;
+
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+ * Type. Playfair carries the display voice — the link back to the studio site
+ * and the reason this reads as software worth paying for, rather than as the
+ * default SaaS sans every competitor ships.
+ */
+.matlock-one .display {
+  font-family: var(--font-playfair), Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+}
+
+/* Gold is the page's rarest ink: premium, chosen, never decorative. */
+.matlock-one .gold {
+  color: var(--gold);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+}

@@ -1,0 +1,133 @@
+# Deliberately still the name the app first shipped under. Windows keys an
+# installed program to its appId: change it and the installer stops seeing the
+# existing install, so an upgrade lands as a second copy in Add or remove
+# programs instead of replacing the first. Survived the rename to Work Suite
+# for the same reason, and survives this one.
+appId: com.fieldbase.desktop
+productName: Matlock One
+copyright: Copyright © 2026 Matlock Software
+
+directories:
+  output: dist-installer
+  buildResources: build
+
+# Only the launcher goes in the asar. The server and its dependencies are
+# extraResources because a Node process cannot require() out of an archive.
+#
+# The exclusion is not redundant: electron-builder packs every production
+# dependency in package.json regardless of what this list says, and that put
+# 438 MB of node_modules into the archive beside 0.1 MB of launcher — roughly
+# doubling the installer. Nothing in electron/ requires any of them from inside
+# Electron. better-sqlite3 looks like a counter-example and is not: init-db.js
+# runs under the bundled Node in resources/server, against that folder's own
+# copy, precisely because a native module built for Node cannot load in
+# Electron's different ABI.
+files:
+  - electron/**/*
+  - package.json
+  - "!node_modules/**/*"
+  # …except electron-updater, which the launcher itself loads. Listed rather
+  # than left to electron-builder's "include every production dependency"
+  # default, because that default is what put 438 MB in here. 2.3 MB.
+  # If this list ever goes stale the launcher still starts: electron/updater.js
+  # treats a missing module as "updates unavailable" rather than crashing.
+  - "node_modules/{argparse,builder-util-runtime,debug,electron-updater,fs-extra,graceful-fs,js-yaml,jsonfile,lazy-val,lodash.escaperegexp,lodash.isequal,ms,sax,semver,tiny-typed-emitter,universalify}/**/*"
+
+# NOTE: the destination must not be `app` — Electron reserves `resources/app`
+# for an unpacked application directory and will not copy a payload there.
+# The server bundle and Node runtime are copied by scripts/after-pack.cjs
+# rather than declared here: electron-builder applies its own ignore patterns
+# to extraResources and silently drops node_modules and dot-directories.
+afterPack: scripts/after-pack.cjs
+
+# Nothing in the launcher is a native module, so there is nothing to rebuild —
+# the server's native SQLite binding ships prebuilt in extraResources against
+# the Node binary bundled beside it.
+npmRebuild: false
+
+asar: true
+compression: maximum
+
+
+# Where the app looks for new versions, and where `npm run desktop:pack`
+# writes latest.yml alongside the installer. A generic provider means any
+# static HTTPS host will do — a folder on the website, an S3 or R2 bucket, a
+# GitHub release. Upload the installer *and* latest.yml together; the app
+# reads the yml, compares versions, and checks the installer's SHA-512
+# against it before running anything.
+publish:
+  - provider: generic
+    url: https://downloads.matlocksoftware.com/matlock-one/
+
+win:
+  icon: build/icon.ico
+  # The Publisher shown in Add or remove programs, and the company name in the
+  # executable's version resource, both come from `author` in package.json.
+  # electron-builder 26 moved `publisherName` under signtoolOptions, where it
+  # only checks a certificate's subject — it is not the display name.
+  #
+  # Neither makes Windows call the download trusted: the "Verified publisher"
+  # line on SmartScreen and UAC comes only from an Authenticode signature,
+  # which needs a purchased code-signing certificate. Unsigned still warns.
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: MatlockOne-Setup-${version}.${ext}
+
+# Building this requires a Mac: the SQLite binding is a native module and
+# cannot be cross-compiled, and only macOS can produce a .icns and sign the
+# bundle. Everything else in the launcher is already platform-neutral.
+#
+# Distribution is direct download from the site, the way Claude and every other
+# non-store Mac app ships it. That means Developer ID plus notarization, not a
+# Mac App Store submission — a different certificate and no App Sandbox.
+mac:
+  icon: build/icon.png
+  category: public.app-category.business
+
+  # One architecture per build, and it must match the machine that ran
+  # `desktop:build`: the bundled Node and the SQLite binding are both native.
+  # arm64 covers every Mac sold since late 2020. To also ship Intel, run the
+  # whole build again on an Intel Mac (or a CI runner) with `--x64`;
+  # scripts/after-pack.cjs fails the build if the two ever disagree.
+  target:
+    - target: dmg
+      arch: [arm64]
+
+  # Required for notarization, and the reason build/entitlements.mac.plist
+  # exists — the hardened runtime blocks the JIT, the inherited environment and
+  # the native SQLite binding unless each is asked for explicitly.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+
+  # The bundle is signed but not yet stapled at this point, so Gatekeeper would
+  # reject its own assessment. Notarization is what makes it pass.
+  gatekeeperAssess: false
+
+  # Signing identity is discovered from the keychain: the "Developer ID
+  # Application" certificate. `identity: null` used to sit here and explicitly
+  # disabled signing — removing it is what turns signing on.
+  #
+  # Notarization reads credentials from the environment, so nothing secret is
+  # committed. Either an App Store Connect API key:
+  #   APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER
+  # or an Apple ID with an app-specific password:
+  #   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+  # For an unsigned smoke-test build, set CSC_IDENTITY_AUTO_DISCOVERY=false and
+  # notarization is skipped with it.
+  notarize: true
+
+dmg:
+  title: Matlock One
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Matlock One
+  # Business records live in the user's app data folder, never beside the
+  # program, so uninstalling never takes a customer's data with it.
+  deleteAppDataOnUninstall: false
