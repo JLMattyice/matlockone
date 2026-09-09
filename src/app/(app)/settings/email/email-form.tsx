@@ -138,7 +138,7 @@ export function EmailForm({ values }: { values: EmailAccountValues }) {
                   id="fromName"
                   name="fromName"
                   defaultValue={values.fromName}
-                  placeholder="Matlock Field Services"
+                  placeholder="Northside Services"
                   disabled={disabled}
                 />
               </Field>

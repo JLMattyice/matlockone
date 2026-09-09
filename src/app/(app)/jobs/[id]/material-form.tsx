@@ -32,7 +32,7 @@ export function MaterialForm({
         <Input
           name="name"
           required
-          placeholder="Material or part"
+          placeholder="Item or material"
           aria-label="Material name"
           aria-invalid={Boolean(state.fieldErrors?.name)}
         />

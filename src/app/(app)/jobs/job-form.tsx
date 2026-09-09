@@ -219,21 +219,21 @@ export function JobForm({
               defaultValue={values.title}
               required
               autoFocus={!isEdit}
-              placeholder="HVAC system tune-up"
+              placeholder="Quarterly service visit"
             />
           </Field>
 
           <Field
             label="Description"
             htmlFor="description"
-            hint="What the team needs to know before they arrive."
+            hint="What the team needs to know before they start."
           >
             <Textarea
               id="description"
               name="description"
               rows={3}
               defaultValue={values.description}
-              placeholder="Customer reports the unit short-cycling in the afternoon."
+              placeholder="Client wants this wrapped up before their Friday opening."
             />
           </Field>
 

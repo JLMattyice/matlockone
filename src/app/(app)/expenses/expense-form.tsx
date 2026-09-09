@@ -99,7 +99,7 @@ export function ExpenseForm({
                 defaultValue={values.description}
                 required
                 autoFocus={!isEdit}
-                placeholder="4in PVC and fittings"
+                placeholder="Printer paper and toner"
               />
             </Field>
 
@@ -118,7 +118,7 @@ export function ExpenseForm({
                 id="vendor"
                 name="vendor"
                 defaultValue={values.vendor}
-                placeholder="Ferguson Supply"
+                placeholder="Northside Supply Co."
               />
             </Field>
 

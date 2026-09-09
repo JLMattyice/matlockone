@@ -329,7 +329,7 @@ export default async function ClientDetailPage({
             entityType="client"
             entityId={client.id}
             canWrite={writable}
-            placeholder="Gate codes, access instructions, preferences, anything the team should know…"
+            placeholder="Access details, preferences, anything the team should know…"
             emptyDescription="Notes are internal unless you mark one client-visible."
           />
         </Card>

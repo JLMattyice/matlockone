@@ -74,7 +74,7 @@ export function ProfileForm({
                 id="position"
                 name="position"
                 defaultValue={values.position ?? ""}
-                placeholder="Lead technician"
+                placeholder="Operations manager"
               />
             </Field>
           </div>

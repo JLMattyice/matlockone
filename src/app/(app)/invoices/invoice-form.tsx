@@ -169,7 +169,7 @@ export function InvoiceForm({
               id="title"
               name="title"
               defaultValue={values.title}
-              placeholder="AC unit replacement"
+              placeholder="Monthly service package"
             />
           </Field>
 

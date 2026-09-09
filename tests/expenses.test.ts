@@ -10,6 +10,7 @@ import {
   spendByVendor,
   type DateRange,
 } from "@/app/(app)/reports/queries";
+import { jobCostTotals, jobExpenses } from "@/app/(app)/jobs/queries";
 import { prisma } from "@/lib/db";
 
 /**
@@ -413,5 +414,80 @@ describe("reports", () => {
     expect(day!.outCents).toBe(9_000);
 
     expect(buckets.reduce((sum, b) => sum + b.outCents, 0)).toBe(52_500);
+  });
+});
+
+describe("job costs", () => {
+  it("totals only the expenses booked to that job", async () => {
+    const booked = await jobExpenses(organizationId, jobId);
+
+    // Breakers (42,000) and the meter socket (18,000). Diesel and parking are
+    // overhead, and the other business's spending is not ours.
+    expect(booked.count).toBe(2);
+    expect(booked.totalCents).toBe(60_000);
+    expect(booked.rows.map((row) => row.description)).toEqual([
+      "Breakers and conduit",
+      "Meter socket",
+    ]);
+  });
+
+  it("separates the slice marked to rebill", async () => {
+    const booked = await jobExpenses(organizationId, jobId);
+
+    // Only the breakers were flagged billable.
+    expect(booked.billableCents).toBe(42_000);
+    expect(booked.unreimbursedCents).toBe(0);
+  });
+
+  it("returns nothing for a job with no expenses", async () => {
+    const job = await prisma.job.create({
+      data: {
+        organizationId,
+        number: `JOB-EMPTY-${Date.now()}`,
+        title: "Nothing spent",
+      },
+    });
+
+    await expect(jobExpenses(organizationId, job.id)).resolves.toMatchObject({
+      count: 0,
+      totalCents: 0,
+      billableCents: 0,
+    });
+  });
+
+  it("adds expenses into the job's running cost", () => {
+    const job = {
+      materials: [
+        { billable: true, totalCents: 12_000 },
+        { billable: false, totalCents: 5_000 },
+      ],
+      timeEntries: [
+        { billable: true, minutes: 120, hourlyRateCents: 6_000 },
+        { billable: false, minutes: 30, hourlyRateCents: 6_000 },
+      ],
+    };
+
+    const withSpend = jobCostTotals(job, 60_000);
+
+    expect(withSpend.materialsCents).toBe(12_000);
+    expect(withSpend.laborCents).toBe(12_000);
+    expect(withSpend.expensesCents).toBe(60_000);
+    expect(withSpend.totalCents).toBe(84_000);
+    // Non-billable time still counts towards hours worked.
+    expect(withSpend.totalMinutes).toBe(150);
+  });
+
+  it("leaves the total unchanged for a role that cannot see spend", () => {
+    const job = {
+      materials: [{ billable: true, totalCents: 12_000 }],
+      timeEntries: [{ billable: true, minutes: 60, hourlyRateCents: 6_000 }],
+    };
+
+    // The page passes nothing when the role lacks the permission, so the
+    // figure stays one the reader can actually account for.
+    const totals = jobCostTotals(job);
+
+    expect(totals.expensesCents).toBe(0);
+    expect(totals.totalCents).toBe(18_000);
   });
 });

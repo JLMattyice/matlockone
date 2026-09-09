@@ -4,11 +4,14 @@ import { format } from "date-fns";
 import {
   ArrowLeft,
   ArrowRight,
+  Banknote,
   CalendarClock,
   Clock,
   MapPin,
   Package,
+  Paperclip,
   Pencil,
+  Plus,
   Receipt,
   Repeat,
   Trash2,
@@ -25,7 +28,7 @@ import {
   setJobStatus,
 } from "../actions";
 import { createInvoiceFromJob } from "../../invoices/actions";
-import { activeCrew, getJob, jobCostTotals } from "../queries";
+import { activeCrew, getJob, jobCostTotals, jobExpenses } from "../queries";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { NotesPanel } from "@/components/notes/notes-panel";
 import { Badge } from "@/components/ui/badge";
@@ -37,11 +40,14 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { getContext, requirePermission } from "@/lib/auth";
 import {
   asStatus,
+  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_LABELS,
   JOB_PRIORITY_META,
   JOB_PRIORITIES,
   JOB_STATUS_FLOW,
   JOB_STATUS_META,
   JOB_STATUSES,
+  type ExpenseCategory,
   type JobStatus,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
@@ -82,11 +88,15 @@ export default async function JobDetailPage({
   const writable = can(user, "jobs:write");
   const canLogTime = can(user, "jobs:log-time");
   const seesMoney = can(user, "invoices:read");
+  const seesExpenses = can(user, "expenses:read");
+
+  // Fetched only when the role may see it, rather than fetched and hidden.
+  const expenses = seesExpenses ? await jobExpenses(org.id, job.id) : null;
 
   const status = asStatus(JOB_STATUSES, job.status, "SCHEDULED") as JobStatus;
   const meta = JOB_STATUS_META[status];
   const priority = asStatus(JOB_PRIORITIES, job.priority, "NORMAL");
-  const costs = jobCostTotals(job);
+  const costs = jobCostTotals(job, expenses?.totalCents ?? 0);
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
 
   // Cancel gets its own control, since it asks for a reason.
@@ -198,8 +208,13 @@ export default async function JobDetailPage({
         ) : null}
       </Card>
 
+      {/*
+        `min-w-0` on the columns: a grid item defaults to min-width:auto, so a
+        table wider than the phone jams the whole column open and the page
+        scrolls sideways instead of the table scrolling inside its own wrapper.
+      */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* ------------------------------------------------- materials --- */}
           <Card className="overflow-hidden">
             <CardHeader
@@ -378,6 +393,124 @@ export default async function JobDetailPage({
             )}
           </Card>
 
+          {/* -------------------------------------------------- expenses --- */}
+          {expenses ? (
+            <Card className="overflow-hidden">
+              <CardHeader
+                title="Expenses"
+                description={`What was paid out for this ${org.labelJobSingular.toLowerCase()} — receipts, rentals, subcontractors.`}
+                action={
+                  <div className="flex items-center gap-3">
+                    {expenses.totalCents > 0 ? (
+                      <span className="tabular text-sm font-semibold text-ink">
+                        {money(expenses.totalCents)}
+                      </span>
+                    ) : null}
+                    {can(user, "expenses:write") ? (
+                      <Link
+                        href={`/expenses/new?jobId=${job.id}`}
+                        className={buttonClasses("outline", "sm")}
+                      >
+                        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                        Record
+                      </Link>
+                    ) : null}
+                  </div>
+                }
+              />
+
+              {expenses.rows.length === 0 ? (
+                <EmptyState
+                  icon={<Banknote className="h-5 w-5" strokeWidth={1.75} />}
+                  title="No expenses booked"
+                  description={`Costs recorded against this ${org.labelJobSingular.toLowerCase()} show up here and count towards what it cost.`}
+                />
+              ) : (
+                <>
+                  <Table>
+                    <THead>
+                      <Th>Expense</Th>
+                      <Th className="hidden sm:table-cell">Category</Th>
+                      <Th align="right">Date</Th>
+                      <Th align="right">Amount</Th>
+                    </THead>
+                    <TBody>
+                      {expenses.rows.map((expense) => (
+                        <Tr key={expense.id}>
+                          <Td>
+                            <Link
+                              href={`/expenses/${expense.id}`}
+                              className="flex min-w-0 items-center gap-2 font-medium text-ink transition-colors hover:text-brand"
+                            >
+                              <span className="truncate">
+                                {expense.description}
+                              </span>
+                              {expense._count.attachments > 0 ? (
+                                <Paperclip
+                                  className="h-3.5 w-3.5 shrink-0 text-ink-subtle"
+                                  strokeWidth={1.75}
+                                  aria-label="Has a receipt"
+                                />
+                              ) : null}
+                            </Link>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              {expense.vendor ? (
+                                <span className="text-xs text-ink-subtle">
+                                  {expense.vendor}
+                                </span>
+                              ) : null}
+                              {expense.billable ? (
+                                <Badge tone="accent">Rebillable</Badge>
+                              ) : null}
+                              {expense.reimbursable && !expense.reimbursedAt ? (
+                                <Badge tone="warning">
+                                  Owed to {expense.paidBy?.name ?? "payer"}
+                                </Badge>
+                              ) : null}
+                            </div>
+                          </Td>
+                          <Td className="hidden text-ink-muted sm:table-cell">
+                            {
+                              EXPENSE_CATEGORY_LABELS[
+                                asStatus(
+                                  EXPENSE_CATEGORIES,
+                                  expense.category,
+                                  "OTHER",
+                                ) as ExpenseCategory
+                              ]
+                            }
+                          </Td>
+                          <Td
+                            align="right"
+                            className="tabular whitespace-nowrap text-ink-muted"
+                          >
+                            {format(expense.spentAt, "MMM d, yyyy")}
+                          </Td>
+                          <Td
+                            align="right"
+                            className="tabular font-medium whitespace-nowrap"
+                          >
+                            {money(expense.amountCents)}
+                          </Td>
+                        </Tr>
+                      ))}
+                    </TBody>
+                  </Table>
+
+                  {expenses.billableCents > 0 ? (
+                    <p className="border-t border-line px-5 py-3 text-xs text-ink-muted">
+                      <span className="tabular font-medium text-ink">
+                        {money(expenses.billableCents)}
+                      </span>{" "}
+                      of this is marked to rebill. It is not added to an invoice
+                      on its own — put it on as a line when you raise one.
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </Card>
+          ) : null}
+
           {/* ----------------------------------------------- attachments --- */}
           {can(user, "files:read") ? (
             <Card className="overflow-hidden">
@@ -403,13 +536,13 @@ export default async function JobDetailPage({
               entityType="job"
               entityId={job.id}
               canWrite={canLogTime}
-              placeholder="What was found on site? What still needs doing?"
+              placeholder="What happened, and what still needs doing?"
             />
           </Card>
         </div>
 
         {/* ------------------------------------------------------ sidebar --- */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <Card>
             <CardHeader title="Schedule" />
             <div className="space-y-3 px-5 py-4">
@@ -533,10 +666,20 @@ export default async function JobDetailPage({
 
           {seesMoney ? (
             <Card>
-              <CardHeader title="Cost so far" />
+              <CardHeader
+                title="Cost so far"
+                description={
+                  expenses
+                    ? "Billable materials and labor logged here, plus expenses booked to this job."
+                    : undefined
+                }
+              />
               <dl className="divide-y divide-line text-sm">
                 <Row label="Materials">{money(costs.materialsCents)}</Row>
                 <Row label="Labor">{money(costs.laborCents)}</Row>
+                {expenses ? (
+                  <Row label="Expenses">{money(costs.expensesCents)}</Row>
+                ) : null}
                 <Row label="Total" strong>
                   {money(costs.totalCents)}
                 </Row>

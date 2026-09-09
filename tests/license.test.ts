@@ -92,7 +92,20 @@ describe("forgery", () => {
   it("rejects an edited signature", () => {
     const token = issueLicense(claims(), keys.privateKey);
     const [prefix, payload, signature] = token.split(".");
-    const flipped = `${signature.slice(0, -2)}${signature.slice(-2) === "AA" ? "AB" : "AA"}`;
+
+    // Flip a bit in the decoded bytes, not in the base64 text. An ed25519
+    // signature is 64 bytes, which base64url encodes in 86 characters — and
+    // the last character carries only two significant bits, so editing it can
+    // change nothing but padding. Swapping those trailing characters left the
+    // signature byte-identical whenever it happened to end in "AA", roughly
+    // one run in 256: the token verified, correctly, and the test failed.
+    const bytes = Buffer.from(
+      signature.replace(/-/g, "+").replace(/_/g, "/"),
+      "base64",
+    );
+    bytes[0] ^= 0x01;
+    const flipped = toBase64Url(bytes);
+    expect(flipped).not.toBe(signature);
 
     const result = verifyLicense(`${prefix}.${payload}.${flipped}`, keys.publicKey, now);
     expect(result).toMatchObject({ ok: false, reason: "bad-signature" });

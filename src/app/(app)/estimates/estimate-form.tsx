@@ -152,7 +152,7 @@ export function EstimateForm({
               id="title"
               name="title"
               defaultValue={values.title}
-              placeholder="AC unit replacement"
+              placeholder="Monthly service package"
             />
           </Field>
 
@@ -224,7 +224,7 @@ export function EstimateForm({
               name="notes"
               rows={3}
               defaultValue={values.notes}
-              placeholder="Pricing includes haul-away of the old unit and a one-year labor warranty."
+              placeholder="Pricing covers everything listed above. Anything outside this scope is quoted separately."
             />
           </Field>
 
