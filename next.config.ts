@@ -22,7 +22,11 @@ const nextConfig: NextConfig = {
 
   // The Prisma client is generated into src/generated and must stay external
   // to the server bundle so its query engine resolves at runtime.
-  serverExternalPackages: ["@prisma/client", "better-sqlite3"],
+  serverExternalPackages: [
+    "@prisma/client",
+    "better-sqlite3",
+    "@prisma/adapter-better-sqlite3",
+  ],
   typedRoutes: false,
 
   // Emits .next/standalone: a self-contained server plus only the node_modules
@@ -33,7 +37,27 @@ const nextConfig: NextConfig = {
   // use for the tree — on Vercel it is at best wasted work during every deploy,
   // and standalone's traced copy is not what actually gets served there.
   // scripts/build-desktop.mjs sets the flag.
-  ...(process.env.MATLOCK_DESKTOP_BUILD ? { output: "standalone" as const } : {}),
+  ...(process.env.MATLOCK_DESKTOP_BUILD
+    ? {
+        output: "standalone" as const,
+
+        // src/lib/db.ts loads the SQLite adapter with require() at the point of
+        // use rather than importing it, so that a hosted deployment never
+        // evaluates a native module it will not use. The cost is that nothing
+        // statically references it any more, and tracing works by following
+        // static references — so the desktop bundle would ship without the one
+        // adapter it actually needs. Named here instead.
+        //
+        // driver-adapter-utils is listed too: it is the adapter's own
+        // dependency, and an include is not a trace.
+        outputFileTracingIncludes: {
+          "*": [
+            "./node_modules/@prisma/adapter-better-sqlite3/**",
+            "./node_modules/@prisma/driver-adapter-utils/**",
+          ],
+        },
+      }
+    : {}),
 };
 
 export default nextConfig;

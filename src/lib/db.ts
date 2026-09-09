@@ -1,7 +1,11 @@
+import { createRequire } from "node:module";
+
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaClient as SqlitePrismaClient } from "@/generated/sqlite/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+// Type-only, so nothing about SQLite reaches a hosted bundle. See the comment
+// on the require below.
+import type { PrismaBetterSqlite3 as BetterSqlite3Adapter } from "@prisma/adapter-better-sqlite3";
 
 import { databaseProvider } from "./db-provider";
 
@@ -39,6 +43,26 @@ export function createPrismaClient(): PrismaClient {
       : (["error"] as const);
 
   if (provider === "sqlite") {
+    // Required at the moment of use rather than imported at the top.
+    //
+    // `@prisma/adapter-better-sqlite3` pulls in better-sqlite3, which is a
+    // native module — it loads a compiled .node binary the instant the module
+    // is evaluated. A static import would do that on every deployment,
+    // including the hosted one that only ever talks to Postgres, and a host
+    // that skipped the package's install scripts has no binary to load. The
+    // process then dies at import, in the code path it was never going to
+    // take.
+    //
+    // The generated SQLite client above stays a normal import: it is plain
+    // generated source with no native dependency, and it has to go through the
+    // bundler because that is what compiles it.
+    //
+    // Nothing statically references the adapter now, so the desktop build has
+    // to be told to trace it — see outputFileTracingIncludes in next.config.ts.
+    const { PrismaBetterSqlite3 } = createRequire(import.meta.url)(
+      "@prisma/adapter-better-sqlite3",
+    ) as { PrismaBetterSqlite3: typeof BetterSqlite3Adapter };
+
     // The two clients differ only in the provider they were generated for, so
     // this is safe — but it is a cast, and it is here rather than at a call
     // site so that the rest of the app never has to know there are two.
