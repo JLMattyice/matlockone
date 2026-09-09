@@ -49,7 +49,9 @@ rather than the data.
 | `npm run desktop:build` | Assembles the desktop bundle without packaging |
 | `npm run desktop` | Runs the desktop app from that bundle |
 | `npm run test:watch` | Re-runs affected tests as you edit |
-| `npm run db:push` | Applies `prisma/schema.prisma` to the database |
+| `npm run db:push` | Applies the schema for the current `DATABASE_URL` |
+| `npm run schema:sync` | Regenerates `prisma/schema.sqlite.prisma` from the Postgres schema |
+| `npm run schema:check` | Fails if that projection is stale or unportable (run it in CI) |
 | `npm run db:seed` | Loads demo data (safe to re-run; scoped to the demo org) |
 | `npm run db:reset` | **Destroys all data**, recreates the schema, reseeds |
 | `npm run db:studio` | Prisma Studio, a table browser for the local database |
@@ -62,10 +64,59 @@ point it at anything real.
 - **Next.js 15** (App Router, server components, server actions) + **React 19**
 - **TypeScript** in strict mode
 - **Tailwind CSS v4**, CSS-variable design tokens, light + dark
-- **Prisma 7** over **SQLite** via a driver adapter
+- **Prisma 7** over **Postgres** (hosted) or **SQLite** (desktop), via driver
+  adapters
 
-Moving to Postgres is a two-line change: the `provider` in `prisma/schema.prisma`
-and the adapter in `src/lib/db.ts`. No query in the application has to move.
+### One schema, two databases
+
+Matlock One ships twice from one codebase: hosted on Postgres, and as a desktop
+install where the business's records are a SQLite file on their own machine.
+
+`prisma/schema.prisma` is the only schema anyone edits. `npm run schema:sync`
+projects it onto `prisma/schema.sqlite.prisma`, changing the datasource provider
+and the generator output path and nothing else — so a schema change is written
+once. `npm run schema:check` fails if the projection is stale, and also rejects
+anything SQLite cannot represent (enums, scalar lists, `Json`, `@db.` native
+types), which is what keeps the projection honest.
+
+`DATABASE_URL` decides the rest at runtime. Its scheme selects the driver
+adapter in `src/lib/db.ts`, the schema `prisma.config.ts` hands the CLI, and
+whether searches ask for case-insensitive matching. An unrecognised URL is
+rejected at startup rather than guessed at.
+
+**Searches go through `like()` in `src/lib/search.ts`, never a bare `contains`.**
+SQLite's LIKE is case-insensitive for ASCII; Postgres LIKE is not, and needs
+`mode: "insensitive"` — which SQLite in turn rejects. Neither spelling is
+portable, so the choice is made in one place instead of at 69 call sites. A bare
+`contains` still compiles and still passes the SQLite tests; it just quietly
+half-works in the cloud, which is exactly the kind of bug that reaches a
+customer.
+
+### Where files live
+
+Photos and documents go through a three-function seam in `src/lib/storage/`
+(`put` / `get` / `remove`), the same shape as the payment and email seams. Which
+store is underneath is decided by the environment:
+
+| Provider | Used by | Direct upload |
+| --- | --- | --- |
+| `local` | desktop installs, local development | no — and does not need it |
+| `s3` | any S3-compatible store: R2, S3, Backblaze, Supabase, MinIO | yes |
+| `vercel-blob` | hosted on Vercel | yes |
+
+Local disk is **refused on Vercel**, whose filesystem is read-only and belongs
+to a single invocation. Without that check the failure is silent and delayed:
+every upload appears to succeed and is a broken link by the next request.
+
+**Uploads bypass the server where they can.** A serverless function's request
+body is capped at 4.5MB — under the 15MB this application allows, and under a
+great many phone photos. So the browser asks `/api/files/upload-ticket` for a
+presigned URL, sends the bytes straight to the store, and hands back a signed
+ticket naming the key, the organization, the person and the record. The confirm
+step re-reads the object's real size from the store rather than believing the
+size the client promised, and checks the ticket's organization against the
+caller's own. Where a store cannot presign, the form submits the files normally
+and nothing about that path changed.
 
 ## How it is put together
 
@@ -108,8 +159,9 @@ session credentials. Passwords use scrypt from Node's standard library — no
 native module to compile.
 
 **Statuses are strings, not enums.** SQLite has no enum type, so they are
-validated against the tuples in `src/lib/constants.ts`. Those tuples become real
-Prisma enums on Postgres without any call site changing.
+validated against the tuples in `src/lib/constants.ts`. They stay strings on
+Postgres too: the schema has to project cleanly onto SQLite for the desktop
+build, and `npm run schema:check` enforces that.
 
 **Document totals are never trusted from the browser.** The line-item editor
 recalculates as you type so the number moves with the form, but `createEstimate`
@@ -246,8 +298,11 @@ All seven phases are complete.
 | 6 | Team, Documents & Photos, Notifications |
 | 7 | Reports & Analytics, Global Search |
 
-**Dashboard** — revenue, receivables, upcoming work, jobs in progress, recent
-payments, overdue invoices, quick actions.
+**Dashboard** — money in against money out over six months, receivables, spend
+this month, upcoming work, jobs in progress, recent payments, overdue invoices,
+reimbursements owed to the team, quick actions. Every financial figure is
+skipped at the query rather than fetched and hidden, so a role without the
+permission never has the number in the page at all.
 
 **Clients & Leads** — full database with search across names, emails, phones and
 addresses; multiple addresses per client; complete history; a lead pipeline with
@@ -268,7 +323,9 @@ printable documents.
 **Expenses** — what the business spends, by category, booked against a job or
 carried as overhead. Receipts attach to the record, costs can be flagged to
 rebill, and anything a team member paid out of pocket is tracked as owed back
-until it is settled.
+until it is settled. An expense booked to a job appears on that job and counts
+towards what it cost, so a completed job shows its margin rather than just its
+revenue.
 
 **Team** — roles and permissions, workload, hours, deactivation that preserves
 history.
@@ -314,11 +371,18 @@ silent:
   new one, part-payments leave a balance, and the same id from two different
   processors stays two payments. Also that no provider is offered in the UI
   without an adapter behind it.
+- **`tests/dashboard.test.ts`** — the figures everyone opens the app to see:
+  spend scoped to this month and this business, money owed to a teammate
+  deliberately *not* scoped to the month, both series bucketed onto the same
+  six months, and a role without the expenses permission getting nothing
+  fetched rather than something hidden.
 - **`tests/expenses.test.ts`** — the spend list and its totals, against the real
   database because the guarantee is a Prisma query: another business's spending
   never reaches the figures, the period and flag filters agree with the sums
   beside them, what is owed back to a teammate survives a change of date range,
-  and a deleted job drops its link without erasing what it cost.
+  and a deleted job drops its link without erasing what it cost. Also the job
+  running cost, including that a role which cannot see spend gets a total with
+  no invisible component in it.
 - **`tests/recovery.test.ts`** — the desktop launcher's account-recovery tool,
   run as a real subprocess and checked with the application's own
   `verifyPassword`. It carries a second copy of the scrypt code because it runs

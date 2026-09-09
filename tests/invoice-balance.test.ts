@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { createPrismaClient } from "@/lib/db";
 
 import { recalculateInvoice } from "@/lib/invoice-balance";
 import { allocateNumber } from "@/lib/numbering";
@@ -14,9 +13,7 @@ import { allocateNumber } from "@/lib/numbering";
  * would test the mock.
  */
 
-const prisma = new PrismaClient({
-  adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! }),
-});
+const prisma = createPrismaClient();
 
 let organizationId: string;
 let clientId: string;

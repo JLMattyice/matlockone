@@ -9,6 +9,7 @@ import { publicUrl } from "@/lib/messaging";
 import { attachPaymentLink } from "@/lib/payments/link";
 import { notify, notifyClientByEmail } from "@/lib/notifications";
 import { formatMoney } from "@/lib/money";
+import { like } from "@/lib/search";
 
 /** Invoices falling due inside this many days get a courtesy reminder. */
 const DUE_SOON_DAYS = 3;
@@ -74,7 +75,11 @@ export async function sendInvoiceReminders(
       relatedType: "invoice",
       relatedId: { in: candidates.map((c) => c.id) },
       createdAt: { gte: startOfToday },
-      subject: { contains: "reminder" },
+      // The only `like()` here that is not a user's search box. It matches
+      // subjects this file wrote, which makes it look safe to leave
+      // case-sensitive — right up until someone recapitalises the subject
+      // below and every overdue client starts getting chased daily.
+      subject: like("reminder"),
     },
     select: { relatedId: true },
   });

@@ -1,25 +1,17 @@
-// Matlock One — field service management platform
+// GENERATED FILE — DO NOT EDIT.
 //
-// THE canonical schema. `prisma/schema.sqlite.prisma` is generated from this
-// file by `npm run schema:sync` and must never be edited by hand — a schema
-// change is written here, once.
-//
-// Multi-tenant: every business-domain row carries organizationId.
-// Money is stored as integer cents; tax/discount rates as basis points (825 = 8.25%).
-//
-// Deliberately provider-neutral, and it has to stay that way: the desktop
-// build runs this same model on SQLite. Only String/Int/Float/Boolean/DateTime
-// appear below — no enums, no arrays, no Json, no `@db.` native types — so the
-// two providers cannot drift apart. Columns that would be enums elsewhere are
-// String, validated against the unions in src/lib/constants.ts.
+// Projected from prisma/schema.prisma by scripts/sync-sqlite-schema.mjs, which
+// changes the datasource provider and the generator output path and nothing
+// else. Edit prisma/schema.prisma and run `npm run schema:sync`; anything
+// written here by hand is erased the next time the schema changes.
 
 generator client {
   provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  output   = "../src/generated/sqlite"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 // ---------------------------------------------------------------- tenancy ---

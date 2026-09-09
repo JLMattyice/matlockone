@@ -1,0 +1,21 @@
+# The desktop product. None of it is part of a hosted deployment, and shipping
+# it would send a Node runtime and a Windows installer to a build that has no
+# use for either.
+electron/
+desktop-build/
+dist-installer/
+build/
+electron-builder.yml
+scripts/build-desktop.mjs
+scripts/make-icon.mjs
+scripts/after-pack.cjs
+
+# Never leaves this machine.
+license-keys/
+storage/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+tests/

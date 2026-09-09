@@ -3,6 +3,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 
 import { prisma } from "@/lib/db";
+import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const ESTIMATES_PAGE_SIZE = 25;
@@ -42,11 +43,11 @@ function buildWhere(params: EstimateListParams): Prisma.EstimateWhereInput {
           AND: [
             {
               OR: [
-                { number: { contains: q } },
-                { title: { contains: q } },
-                { notes: { contains: q } },
-                { client: { displayName: { contains: q } } },
-                { lineItems: { some: { name: { contains: q } } } },
+                { number: like(q) },
+                { title: like(q) },
+                { notes: like(q) },
+                { client: { displayName: like(q) } },
+                { lineItems: { some: { name: like(q) } } },
               ],
             },
           ],

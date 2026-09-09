@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { INVOICE_OPEN_STATUSES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const CLIENTS_PAGE_SIZE = 25;
@@ -34,21 +35,21 @@ export async function listClients(params: ClientListParams) {
     organizationId: params.organizationId,
     ...(params.status ? { status: params.status } : {}),
     ...(params.type ? { type: params.type } : {}),
-    // SQLite's LIKE is case-insensitive for ASCII, so `contains` needs no mode
-    // here. On Postgres these clauses take `mode: "insensitive"`.
+    // `like()` rather than a bare `contains`: the two databases disagree about
+    // case, and src/lib/search.ts is where that is settled.
     ...(q
       ? {
           OR: [
-            { displayName: { contains: q } },
-            { businessName: { contains: q } },
-            { firstName: { contains: q } },
-            { lastName: { contains: q } },
-            { email: { contains: q } },
-            { phone: { contains: q } },
-            { mobilePhone: { contains: q } },
-            { addresses: { some: { line1: { contains: q } } } },
-            { addresses: { some: { city: { contains: q } } } },
-            { addresses: { some: { postalCode: { contains: q } } } },
+            { displayName: like(q) },
+            { businessName: like(q) },
+            { firstName: like(q) },
+            { lastName: like(q) },
+            { email: like(q) },
+            { phone: like(q) },
+            { mobilePhone: like(q) },
+            { addresses: { some: { line1: like(q) } } },
+            { addresses: { some: { city: like(q) } } },
+            { addresses: { some: { postalCode: like(q) } } },
           ],
         }
       : {}),

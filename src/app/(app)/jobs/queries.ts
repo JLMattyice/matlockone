@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import type { AppContext } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { jobVisibilityWhere } from "@/lib/permissions";
+import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const JOBS_PAGE_SIZE = 25;
@@ -52,12 +53,12 @@ function buildWhere(params: JobListParams): Prisma.JobWhereInput {
     ...(q
       ? {
           OR: [
-            { number: { contains: q } },
-            { title: { contains: q } },
-            { description: { contains: q } },
-            { client: { displayName: { contains: q } } },
-            { address: { line1: { contains: q } } },
-            { address: { city: { contains: q } } },
+            { number: like(q) },
+            { title: like(q) },
+            { description: like(q) },
+            { client: { displayName: like(q) } },
+            { address: { line1: like(q) } },
+            { address: { city: like(q) } },
           ],
         }
       : {}),
@@ -175,11 +176,21 @@ export async function getJob(ctx: AppContext, id: string) {
 
 export type JobDetail = Awaited<ReturnType<typeof getJob>>;
 
-/** Billable totals for the job header: materials, labor, and the sum. */
-export function jobCostTotals(job: {
-  materials: { billable: boolean; totalCents: number }[];
-  timeEntries: { billable: boolean; minutes: number; hourlyRateCents: number }[];
-}) {
+/**
+ * Billable totals for the job header: materials, labor, expenses, and the sum.
+ *
+ * `expensesCents` is passed in rather than read off the job, because expenses
+ * are only fetched for roles allowed to see them — a role without that
+ * permission gets a total of what it can actually account for, not a number
+ * with an invisible component in it.
+ */
+export function jobCostTotals(
+  job: {
+    materials: { billable: boolean; totalCents: number }[];
+    timeEntries: { billable: boolean; minutes: number; hourlyRateCents: number }[];
+  },
+  expensesCents = 0,
+) {
   const materialsCents = job.materials
     .filter((m) => m.billable)
     .reduce((sum, m) => sum + m.totalCents, 0);
@@ -193,10 +204,44 @@ export function jobCostTotals(job: {
   return {
     materialsCents,
     laborCents,
-    totalCents: materialsCents + laborCents,
+    expensesCents,
+    totalCents: materialsCents + laborCents + expensesCents,
     totalMinutes,
   };
 }
+
+/**
+ * Expenses booked against one job.
+ *
+ * The rows and the totals come from the same fetch on purpose: a separate
+ * aggregate could disagree with the list under it, and a cost figure that does
+ * not match the lines it claims to summarise is worse than no figure.
+ */
+export async function jobExpenses(organizationId: string, jobId: string) {
+  const rows = await prisma.expense.findMany({
+    where: { organizationId, jobId },
+    orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+    include: {
+      paidBy: { select: { id: true, name: true } },
+      _count: { select: { attachments: true } },
+    },
+  });
+
+  return {
+    rows,
+    count: rows.length,
+    totalCents: rows.reduce((sum, row) => sum + row.amountCents, 0),
+    // The slice meant to go back on the client's invoice.
+    billableCents: rows
+      .filter((row) => row.billable)
+      .reduce((sum, row) => sum + row.amountCents, 0),
+    unreimbursedCents: rows
+      .filter((row) => row.reimbursable && !row.reimbursedAt)
+      .reduce((sum, row) => sum + row.amountCents, 0),
+  };
+}
+
+export type JobExpenses = Awaited<ReturnType<typeof jobExpenses>>;
 
 // ------------------------------------------------------------- scheduling ---
 

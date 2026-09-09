@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { prisma } from "@/lib/db";
 import { ageingBucket } from "@/lib/documents";
+import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const INVOICES_PAGE_SIZE = 25;
@@ -63,11 +64,11 @@ function buildWhere(params: InvoiceListParams): Prisma.InvoiceWhereInput {
           AND: [
             {
               OR: [
-                { number: { contains: q } },
-                { title: { contains: q } },
-                { client: { displayName: { contains: q } } },
-                { job: { number: { contains: q } } },
-                { lineItems: { some: { name: { contains: q } } } },
+                { number: like(q) },
+                { title: like(q) },
+                { client: { displayName: like(q) } },
+                { job: { number: like(q) } },
+                { lineItems: { some: { name: like(q) } } },
               ],
             },
           ],
@@ -283,10 +284,10 @@ export async function listPayments(params: {
     ...(q
       ? {
           OR: [
-            { reference: { contains: q } },
-            { notes: { contains: q } },
-            { invoice: { number: { contains: q } } },
-            { client: { displayName: { contains: q } } },
+            { reference: like(q) },
+            { notes: like(q) },
+            { invoice: { number: like(q) } },
+            { client: { displayName: like(q) } },
           ],
         }
       : {}),

@@ -3,6 +3,7 @@ import "server-only";
 import type { AppContext } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can, jobVisibilityWhere } from "@/lib/permissions";
+import { like } from "@/lib/search";
 
 export type SearchHit = {
   id: string;
@@ -44,12 +45,12 @@ export async function globalSearch(
           where: {
             ...scope,
             OR: [
-              { displayName: { contains: q } },
-              { businessName: { contains: q } },
-              { email: { contains: q } },
-              { phone: { contains: q } },
-              { addresses: { some: { line1: { contains: q } } } },
-              { addresses: { some: { city: { contains: q } } } },
+              { displayName: like(q) },
+              { businessName: like(q) },
+              { email: like(q) },
+              { phone: like(q) },
+              { addresses: { some: { line1: like(q) } } },
+              { addresses: { some: { city: like(q) } } },
             ],
           },
           take: PER_KIND,
@@ -69,10 +70,10 @@ export async function globalSearch(
           where: {
             ...scope,
             OR: [
-              { name: { contains: q } },
-              { businessName: { contains: q } },
-              { email: { contains: q } },
-              { phone: { contains: q } },
+              { name: like(q) },
+              { businessName: like(q) },
+              { email: like(q) },
+              { phone: like(q) },
             ],
           },
           take: PER_KIND,
@@ -93,11 +94,11 @@ export async function globalSearch(
             ...scope,
             ...jobVisibilityWhere(user),
             OR: [
-              { number: { contains: q } },
-              { title: { contains: q } },
-              { description: { contains: q } },
-              { client: { displayName: { contains: q } } },
-              { address: { line1: { contains: q } } },
+              { number: like(q) },
+              { title: like(q) },
+              { description: like(q) },
+              { client: { displayName: like(q) } },
+              { address: { line1: like(q) } },
             ],
           },
           take: PER_KIND,
@@ -118,10 +119,10 @@ export async function globalSearch(
           where: {
             ...scope,
             OR: [
-              { number: { contains: q } },
-              { title: { contains: q } },
-              { client: { displayName: { contains: q } } },
-              { lineItems: { some: { name: { contains: q } } } },
+              { number: like(q) },
+              { title: like(q) },
+              { client: { displayName: like(q) } },
+              { lineItems: { some: { name: like(q) } } },
             ],
           },
           take: PER_KIND,
@@ -142,10 +143,10 @@ export async function globalSearch(
           where: {
             ...scope,
             OR: [
-              { number: { contains: q } },
-              { title: { contains: q } },
-              { client: { displayName: { contains: q } } },
-              { lineItems: { some: { name: { contains: q } } } },
+              { number: like(q) },
+              { title: like(q) },
+              { client: { displayName: like(q) } },
+              { lineItems: { some: { name: like(q) } } },
             ],
           },
           take: PER_KIND,

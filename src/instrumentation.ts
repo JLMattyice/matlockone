@@ -1,4 +1,51 @@
 /**
+ * Checks the deployment's configuration once, at boot.
+ *
+ * A hosted deployment is configured by hand in a dashboard, and its
+ * misconfigurations are quiet ones: the server starts, pages render, and the
+ * damage shows up later as an invoice emailed with a localhost link or a
+ * mailbox that cannot be saved. Failing at boot turns a support call weeks
+ * later into a deployment that plainly refused to start.
+ *
+ * Node runtime only. The Edge runtime runs middleware, which reads a cookie and
+ * touches none of this.
+ */
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const { configProblems, formatProblems } = await import("./lib/config");
+
+  const problems = configProblems();
+  if (problems.length === 0) return;
+
+  const fatal = problems.filter((problem) => problem.level === "fatal");
+  const warnings = problems.filter((problem) => problem.level === "warning");
+
+  if (warnings.length > 0) {
+    console.warn(
+      [
+        "",
+        "=== Matlock One: configuration warnings ===",
+        formatProblems(warnings),
+        "",
+      ].join("\n"),
+    );
+  }
+
+  if (fatal.length > 0) {
+    // Thrown rather than logged: a deployment missing these serves a broken
+    // product convincingly, which is worse than one that did not come up.
+    throw new Error(
+      [
+        "Matlock One cannot start with this configuration:",
+        formatProblems(fatal),
+        "",
+      ].join("\n"),
+    );
+  }
+}
+
+/**
  * Makes a production error readable.
  *
  * In a production build Next.js shows the user "a server-side exception has

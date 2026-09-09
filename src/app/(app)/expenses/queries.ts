@@ -5,6 +5,7 @@ import { endOfDay, startOfDay, startOfMonth, startOfYear, subDays } from "date-f
 
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
 
 const PAGE_SIZE = 25;
@@ -72,12 +73,12 @@ function buildWhere(params: ExpenseListParams): Prisma.ExpenseWhereInput {
     ...(q
       ? {
           OR: [
-            { description: { contains: q } },
-            { vendor: { contains: q } },
-            { reference: { contains: q } },
-            { job: { number: { contains: q } } },
-            { job: { title: { contains: q } } },
-            { client: { displayName: { contains: q } } },
+            { description: like(q) },
+            { vendor: like(q) },
+            { reference: like(q) },
+            { job: { number: like(q) } },
+            { job: { title: like(q) } },
+            { client: { displayName: like(q) } },
           ],
         }
       : {}),

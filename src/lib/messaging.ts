@@ -1,5 +1,6 @@
 import "server-only";
 
+import { resolveAppUrl } from "./config";
 import type { MessageChannel } from "./constants";
 import { prisma } from "./db";
 import {
@@ -148,8 +149,14 @@ export async function sendMessage(message: OutboundMessage): Promise<SendResult>
     : { ok: false, delivered: false, messageId: row.id, error: result.error };
 }
 
-/** Absolute URL for a client-facing document link. */
+/**
+ * Absolute URL for a client-facing document link.
+ *
+ * The base is resolved in lib/config.ts rather than read straight from APP_URL,
+ * so a hosted deployment that never set it still emails a working address
+ * instead of localhost.
+ */
 export function publicUrl(path: string) {
-  const base = process.env.APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+  const base = resolveAppUrl();
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }

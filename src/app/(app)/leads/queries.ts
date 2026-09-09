@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
 
 /** The board renders every open lead at once; this caps a runaway pipeline. */
@@ -28,10 +29,10 @@ function buildWhere(params: LeadListParams): Prisma.LeadWhereInput {
     ...(q
       ? {
           OR: [
-            { name: { contains: q } },
-            { businessName: { contains: q } },
-            { email: { contains: q } },
-            { phone: { contains: q } },
+            { name: like(q) },
+            { businessName: like(q) },
+            { email: like(q) },
+            { phone: like(q) },
           ],
         }
       : {}),

@@ -13,6 +13,7 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
+import { like } from "@/lib/search";
 import { formatBytes, isImageMime } from "@/lib/storage-limits";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -36,11 +37,11 @@ export default async function FilesPage({
     ...(q
       ? {
           OR: [
-            { originalName: { contains: q } },
-            { caption: { contains: q } },
-            { client: { displayName: { contains: q } } },
-            { job: { title: { contains: q } } },
-            { job: { number: { contains: q } } },
+            { originalName: like(q) },
+            { caption: like(q) },
+            { client: { displayName: like(q) } },
+            { job: { title: like(q) } },
+            { job: { number: like(q) } },
           ],
         }
       : {}),

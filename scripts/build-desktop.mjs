@@ -19,6 +19,11 @@ import path from "node:path";
 const root = process.cwd();
 const require = createRequire(import.meta.url);
 
+// Tells next.config.ts to emit .next/standalone. Set before anything spawns
+// Next, because child processes inherit it — and checked again after the build,
+// since a missing standalone directory is the failure this guards against.
+process.env.MATLOCK_DESKTOP_BUILD = "1";
+
 const OUT = path.join(root, "desktop-build");
 const APP_OUT = path.join(OUT, "app");
 const NODE_OUT = path.join(OUT, "node");
@@ -60,7 +65,21 @@ fs.mkdirSync(NODE_OUT, { recursive: true });
 //    Generated from the same schema this build compiles against, so the two
 //    can never disagree.
 const prismaCli = require.resolve("prisma/build/index.js");
-run(process.execPath, [prismaCli, "generate"], "Prisma client");
+
+// The desktop ships SQLite, so everything below is pinned to the SQLite schema
+// explicitly rather than left to prisma.config.ts, which picks a schema from
+// whatever DATABASE_URL happens to be set on the build machine. A developer
+// with a Postgres URL in their .env would otherwise quietly build an installer
+// carrying Postgres DDL, and it would fail on first run at a customer's desk.
+const SQLITE_SCHEMA = path.join("prisma", "schema.sqlite.prisma");
+
+run(process.execPath, [path.join(root, "scripts", "sync-sqlite-schema.mjs")], "SQLite schema");
+
+// Both clients: src/lib/db.ts imports the Postgres one for its types even when
+// only the SQLite one will be used at runtime, so the build fails to resolve
+// without it.
+run(process.execPath, [prismaCli, "generate", "--schema", SQLITE_SCHEMA], "Prisma client (SQLite)");
+run(process.execPath, [prismaCli, "generate"], "Prisma client (Postgres types)");
 
 const schemaSql = execFileSync(
   process.execPath,
@@ -70,7 +89,7 @@ const schemaSql = execFileSync(
     "diff",
     "--from-empty",
     "--to-schema",
-    path.join("prisma", "schema.prisma"),
+    SQLITE_SCHEMA,
     "--script",
   ],
   { cwd: root, encoding: "utf8" },
@@ -86,7 +105,11 @@ run(process.execPath, [require.resolve("next/dist/bin/next"), "build"], "Next bu
 const standalone = path.join(root, ".next", "standalone");
 if (!fs.existsSync(standalone)) {
   throw new Error(
-    "No .next/standalone directory. Check that next.config.ts sets output: 'standalone'.",
+    [
+      "No .next/standalone directory.",
+      "next.config.ts only sets output: 'standalone' when MATLOCK_DESKTOP_BUILD",
+      "is set, which this script does — so the build did not inherit it.",
+    ].join(" "),
   );
 }
 

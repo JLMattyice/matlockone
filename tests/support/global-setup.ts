@@ -41,6 +41,24 @@ function remove(file: string) {
   }
 }
 
+/**
+ * Generates a Prisma client if it is not already on disk.
+ *
+ * The tests run on SQLite, but src/lib/db.ts imports the Postgres client too —
+ * it is where the types the application is written against come from — so a
+ * fresh clone cannot import the module until both exist. Skipped when they are
+ * already there, because regenerating both on every run costs more than the
+ * whole suite.
+ */
+function ensureClient(root: string, generated: string, schema: string, prismaCli: string) {
+  if (fs.existsSync(path.join(root, generated, "client.ts"))) return;
+
+  execFileSync(process.execPath, [prismaCli, "generate", "--schema", schema], {
+    env: { ...process.env, DATABASE_URL },
+    stdio: "pipe",
+  });
+}
+
 export default function setup() {
   const file = databaseFile(DATABASE_URL);
   remove(file);
@@ -56,6 +74,18 @@ export default function setup() {
     "prisma/build/index.js",
   );
 
+  // Keep the SQLite schema current with the authored Postgres one, then make
+  // sure both generated clients exist. Without the sync a schema change tested
+  // here would pass against yesterday's tables.
+  const root = process.cwd();
+  execFileSync(process.execPath, [path.join(root, "scripts", "sync-sqlite-schema.mjs")], {
+    stdio: "pipe",
+  });
+  ensureClient(root, "src/generated/sqlite", "prisma/schema.sqlite.prisma", prismaCli);
+  ensureClient(root, "src/generated/prisma", "prisma/schema.prisma", prismaCli);
+
+  // DATABASE_URL is a file: URL, so prisma.config.ts resolves this to the
+  // SQLite schema on its own.
   execFileSync(process.execPath, [prismaCli, "db", "push"], {
     env: { ...process.env, DATABASE_URL },
     stdio: "pipe",

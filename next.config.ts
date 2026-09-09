@@ -28,7 +28,12 @@ const nextConfig: NextConfig = {
   // Emits .next/standalone: a self-contained server plus only the node_modules
   // it actually traced. That directory is what the desktop build ships, so the
   // installer does not carry the whole dev dependency tree.
-  output: "standalone",
+  //
+  // Only for that build. A hosted deployment builds its own server and has no
+  // use for the tree — on Vercel it is at best wasted work during every deploy,
+  // and standalone's traced copy is not what actually gets served there.
+  // scripts/build-desktop.mjs sets the flag.
+  ...(process.env.MATLOCK_DESKTOP_BUILD ? { output: "standalone" as const } : {}),
 };
 
 export default nextConfig;

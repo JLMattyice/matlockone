@@ -29,8 +29,7 @@ vi.mock("next/headers", () => ({
 
 process.env.SESSION_SECRET ??= "test-secret-0123456789abcdef";
 
-const { PrismaClient } = await import("@/generated/prisma/client");
-const { PrismaBetterSqlite3 } = await import("@prisma/adapter-better-sqlite3");
+const { createPrismaClient } = await import("@/lib/db");
 const {
   SESSION_COOKIE,
   createSession,
@@ -42,9 +41,7 @@ const { forgetRememberedEmail, rememberEmail, readRememberedEmail } = await impo
   "@/lib/remembered-email"
 );
 
-const prisma = new PrismaClient({
-  adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! }),
-});
+const prisma = createPrismaClient();
 
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
