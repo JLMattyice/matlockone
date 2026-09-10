@@ -54,6 +54,49 @@ npm run desktop:build   # assemble desktop-build/
 npm run desktop         # launch it
 ```
 
+## Publishing a release
+
+The installer is not much use sitting in `dist-installer/`. `electron-builder.yml`
+publishes to **GitHub Releases**, which is also where the installed app looks
+for updates — one place instead of a download host plus an update feed.
+
+Three files go up together, and they must be the *same* build:
+
+- `MatlockOne-Setup-<version>.exe`
+- `MatlockOne-Setup-<version>.exe.blockmap` — lets an update download only the
+  changed chunks instead of the whole 150 MB
+- `latest.yml` — the version, the file name and its SHA-512
+
+electron-updater reads `latest.yml`, compares versions, and verifies the
+installer's hash against it before running anything. Upload a mismatched set and
+every existing install fails its update check with a hash error.
+
+To publish, tag the commit the build came from and let electron-builder do the
+upload:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+GH_TOKEN=<a token with repo scope> npx electron-builder --win --publish always
+```
+
+Or create the release in the GitHub UI and attach the three files by hand.
+
+**The repository has to be public.** GitHub serves a private repository's
+release assets only to an authenticated token — which an installed copy does not
+carry, and a visitor to the download page certainly does not. Private means both
+the download button and the update check return 404.
+
+Then turn the download button on, by setting this on the hosted deployment:
+
+```
+DOWNLOAD_URL_WINDOWS="https://github.com/JLMattyice/matlockone/releases/download/v0.2.0/MatlockOne-Setup-0.2.0.exe"
+```
+
+Until that variable is set the marketing page renders a placeholder saying the
+build is not published, rather than a button that 404s. Setting it is the
+deliberate act that makes the download real — do it *after* the release is up,
+not before.
+
 ## How it is put together
 
 Electron is a launcher and a window, not the application. It starts the real

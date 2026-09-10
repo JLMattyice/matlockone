@@ -50,14 +50,29 @@ compression: maximum
 
 
 # Where the app looks for new versions, and where `npm run desktop:pack`
-# writes latest.yml alongside the installer. A generic provider means any
-# static HTTPS host will do — a folder on the website, an S3 or R2 bucket, a
-# GitHub release. Upload the installer *and* latest.yml together; the app
-# reads the yml, compares versions, and checks the installer's SHA-512
-# against it before running anything.
+# writes latest.yml alongside the installer.
+#
+# The GitHub provider rather than a generic URL: electron-updater asks the
+# releases API for the newest tag instead of fetching a yml from a fixed path,
+# so there is no download host to run and no DNS to keep pointing at it. The
+# previous generic URL named downloads.matlocksoftware.com, which has never
+# resolved — a feed the installed app would have polled forever without
+# finding an update.
+#
+# electron-builder tags each release `v${version}` and uploads the installer,
+# its blockmap and latest.yml together; the app reads the yml, compares
+# versions, and checks the installer's SHA-512 against it before running
+# anything.
+#
+# The repository must be PUBLIC for any of this to work. GitHub serves a
+# private repository's release assets only to an authenticated token — which
+# an installed copy does not carry, and a visitor to the download page
+# certainly does not. A private repo here means both the update check and the
+# download button 404.
 publish:
-  - provider: generic
-    url: https://downloads.matlocksoftware.com/matlock-one/
+  - provider: github
+    owner: JLMattyice
+    repo: matlockone
 
 win:
   icon: build/icon.ico

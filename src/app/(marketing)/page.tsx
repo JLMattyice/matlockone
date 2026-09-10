@@ -512,24 +512,37 @@ function Pricing() {
  *
  * A link that does not exist yet renders as a marked blank rather than a dead
  * button: a download that 404s costs more trust than one that is openly not
- * ready. Publishing either is a one-line change here.
+ * ready.
+ *
+ * The addresses come from the environment rather than being written in here,
+ * because building a release and deploying this site are two separate events
+ * in two different places. A URL committed to this file goes live the moment
+ * it merges — whether or not anything is behind it yet — and an installer
+ * published an hour after the deploy needs a code change to become reachable.
+ * Setting the variable is the deliberate act that turns the button on, and
+ * clearing it puts the placeholder back rather than leaving a dead link.
+ *
+ * Read inside the function, not at module scope, so a dynamically rendered
+ * page picks up a change without a rebuild.
  */
-const DOWNLOADS = [
-  {
-    platform: "Windows",
-    detail: "Windows 10 and 11 · 64-bit",
-    url: null as string | null,
-    missing:
-      "The installer builds today with npm run desktop:pack — it just is not hosted anywhere yet. Set this entry's url once the .exe has a home.",
-  },
-  {
-    platform: "macOS",
-    detail: "Apple Silicon · macOS 12 and later",
-    url: null as string | null,
-    missing:
-      "No macOS build exists yet. It needs a signed, notarized build produced on a Mac; the config and entitlements are ready for it.",
-  },
-];
+function downloads() {
+  return [
+    {
+      platform: "Windows",
+      detail: "Windows 10 and 11 · 64-bit",
+      url: process.env.DOWNLOAD_URL_WINDOWS?.trim() || null,
+      missing:
+        "The installer builds with npm run desktop:pack and publishes to GitHub Releases. Set DOWNLOAD_URL_WINDOWS to its address once that release is up.",
+    },
+    {
+      platform: "macOS",
+      detail: "Apple Silicon · macOS 12 and later",
+      url: process.env.DOWNLOAD_URL_MACOS?.trim() || null,
+      missing:
+        "No macOS build exists yet. It needs a signed, notarized build produced on a Mac; the config and entitlements are ready for it.",
+    },
+  ];
+}
 
 /** An unfilled blank, marked as one. Never a guess dressed up as content. */
 function Placeholder({ children }: { children: React.ReactNode }) {
@@ -571,7 +584,7 @@ function DownloadSection() {
         </div>
 
         <div className="space-y-3">
-          {DOWNLOADS.map((build) => (
+          {downloads().map((build) => (
             <div
               key={build.platform}
               className="rounded-xl border border-line bg-surface-2 p-5"
