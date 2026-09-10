@@ -1,0 +1,126 @@
+# The macOS build, which cannot be produced anywhere else.
+#
+# The application code is platform-neutral — scripts/after-pack.cjs already
+# branches on darwin and build-desktop.mjs bundles whichever Node it is running
+# under. What cannot cross platforms is the compiled part: the SQLite binding is
+# a native module and the bundled Node is a native binary, so both have to be
+# produced on a Mac. Signing and notarization need one too.
+#
+# Hence a macOS runner. It is the only piece of this product that is not built
+# on the developer's own machine.
+
+name: macOS desktop build
+
+on:
+  # A release tag builds and attaches the .dmg to that release automatically.
+  push:
+    tags:
+      - "v*"
+
+  # Or build an existing tag by hand — used to fill in a release that was cut
+  # before this workflow existed.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach to, e.g. v0.2.0"
+        required: true
+
+# electron-builder attaches the .dmg, its blockmap and latest-mac.yml to the
+# release using GITHUB_TOKEN, which cannot write to releases without this.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Apple Silicon, which is what `arch: [arm64]` in electron-builder.yml
+    # targets. An Intel build would need a second run on an x64 runner;
+    # after-pack.cjs fails the build if the Node it bundled and the app it
+    # packed ever disagree about architecture.
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Fails here, naming the missing secret, rather than forty minutes later
+      # inside electron-builder with a signing error that does not say which of
+      # five values was absent.
+      - name: Check the signing secrets are present
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          missing=""
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "electron-builder.yml sets notarize: true, so the build cannot"
+            echo "finish without all five. See DESKTOP.md for how to produce them."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        # Not `npm i`: the SQLite binding compiles here, against this runner's
+        # Node and this runner's architecture, and the lockfile is what keeps
+        # that reproducible.
+        run: npm ci
+
+      # APPLE_API_KEY is a *path* to the .p8, not the key itself — a secret has
+      # to become a file before electron-builder can be pointed at it.
+      - name: Write the App Store Connect key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "$APPLE_API_KEY_P8" > ~/private_keys/AuthKey.p8
+          chmod 600 ~/private_keys/AuthKey.p8
+
+      - name: Assemble the desktop bundle
+        run: npm run desktop:build
+
+      - name: Generate the icon
+        # Emits build/icon.png, which electron-builder converts to .icns here.
+        run: node scripts/make-icon.mjs
+
+      - name: Package, sign, notarize and attach to the release
+        env:
+          # The Developer ID Application certificate, as a base64 .p12.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # Notarization, via App Store Connect API key rather than an Apple ID:
+          # no app-specific password to rotate and nothing that can trip on 2FA.
+          APPLE_API_KEY: ~/private_keys/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Attaches to the release whose tag matches package.json's version.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --mac --publish always
+
+      # Notarization can take a while and the build before it is not cheap.
+      # Keeping the artifacts means a failure in the publish step does not cost
+      # the whole run.
+      - name: Keep the build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: |
+            dist-installer/*.dmg
+            dist-installer/*.blockmap
+            dist-installer/latest-mac.yml
+          if-no-files-found: warn
+          retention-days: 14

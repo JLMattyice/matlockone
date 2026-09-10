@@ -30,7 +30,44 @@ Windows, and cleared the same way: right-click the app and choose Open, or allow
 it in System Settings › Privacy & Security. A $99/year Apple Developer ID plus
 notarization removes it, as a code-signing certificate does on Windows.
 
-None of the macOS path has been built or tested — there is no Mac here.
+### Two ways to produce the macOS build
+
+**On a Mac, by hand.** Fastest when you have one in front of you:
+
+```bash
+npm ci                      # compiles the SQLite binding for this Mac
+npm run desktop:pack:mac    # signs and notarizes, then writes the .dmg
+```
+
+Needs Xcode Command Line Tools (`xcode-select --install`) for the native
+module to compile, the **Developer ID Application** certificate in the login
+keychain — electron-builder discovers it there, so nothing has to be passed in
+— and notarization credentials in the environment:
+
+```bash
+export APPLE_API_KEY=~/private_keys/AuthKey_XXXXXXXX.p8
+export APPLE_API_KEY_ID=XXXXXXXX
+export APPLE_API_ISSUER=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
+For a build that only has to run locally, `npm run desktop:pack:mac:unsigned`
+skips both and produces a .dmg Gatekeeper will refuse until it is cleared by
+hand. Never ship that one.
+
+**On CI.** `.github/workflows/desktop-macos.yml` does the same thing on a
+macOS runner, triggered by pushing a `v*` tag or run by hand against an
+existing one. It needs five repository secrets — `CSC_LINK` (the Developer ID
+certificate as a base64 `.p12`), `CSC_KEY_PASSWORD`, `APPLE_API_KEY_P8` (the
+key's contents, which the workflow writes to a file because electron-builder
+wants a path), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` — and fails on the
+first step naming any that are missing.
+
+Prefer CI once there is more than one release: it keeps the signing identity
+off a laptop, and it cannot forget a step.
+
+Either way, three files go to the release, exactly as on Windows: the `.dmg`,
+its `.blockmap`, and `latest-mac.yml` (not `latest.yml` — the two platforms
+keep separate manifests and overwrite each other if confused).
 
 
 ```bash
