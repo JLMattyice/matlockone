@@ -5,6 +5,7 @@
 // else. Edit prisma/schema.prisma and run `npm run schema:sync`; anything
 // written here by hand is erased the next time the schema changes.
 
+
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/sqlite"

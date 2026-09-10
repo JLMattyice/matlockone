@@ -1,21 +1,26 @@
+# Every directory pattern here is anchored with a leading slash, and must stay
+# that way. Without one, these match at any depth the way .gitignore does — an
+# unanchored `storage/` excluded src/lib/storage along with the uploads folder
+# it was meant for, and the build failed on a module that simply was not there.
+
 # The desktop product. None of it is part of a hosted deployment, and shipping
 # it would send a Node runtime and a Windows installer to a build that has no
 # use for either.
-electron/
-desktop-build/
-dist-installer/
-build/
-electron-builder.yml
-scripts/build-desktop.mjs
-scripts/make-icon.mjs
-scripts/after-pack.cjs
+/electron/
+/desktop-build/
+/dist-installer/
+/build/
+/electron-builder.yml
+/scripts/build-desktop.mjs
+/scripts/make-icon.mjs
+/scripts/after-pack.cjs
 
 # Never leaves this machine.
-license-keys/
-storage/
+/license-keys/
+/storage/
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 
-tests/
+/tests/
