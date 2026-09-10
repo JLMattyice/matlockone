@@ -91,17 +91,28 @@ S3_FORCE_PATH_STYLE="true"
 
 ## Deploying
 
-`vercel.json` sets the build command:
+`vercel.json` sets the build command to `npm run build`. Migrations are **not**
+run by it, deliberately.
+
+A build container is a poor place to migrate a database. It needs a second
+connection string with different properties from the one the application uses,
+it runs on every deployment including previews, and when it fails it fails as a
+build error rather than as a database error — several steps away from the thing
+that is actually wrong.
+
+So migrations are run by hand, from a machine that already has the credentials:
 
 ```
-prisma migrate deploy && npm run build
+npm run db:deploy
 ```
 
-Migrations run before the build, so a migration that fails takes the deployment
-with it rather than leaving a running server pointed at the wrong shape of
-database.
+with `DATABASE_URL` (or `DIRECT_DATABASE_URL`, which wins when set) in your local
+`.env` pointing at the hosted database. Run it after any deployment that adds a
+migration, before or just after the deploy — the app tolerates a schema slightly
+ahead of the code, not one behind it.
 
-The first deploy creates all 27 tables from `prisma/migrations/0_init`.
+`DIRECT_DATABASE_URL` is therefore optional. Set it only if you run migrations
+somewhere that cannot hold a session on the pooled connection.
 
 ## First run
 

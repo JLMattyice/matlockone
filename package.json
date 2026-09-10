@@ -22,6 +22,7 @@
     "schema:sync": "node scripts/sync-sqlite-schema.mjs",
     "schema:check": "node scripts/sync-sqlite-schema.mjs --check",
     "prisma:generate": "npm run schema:sync && prisma generate --schema prisma/schema.prisma && prisma generate --schema prisma/schema.sqlite.prisma",
+    "db:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:reset": "prisma db push --force-reset && npm run db:seed",
     "db:seed": "tsx prisma/seed.ts",
