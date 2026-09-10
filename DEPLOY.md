@@ -121,6 +121,32 @@ own organization and becomes its owner; everybody else is invited from
 **Team**. Nothing about that flow is specific to hosting — it is the same one
 the desktop build uses.
 
+### The demo workspace
+
+The landing page invites visitors to sign in and try a workspace with a year of
+work already in it. That workspace comes from `prisma/seed.ts`, and it has to
+be put there deliberately:
+
+```
+DATABASE_URL="<the hosted connection string>" npm run db:seed
+```
+
+The variable goes on the command rather than in `.env`: an environment variable
+that is already set wins over the file, so a local `.env` pointing at `dev.db`
+does not quietly pull the seed back to SQLite. The seed reaches its database
+through `createPrismaClient()`, the same adapter selection the application
+uses, so the only thing deciding Postgres or SQLite is that URL.
+
+Re-running it is safe and is how the demo gets cleaned up. The seed deletes the
+organization by slug first and the cascade takes every child row with it, so a
+reseed replaces the workspace rather than adding a second one. The data is
+deterministic apart from dates, which are generated relative to today — so the
+schedule looks live every time, and the dashboard figures do not move between
+walkthroughs.
+
+Without this, the deployment has no users at all, and `isFirstRun()` sends
+every route to `/signup` — including the `/login` the landing page points at.
+
 ## Configuration is checked at boot
 
 `src/instrumentation.ts` validates the environment when the server starts.

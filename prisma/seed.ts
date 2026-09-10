@@ -6,23 +6,28 @@
  * on the dashboard do not move between walkthroughs.
  *
  * Dates are generated relative to *today*, so the schedule always looks live.
+ *
+ * Runs against whichever database DATABASE_URL points at. That matters more
+ * than it looks: the demo workspace is the hosted deployment's shop window, not
+ * just a development convenience. A seed that could only fill a SQLite file
+ * left the hosted database empty, which is what put every route on a redirect
+ * to signup while the landing page advertised credentials for an account that
+ * did not exist.
  */
 
-import path from "node:path";
-import fs from "node:fs";
+// First, and it must stay first: it loads .env before src/lib/db.ts, which
+// reads DATABASE_URL at import time.
+import "../scripts/load-env";
 
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-
+import { createPrismaClient } from "../src/lib/db";
 import { computeTotals } from "../src/lib/money";
 import { hashPassword } from "../src/lib/password";
 
-const envFile = path.join(process.cwd(), ".env");
-if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
-
-const prisma = new PrismaClient({
-  adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! }),
-});
+// Adapter selection lives in src/lib/db.ts. Going through it means the seed
+// reaches Postgres or SQLite by the same rule the application uses, rather than
+// a second copy of that rule that can drift from it — which is exactly what the
+// hardcoded SQLite adapter here used to be.
+const prisma = createPrismaClient();
 
 // --------------------------------------------------------------- helpers ---
 
