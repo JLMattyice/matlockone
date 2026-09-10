@@ -24,6 +24,21 @@ const require = createRequire(import.meta.url);
 // since a missing standalone directory is the failure this guards against.
 process.env.MATLOCK_DESKTOP_BUILD = "1";
 
+// A build needs DATABASE_URL to exist; it does not need it to work.
+//
+// The Prisma CLI resolves the datasource when it loads prisma.config.ts and
+// throws if the variable is unset — and a fresh clone has no .env, because .env
+// is gitignored. So the desktop build could not run on a clean checkout at all,
+// which went unnoticed for as long as it was only ever run in a working
+// directory that already had one. A CI runner and a second machine are both
+// clean checkouts.
+//
+// Nothing in this build connects to a database. The generators need a URL to
+// parse, and the installed application creates its own SQLite file under the
+// user's app data on first run, so a placeholder here is correct rather than
+// merely expedient. Only set when absent, so a developer's own .env still wins.
+process.env.DATABASE_URL ??= "file:./dev.db";
+
 const OUT = path.join(root, "desktop-build");
 const APP_OUT = path.join(OUT, "app");
 const NODE_OUT = path.join(OUT, "node");
@@ -79,7 +94,18 @@ run(process.execPath, [path.join(root, "scripts", "sync-sqlite-schema.mjs")], "S
 // only the SQLite one will be used at runtime, so the build fails to resolve
 // without it.
 run(process.execPath, [prismaCli, "generate", "--schema", SQLITE_SCHEMA], "Prisma client (SQLite)");
-run(process.execPath, [prismaCli, "generate"], "Prisma client (Postgres types)");
+// --schema, for the same reason as the line above it. Left implicit, this
+// resolved through prisma.config.ts, which chooses a schema from DATABASE_URL —
+// so with a SQLite URL set it generated the SQLite client a second time and
+// never produced the Postgres one at all. src/generated is gitignored, so on a
+// clean checkout the Next build then failed to resolve the types src/lib/db.ts
+// imports. On a machine where that directory happened to survive an earlier
+// build, it silently did the wrong thing and got away with it.
+run(
+  process.execPath,
+  [prismaCli, "generate", "--schema", path.join("prisma", "schema.prisma")],
+  "Prisma client (Postgres types)",
+);
 
 const schemaSql = execFileSync(
   process.execPath,
