@@ -7,6 +7,7 @@ import os from "node:os";
 import nodemailer from "nodemailer";
 
 import type { EmailConfig, EmailProviderId } from "./catalog";
+import { dataStaysOnThisMachine } from "../config";
 
 /**
  * Email delivery adapters.
@@ -293,7 +294,16 @@ function describe(error: unknown): string {
     // sender now picks the address itself to avoid this, so reaching here means
     // the server really is unreachable — say so, rather than showing somebody a
     // raw address and a socket error code.
-    return "This computer has no route to that mail server. If it is on a company or guest network, outgoing mail is often blocked — try another connection.";
+    //
+    // Which of those two things to suggest depends on whose machine failed to
+    // reach the mail server. On a desktop install it is the customer's own PC
+    // and their own network, and switching networks is something they can
+    // actually do. Hosted, it is our server — telling them to try another
+    // connection is advice they cannot act on, and sends them looking in the
+    // wrong place.
+    return dataStaysOnThisMachine()
+      ? "This computer has no route to that mail server. If it is on a company or guest network, outgoing mail is often blocked — try another connection."
+      : "No route to that mail server. Check the host name and port, and whether your mail provider only accepts connections from addresses it has been told to expect.";
   }
   if (/ECONNREFUSED|ETIMEDOUT|timeout/i.test(raw)) {
     return "Could not reach the mail server. Check the port, or whether a firewall is blocking it.";

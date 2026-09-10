@@ -269,7 +269,7 @@ function describeNetwork(error: unknown) {
     return "PayPal did not respond in time. Check the connection and try again.";
   }
   if (/ENOTFOUND|EAI_AGAIN|fetch failed/i.test(raw)) {
-    return "Could not reach PayPal. Check this machine's internet connection.";
+    return "Could not reach PayPal. Check the connection and try again.";
   }
   return raw.slice(0, 300);
 }

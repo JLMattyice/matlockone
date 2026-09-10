@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { configProblems, resolveAppUrl } from "@/lib/config";
+import {
+  configProblems,
+  dataStaysOnThisMachine,
+  resolveAppUrl,
+} from "@/lib/config";
 
 /**
  * A hosted deployment is configured by hand in a dashboard, and its
@@ -65,6 +69,59 @@ describe("resolveAppUrl", () => {
 
   it("falls back to localhost with nothing set", () => {
     expect(resolveAppUrl({})).toBe("http://localhost:3000");
+  });
+});
+
+describe("dataStaysOnThisMachine", () => {
+  /**
+   * This one guards a sentence shown to a customer on the screen that asks for
+   * their business — "everything stays on this computer". It is only allowed to
+   * be true when both halves of their data really are on the machine serving
+   * the page.
+   */
+
+  it("is true for a desktop install: SQLite beside the app, files on the disk", () => {
+    expect(
+      dataStaysOnThisMachine({
+        DATABASE_URL: "file:./dev.db",
+        STORAGE_DIR: "./storage",
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for the hosted deployment", () => {
+    expect(dataStaysOnThisMachine(GOOD)).toBe(false);
+  });
+
+  it("is false when the database is local but the files are not", () => {
+    // Records on the machine, photos in a bucket. The promise does not hold.
+    expect(
+      dataStaysOnThisMachine({
+        DATABASE_URL: "file:./dev.db",
+        STORAGE_PROVIDER: "s3",
+        S3_BUCKET: "files",
+        S3_ACCESS_KEY_ID: "key",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when the database is Postgres even with local file storage", () => {
+    expect(
+      dataStaysOnThisMachine({
+        DATABASE_URL: "postgresql://u:p@host:5432/matlockone",
+        STORAGE_DIR: "./storage",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not throw, and does not promise, on an unreadable configuration", () => {
+    // providerFor() throws on both of these. Failing towards "hosted" means a
+    // broken deployment stays quiet rather than making a promise about a
+    // customer's data that nothing has checked.
+    expect(dataStaysOnThisMachine({})).toBe(false);
+    expect(dataStaysOnThisMachine({ DATABASE_URL: "mysql://u:p@host/db" })).toBe(
+      false,
+    );
   });
 });
 

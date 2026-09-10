@@ -145,7 +145,8 @@ export default async function LicenseSettingsPage({
                 aria-hidden
               />
               <p className="mr-auto text-sm text-ink-muted">
-                Verified on this machine, without contacting a server.
+                Verified against a key built into the software, without
+                contacting a licence server.
               </p>
               {canWrite ? <RemoveLicenseButton action={clearLicense} /> : null}
             </div>

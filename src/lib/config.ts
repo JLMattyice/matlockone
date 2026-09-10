@@ -53,6 +53,32 @@ function isProduction(env: ConfigEnv) {
 }
 
 /**
+ * Whether the business's records stay on the machine this is running on.
+ *
+ * True for a desktop install: the database is a SQLite file beside the
+ * application and uploads go to a folder on the same disk. False for the hosted
+ * deployment, where both live somewhere else entirely.
+ *
+ * Derived rather than declared, because several screens make this exact claim
+ * to a customer in so many words — "everything stays on this computer" is a
+ * promise about where their client list goes. A flag set by hand can be wrong
+ * about that. This cannot be wrong unless the data really is somewhere else.
+ *
+ * An unreadable DATABASE_URL counts as hosted. The safe direction to fail is
+ * the one that does not make the promise.
+ */
+export function dataStaysOnThisMachine(env: ConfigEnv = process.env): boolean {
+  try {
+    return (
+      providerFor(env.DATABASE_URL) === "sqlite" &&
+      storageProviderId(env) === "local"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Everything wrong with this deployment's configuration.
  *
  * Returns problems rather than throwing so the caller decides what to do with
