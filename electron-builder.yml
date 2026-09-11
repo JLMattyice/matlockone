@@ -100,14 +100,34 @@ mac:
   icon: build/icon.png
   category: public.app-category.business
 
-  # One architecture per build, and it must match the machine that ran
-  # `desktop:build`: the bundled Node and the SQLite binding are both native.
-  # arm64 covers every Mac sold since late 2020. To also ship Intel, run the
-  # whole build again on an Intel Mac (or a CI runner) with `--x64`;
-  # scripts/after-pack.cjs fails the build if the two ever disagree.
+  # No architecture here, on purpose. The bundled Node and the SQLite binding
+  # are native, so the app can only ever be built for the architecture of the
+  # machine running the build — scripts/after-pack.cjs refuses anything else.
+  # With no arch on the target, electron-builder uses exactly that: the one
+  # given on the command line, or the host's own when none is.
+  #
+  # Pinning one here does not do what it looks like. This used to read
+  # `arch: [arm64]`, with a note that an Intel Mac could build with --x64. It
+  # cannot: electron-builder seeds its arch list from the command line and then
+  # adds each target's own arch on top (computeArchToTargetNamesMap in
+  # app-builder-lib), so --x64 did not replace arm64 — it built both. The x64
+  # app packed, signed and notarized; the arm64 one then reached after-pack and
+  # was rightly refused, and the build ended with a notarized app and no DMG.
+  #
+  # zip alongside dmg because electron-updater updates macOS from the zip. The
+  # DMG is what a person downloads; the zip is what an installed copy updates
+  # itself from, and without it every Mac install is stranded on its first
+  # version.
   target:
-    - target: dmg
-      arch: [arm64]
+    - dmg
+    - zip
+
+  # Space-free, and carrying the architecture. GitHub rewrites spaces in
+  # release asset names as dots, so the productName default ("Matlock One-…")
+  # uploads as "Matlock.One-…" while latest-mac.yml still names the original,
+  # and the updater asks for a file that is not there. The arch keeps an Intel
+  # and an Apple Silicon build from overwriting each other on one release.
+  artifactName: MatlockOne-${version}-${arch}.${ext}
 
   # Required for notarization, and the reason build/entitlements.mac.plist
   # exists — the hardened runtime blocks the JIT, the inherited environment and

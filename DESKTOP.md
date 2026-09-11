@@ -22,7 +22,11 @@ What it needs is a Mac to build on:
   ships the Mac's own Node beside it exactly as it ships node.exe on Windows.
 - **Only macOS can produce a .icns and sign a bundle.** `build/icon.png` is
   512px so electron-builder can convert it.
-- `npm run desktop:pack` then emits a .dmg for arm64 and x64.
+- `npm run desktop:pack:mac` then emits a .dmg and a .zip for **this Mac's own
+  architecture** — arm64 on Apple Silicon, x64 on Intel. One build, one
+  architecture: the bundled Node is the one running the build, and
+  `scripts/after-pack.cjs` fails anything that disagrees with it. For both,
+  build once on each kind of machine, or let the CI workflow produce arm64.
 
 Unsigned, macOS refuses the first launch with "cannot be opened because it is
 from an unidentified developer" — the same class of warning as SmartScreen on
@@ -36,7 +40,7 @@ notarization removes it, as a code-signing certificate does on Windows.
 
 ```bash
 npm ci                      # compiles the SQLite binding for this Mac
-npm run desktop:pack:mac    # signs and notarizes, then writes the .dmg
+npm run desktop:pack:mac    # signs and notarizes, then writes the .dmg and .zip
 ```
 
 Needs Xcode Command Line Tools (`xcode-select --install`) for the native
@@ -49,6 +53,29 @@ export APPLE_API_KEY=~/private_keys/AuthKey_XXXXXXXX.p8
 export APPLE_API_KEY_ID=XXXXXXXX
 export APPLE_API_ISSUER=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
+
+Or an Apple ID with an app-specific password (appleid.apple.com → Sign-In and
+Security → App-Specific Passwords). `APPLE_TEAM_ID` is required on this route,
+and it matters when the account belongs to more than one team:
+
+```bash
+export APPLE_ID="you@example.com"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+export APPLE_TEAM_ID=XXXXXXXXXX
+```
+
+**The first signed build on a Mac stalls on keychain prompts.** An Electron app
+is several hundred nested binaries, `codesign` signs each one separately, and
+clicking *Allow* authorizes exactly one; a prompt that is declined or never
+answered surfaces as `errSecInternalComponent`. Give `codesign` standing access
+to the key once, before building:
+
+```bash
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s ~/Library/Keychains/login.keychain-db
+```
+
+It asks for the login password. If it insists on `-k`, zsh can read one without
+echoing it — `read -s "?login password: " p` — and then take `-k "$p"`.
 
 For a build that only has to run locally, `npm run desktop:pack:mac:unsigned`
 skips both and produces a .dmg Gatekeeper will refuse until it is cleared by
@@ -65,9 +92,17 @@ first step naming any that are missing.
 Prefer CI once there is more than one release: it keeps the signing identity
 off a laptop, and it cannot forget a step.
 
-Either way, three files go to the release, exactly as on Windows: the `.dmg`,
-its `.blockmap`, and `latest-mac.yml` (not `latest.yml` — the two platforms
-keep separate manifests and overwrite each other if confused).
+Either way, five files go to the release: the `.dmg` and the `.zip`, a
+`.blockmap` for each, and `latest-mac.yml` (not `latest.yml` — the two
+platforms keep separate manifests and overwrite each other if confused). The
+DMG is what the download page links to; the zip is what an installed copy
+updates itself from, which is why it is not optional.
+
+One limit worth knowing: an Intel build and an Apple Silicon build each write
+their own `latest-mac.yml`. Upload both to one release and the second replaces
+the first, so installs of the other architecture are offered an update they
+cannot run. Until the two manifests are merged, or replaced by a universal
+build, ship one Mac architecture per release.
 
 
 ```bash

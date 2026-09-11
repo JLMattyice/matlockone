@@ -32,10 +32,10 @@ permissions:
 
 jobs:
   build:
-    # Apple Silicon, which is what `arch: [arm64]` in electron-builder.yml
-    # targets. An Intel build would need a second run on an x64 runner;
-    # after-pack.cjs fails the build if the Node it bundled and the app it
-    # packed ever disagree about architecture.
+    # Apple Silicon. electron-builder.yml deliberately names no architecture,
+    # so this runner builds for its own: arm64. An Intel build comes from an
+    # Intel machine — after-pack.cjs fails any build whose bundled Node and
+    # packed app disagree about architecture, so it cannot come from here.
     runs-on: macos-latest
     timeout-minutes: 60
 
@@ -120,6 +120,7 @@ jobs:
           name: macos-dmg
           path: |
             dist-installer/*.dmg
+            dist-installer/*.zip
             dist-installer/*.blockmap
             dist-installer/latest-mac.yml
           if-no-files-found: warn
