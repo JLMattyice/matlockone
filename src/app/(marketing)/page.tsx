@@ -536,10 +536,17 @@ function downloads() {
     },
     {
       platform: "macOS",
-      detail: "Apple Silicon · macOS 12 and later",
+      // Both halves are facts about the build this links to, not about macOS in
+      // general, so both go stale when the build changes. The architecture is
+      // whichever machine produced it — electron-builder builds for its host —
+      // and this release came from an Intel Mac, which Apple Silicon runs
+      // through Rosetta. The minimum is LSMinimumSystemVersion in the shipped
+      // app's Info.plist, which Electron sets: 13.0 as of Electron 44. Re-check
+      // both after an Electron upgrade or a build from a different machine.
+      detail: "Intel and Apple Silicon (via Rosetta) · macOS 13 and later",
       url: process.env.DOWNLOAD_URL_MACOS?.trim() || null,
       missing:
-        "No macOS build exists yet. It needs a signed, notarized build produced on a Mac; the config and entitlements are ready for it.",
+        "The installer builds with npm run desktop:pack:mac on a Mac and publishes to GitHub Releases. Set DOWNLOAD_URL_MACOS to its address once that release is up.",
     },
   ];
 }
