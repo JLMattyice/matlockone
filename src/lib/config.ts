@@ -47,6 +47,26 @@ export function resolveAppUrl(env: ConfigEnv = process.env): string {
   return "http://localhost:3000";
 }
 
+/**
+ * Whether cookies should carry the Secure flag.
+ *
+ * A browser keeps a Secure cookie only when it arrives over HTTPS or from
+ * localhost; anywhere else it is silently discarded, and the sign-in that set it
+ * looks as though it did nothing. This used to follow NODE_ENV, but the desktop
+ * build runs in production mode too, and it serves the crew over plain HTTP at
+ * an office address like http://192.168.1.20:3000. A phone or second computer
+ * that signs in there is handed a cookie it has to throw away, and lands back on
+ * the sign-in screen. The owner never sees it, because their own window uses
+ * localhost.
+ *
+ * So it follows the address the deployment answers on instead: Secure when that
+ * address is HTTPS, which is every hosted deployment including previews, and not
+ * where the only way in is plain HTTP.
+ */
+export function secureCookies(env: ConfigEnv = process.env): boolean {
+  return resolveAppUrl(env).startsWith("https://");
+}
+
 /** True when the app is serving real traffic rather than a dev server. */
 function isProduction(env: ConfigEnv) {
   return env.NODE_ENV === "production";

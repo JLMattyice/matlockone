@@ -4,6 +4,7 @@ import {
   configProblems,
   dataStaysOnThisMachine,
   resolveAppUrl,
+  secureCookies,
 } from "@/lib/config";
 
 /**
@@ -122,6 +123,38 @@ describe("dataStaysOnThisMachine", () => {
     expect(dataStaysOnThisMachine({ DATABASE_URL: "mysql://u:p@host/db" })).toBe(
       false,
     );
+  });
+});
+
+describe("secureCookies", () => {
+  /**
+   * A browser discards a Secure cookie that arrives over plain HTTP, so the flag
+   * has to follow how the deployment is actually reached, not NODE_ENV, which is
+   * "production" on the desktop build as well as the hosted one.
+   */
+
+  it("is secure on an HTTPS deployment", () => {
+    expect(secureCookies({ APP_URL: "https://app.matlockone.com" })).toBe(true);
+  });
+
+  it("is secure on Vercel without an explicit APP_URL", () => {
+    expect(
+      secureCookies({ VERCEL_PROJECT_PRODUCTION_URL: "matlockone.vercel.app" }),
+    ).toBe(true);
+    expect(secureCookies({ VERCEL_URL: "matlockone-abc123.vercel.app" })).toBe(true);
+  });
+
+  it("is not secure where the crew reach the desktop build over the office network", () => {
+    expect(
+      secureCookies({ NODE_ENV: "production", APP_URL: "http://192.168.1.20:3000" }),
+    ).toBe(false);
+  });
+
+  it("is not secure on plain HTTP localhost", () => {
+    expect(
+      secureCookies({ NODE_ENV: "production", APP_URL: "http://localhost:3000" }),
+    ).toBe(false);
+    expect(secureCookies({})).toBe(false);
   });
 });
 

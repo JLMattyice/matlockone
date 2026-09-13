@@ -151,6 +151,31 @@ describe("keeping someone signed in", () => {
     expect(cookie()!.httpOnly).toBe(true);
     expect(cookie()!.sameSite).toBe("lax");
   });
+
+  it("marks the cookies Secure only where a browser will keep them", async () => {
+    // The desktop build serves the crew over plain HTTP on the office network,
+    // where a Secure cookie is thrown away and the sign-in appears to do nothing.
+    const saved = process.env.APP_URL;
+    const remembered = (email: string) =>
+      [...jar.values()].find((stored) => stored.value === email);
+
+    try {
+      process.env.APP_URL = "http://192.168.1.20:3000";
+      await createSession(userId, { remember: true });
+      await rememberEmail("crew@example.com");
+      expect(cookie()!.secure).toBe(false);
+      expect(remembered("crew@example.com")!.secure).toBe(false);
+
+      process.env.APP_URL = "https://app.matlockone.com";
+      await createSession(userId, { remember: true });
+      await rememberEmail("office@example.com");
+      expect(cookie()!.secure).toBe(true);
+      expect(remembered("office@example.com")!.secure).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = saved;
+    }
+  });
 });
 
 describe("sliding renewal", () => {

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "./db";
 import { SESSION_COOKIE } from "./session-cookie";
+import { secureCookies } from "./config";
 
 export { SESSION_COOKIE };
 
@@ -98,7 +99,7 @@ export async function createSession(
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookies(),
     path: "/",
     // No expiry when the answer was no: the cookie then lasts exactly as long
     // as the window stays open.

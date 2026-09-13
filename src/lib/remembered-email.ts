@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
+import { secureCookies } from "./config";
 
 /**
  * The email address last used to sign in on this computer.
@@ -36,7 +37,7 @@ export async function rememberEmail(email: string) {
   store.set(REMEMBERED_EMAIL_COOKIE, email.trim().toLowerCase().slice(0, MAX_EMAIL), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookies(),
     path: "/",
     expires: new Date(Date.now() + COOKIE_DAYS * 24 * 60 * 60 * 1000),
   });
