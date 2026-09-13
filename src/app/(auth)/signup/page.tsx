@@ -58,7 +58,7 @@ export default async function SignupPage() {
           </p>
         </div>
 
-        <SignupForm />
+        <SignupForm offerSignIn={!first} />
       </CardBody>
     </Card>
   );

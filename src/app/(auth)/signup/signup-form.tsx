@@ -18,7 +18,13 @@ function SubmitButton() {
   );
 }
 
-export function SignupForm() {
+/**
+ * `offerSignIn` is false on a brand-new installation. There is no account to
+ * sign in to yet, and /login sends a first run straight back here, so the link
+ * could only reload the page it sits on — which reads as a sign-in button that
+ * does nothing.
+ */
+export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
   const [state, formAction] = useActionState<AuthFormState, FormData>(
     signupAction,
     {},
@@ -86,12 +92,14 @@ export function SignupForm() {
 
       <SubmitButton />
 
-      <p className="pt-1 text-center text-sm text-ink-muted">
-        Already have an account?{" "}
-        <Link href="/login" className="font-medium text-brand hover:underline">
-          Sign in
-        </Link>
-      </p>
+      {offerSignIn ? (
+        <p className="pt-1 text-center text-sm text-ink-muted">
+          Already have an account?{" "}
+          <Link href="/login" className="font-medium text-brand hover:underline">
+            Sign in
+          </Link>
+        </p>
+      ) : null}
     </form>
   );
 }
