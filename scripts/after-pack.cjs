@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { assertBundleableNode } = require("./node-runtime.cjs");
 
 /**
  * Copies the server bundle and the Node runtime into the packaged app.
@@ -77,6 +78,16 @@ module.exports = async function afterPack(context) {
       throw new Error(`Packaged app is missing resources/${parts.join("/")}`);
     }
   }
+
+  // Present is not the same as runnable. The bundled Node once passed the check
+  // above while being a launcher whose runtime lived in Homebrew's folders, and
+  // the notarized app it shipped in could not start its own database.
+  // desktop:build refuses such a Node now; this also catches a desktop-build/
+  // assembled before it did, which would otherwise package as happily as ever.
+  assertBundleableNode(
+    path.join(resources, "node", platform === "win32" ? "node.exe" : "node"),
+    platform,
+  );
 
   /*
    * The bundled Node has to be able to run on the machine this installer is

@@ -20,6 +20,11 @@ What it needs is a Mac to build on:
 - **The SQLite binding is a native module** and cannot be cross-compiled. A
   `npm install` on the Mac produces the arm64 or x64 binary, and the build
   ships the Mac's own Node beside it exactly as it ships node.exe on Windows.
+- **That Node must be an official build** — from nodejs.org, or nvm, fnm or
+  Volta, which install the same binaries. Homebrew's `node` is a small launcher
+  that loads its runtime from libraries in Homebrew's own folders; copied into
+  the app it finds none of them, and the first launch fails before a database
+  is created. The build refuses one now, and says how to switch.
 - **Only macOS can produce a .icns and sign a bundle.** `build/icon.png` is
   512px so electron-builder can convert it.
 - `npm run desktop:pack:mac` then emits a .dmg and a .zip for **this Mac's own

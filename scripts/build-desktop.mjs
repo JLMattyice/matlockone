@@ -39,6 +39,12 @@ process.env.MATLOCK_DESKTOP_BUILD = "1";
 // merely expedient. Only set when absent, so a developer's own .env still wins.
 process.env.DATABASE_URL ??= "file:./dev.db";
 
+// The Node running this build is the Node the app will ship (step 8), so it has
+// to be one that can live inside an app bundle. Checked here, before the Next
+// build, rather than at the copy: finding out two minutes in is worse than
+// finding out now. scripts/node-runtime.cjs says what fails, and why.
+require("./node-runtime.cjs").assertBundleableNode(process.execPath);
+
 const OUT = path.join(root, "desktop-build");
 const APP_OUT = path.join(OUT, "app");
 const NODE_OUT = path.join(OUT, "node");
