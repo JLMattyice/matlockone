@@ -5,6 +5,7 @@ import {
   dataStaysOnThisMachine,
   resolveAppUrl,
   secureCookies,
+  signupOpen,
 } from "@/lib/config";
 
 /**
@@ -155,6 +156,20 @@ describe("secureCookies", () => {
       secureCookies({ NODE_ENV: "production", APP_URL: "http://localhost:3000" }),
     ).toBe(false);
     expect(secureCookies({})).toBe(false);
+  });
+});
+
+describe("signupOpen", () => {
+  it("is open when nothing says otherwise, which a desktop install relies on", () => {
+    expect(signupOpen({})).toBe(true);
+    expect(signupOpen({ ALLOW_SIGNUP: "" })).toBe(true);
+    expect(signupOpen({ ALLOW_SIGNUP: "true" })).toBe(true);
+  });
+
+  it("shuts on false however it was typed into the dashboard", () => {
+    expect(signupOpen({ ALLOW_SIGNUP: "false" })).toBe(false);
+    expect(signupOpen({ ALLOW_SIGNUP: "FALSE" })).toBe(false);
+    expect(signupOpen({ ALLOW_SIGNUP: " false " })).toBe(false);
   });
 });
 

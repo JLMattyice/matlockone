@@ -67,6 +67,22 @@ export function secureCookies(env: ConfigEnv = process.env): boolean {
   return resolveAppUrl(env).startsWith("https://");
 }
 
+/**
+ * Whether somebody who is not signed in can create a workspace here.
+ *
+ * Open unless ALLOW_SIGNUP is "false". A desktop install needs it open: its
+ * first screen is signup, and nobody is going to set a variable on it. A hosted
+ * deployment usually wants it shut once its owner has an account. Otherwise
+ * anyone who finds /signup gets a whole workspace free, and the owner adds
+ * their crew under Team anyway.
+ *
+ * Every screen asks this, not only the action. A form that renders and then
+ * refuses on submit is a button that does nothing with extra steps.
+ */
+export function signupOpen(env: ConfigEnv = process.env): boolean {
+  return env.ALLOW_SIGNUP?.trim().toLowerCase() !== "false";
+}
+
 /** True when the app is serving real traffic rather than a dev server. */
 function isProduction(env: ConfigEnv) {
   return env.NODE_ENV === "production";

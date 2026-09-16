@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { LoginForm } from "./login-form";
 import { Card, CardBody } from "@/components/ui/card";
+import { signupOpen } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { isFirstRun } from "@/lib/first-run";
 import { readRememberedEmail } from "@/lib/remembered-email";
@@ -55,7 +56,11 @@ export default async function LoginPage({
           </p>
         </div>
 
-        <LoginForm next={next} rememberedEmail={rememberedEmail} />
+        <LoginForm
+          next={next}
+          rememberedEmail={rememberedEmail}
+          offerSignup={signupOpen()}
+        />
 
         {demo ? (
           <div className="rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-xs text-ink-muted">

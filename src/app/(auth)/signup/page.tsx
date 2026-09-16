@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { SignupForm } from "./signup-form";
 import { Card, CardBody } from "@/components/ui/card";
-import { dataStaysOnThisMachine } from "@/lib/config";
+import { dataStaysOnThisMachine, signupOpen } from "@/lib/config";
 import { isFirstRun } from "@/lib/first-run";
 
-export const metadata: Metadata = { title: "Create workspace" };
+export function generateMetadata(): Metadata {
+  return { title: signupOpen() ? "Create workspace" : "Sign-ups closed" };
+}
 
 /**
  * Never prerendered.
@@ -43,6 +46,32 @@ function firstRunBlurb(local: boolean) {
 export default async function SignupPage() {
   const first = await isFirstRun();
   const local = dataStaysOnThisMachine();
+
+  // Shut, this explains itself instead of redirecting. Somebody arrives here
+  // from a link and needs to know why there is no form, and /login already
+  // sends an empty installation back here, so a redirect would be a loop.
+  if (!signupOpen()) {
+    return (
+      <Card>
+        <CardBody className="space-y-4 p-6 sm:p-8">
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold text-ink">Sign-ups are closed</h1>
+            <p className="text-sm text-ink-muted">
+              Accounts here are added by the workspace owner. Ask them to add
+              you under Team, then sign in.
+            </p>
+          </div>
+          {first ? null : (
+            <p className="text-sm">
+              <Link href="/login" className="font-medium text-brand hover:underline">
+                Sign in
+              </Link>
+            </p>
+          )}
+        </CardBody>
+      </Card>
+    );
+  }
 
   return (
     <Card>

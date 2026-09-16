@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { login, logout } from "@/lib/auth";
+import { signupOpen } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { hashPassword, passwordProblem } from "@/lib/password";
 import { forgetRememberedEmail, rememberEmail } from "@/lib/remembered-email";
@@ -121,8 +122,10 @@ export async function signupAction(
     email: text(formData.get("email")),
   };
 
-  if (process.env.ALLOW_SIGNUP === "false") {
-    return { error: "Signup is disabled on this installation.", values };
+  // The page no longer offers the form when this is shut, but an action is a
+  // public endpoint and a stale tab can still post to it.
+  if (!signupOpen()) {
+    return { error: "New accounts are added by the workspace owner.", values };
   }
 
   const parsed = signupSchema.safeParse({

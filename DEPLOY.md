@@ -73,6 +73,10 @@ ENCRYPTION_KEY="..."
 # own production domain — set it as soon as there is a real one.
 APP_URL="https://app.example.com"
 
+# Closes public sign-up. Create the owner's account first, then set this and
+# redeploy; everyone else is added under Team.
+ALLOW_SIGNUP="false"
+
 # File storage — Supabase Storage over the S3 protocol.
 STORAGE_PROVIDER="s3"
 S3_BUCKET="..."

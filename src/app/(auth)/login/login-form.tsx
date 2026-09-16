@@ -21,9 +21,12 @@ function SubmitButton() {
 export function LoginForm({
   next,
   rememberedEmail = "",
+  offerSignup = true,
 }: {
   next?: string;
   rememberedEmail?: string;
+  /** False where sign-ups are shut, so the link cannot lead to a closed door. */
+  offerSignup?: boolean;
 }) {
   const [state, formAction] = useActionState<AuthFormState, FormData>(
     loginAction,
@@ -92,12 +95,14 @@ export function LoginForm({
 
       <SubmitButton />
 
-      <p className="pt-1 text-center text-sm text-ink-muted">
-        New business?{" "}
-        <Link href="/signup" className="font-medium text-brand hover:underline">
-          Create an account
-        </Link>
-      </p>
+      {offerSignup ? (
+        <p className="pt-1 text-center text-sm text-ink-muted">
+          New business?{" "}
+          <Link href="/signup" className="font-medium text-brand hover:underline">
+            Create an account
+          </Link>
+        </p>
+      ) : null}
     </form>
   );
 }
