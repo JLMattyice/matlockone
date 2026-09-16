@@ -1,8 +1,35 @@
 # Matlock One for Windows
 
-A single installer. The customer double-clicks it, and Matlock One runs on their
-own computer with their data on their own disk. Nothing is required first — no
-Node, no database, no terminal, no account.
+A single installer. Nothing is required first: no Node, no database, no
+terminal.
+
+## Online and local
+
+A customer creates their account on the website, installs the app on each
+computer they work from, and signs in with that same account on every one. The
+app starts in one of two modes, decided once per launch by `launchMode` in
+`electron/runtime.js`:
+
+- **Online** (every new install). No server starts. The window opens
+  `https://www.matlockone.com/login`, and the business lives in the hosted
+  account, so every computer shows the same records. It needs an internet
+  connection; without one the window shows `electron/offline.html` with a
+  retry. The File menu drops the local-only items.
+- **Local** (any install whose database already has an account in it). This is
+  everything the rest of this document describes: its own server, a SQLite
+  file on this disk, and the crew over the office network.
+
+Existing installs stay local on purpose. An update that turned a business's
+own copy into a window onto a website where that business does not exist would
+look, to its owner, like losing everything. Every doubt about the database,
+such as a file the account list cannot read, resolves toward local for the same
+reason.
+
+A development run can point online mode somewhere else:
+
+```bash
+MATLOCK_ONE_URL=http://localhost:3000 npm run desktop
+```
 
 ## Building the installer
 

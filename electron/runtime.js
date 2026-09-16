@@ -363,7 +363,64 @@ async function waitForServer(url, { timeoutMs = 60_000, intervalMs = 250 } = {})
   return false;
 }
 
+/**
+ * Where the online account lives.
+ *
+ * www rather than the bare domain: the bare domain answers with a redirect,
+ * and starting the window one hop away from where it lands costs a round trip
+ * on every launch for nothing.
+ */
+const ONLINE_APP_URL = "https://www.matlockone.com";
+
+/**
+ * The online address, overridable with MATLOCK_ONE_URL so a development run
+ * can point the window at a local server instead of the live site.
+ */
+function onlineAppUrl(env = process.env) {
+  const override = env.MATLOCK_ONE_URL && env.MATLOCK_ONE_URL.trim();
+  return (override || ONLINE_APP_URL).replace(/\/$/, "");
+}
+
+/**
+ * Whether this install runs its own server ("local") or opens the account
+ * that lives on the website ("online").
+ *
+ * Online is the default: a customer signs up on the website and signs in with
+ * that account on every computer, so each one shows the same business. A new
+ * install has nothing to lose by that.
+ *
+ * An install that already holds a business stays local. Updating it to a
+ * window onto a website where that business does not exist would look,
+ * to the person using it, exactly like losing every record they had. Their
+ * data would still be in the folder, but that would not be much comfort.
+ *
+ * So the only question is whether the local database has anyone in it, and
+ * every doubt resolves toward local. A database that cannot be read is treated
+ * as full, because the costly mistake is hiding a business, not showing an
+ * empty sign-up form.
+ *
+ * `listAccounts` is only called when the file exists: opening a SQLite path
+ * that is not there creates it, and an online install should not grow a
+ * database it will never use.
+ */
+function launchMode({ databaseExists, listAccounts }) {
+  if (!databaseExists) return "online";
+
+  let result;
+  try {
+    result = listAccounts();
+  } catch {
+    return "local";
+  }
+
+  if (!result || !result.ok || !Array.isArray(result.accounts)) return "local";
+  return result.accounts.length > 0 ? "local" : "online";
+}
+
 module.exports = {
+  ONLINE_APP_URL,
+  onlineAppUrl,
+  launchMode,
   paths,
   legacyDataDirs,
   migrateLegacyData,

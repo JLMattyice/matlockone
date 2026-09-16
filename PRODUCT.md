@@ -38,11 +38,12 @@ tell at a glance what work is booked, what money is owed, and what has landed.
 
 Three things a neighboring product could not truthfully copy:
 
-**It can be software you own, not software you rent.** `npm run desktop:pack`
-produces a Windows installer the customer double-clicks. No Node, no terminal,
-no account, no subscription. The data stays on their machine and the office PC
-serves the crew over the local network. The same codebase also runs hosted —
-that is a deployment choice, not a different product.
+**One account on every computer.** A customer signs up on the website, installs
+the desktop app on each computer they work from, and signs in with the same
+account on all of them, or from a browser. Installs that already held a
+business before this keep running it locally, with the office PC serving the
+crew over the network, rather than being moved online out from under their
+owner. See DESKTOP.md.
 
 **It is a re-skinnable template, deliberately.** Business name, logo, colors and
 the core record labels ("Jobs" to "Work Orders", "Clients" to "Customers") are
@@ -141,9 +142,10 @@ partly paid, a payment recorded twice.
   product, capped at `DEMO_SEATS` active people, with no expiry and no
   watermark. The marketing page imports that constant rather than restating the
   number, so the claim cannot drift from the code.
-- **The site no longer links `/signup`.** The hosted signup route still exists
-  and still creates a full workspace with no plan and no payment; advertising it
-  was giving the product away. It needs gating before it is linked again.
+- **The site links `/signup` again.** Hosted sign-up is how a customer gets the
+  account the desktop app signs in to. A new workspace is free up to
+  `DEMO_SEATS` active people and a licence lifts that; setting
+  `ALLOW_SIGNUP=false` closes sign-up if that ever needs to stop.
 - **There is no public download URL yet.** The installer builds locally into
   `dist-installer/`; nothing is hosted. Any download link is a placeholder until
   a real URL exists.

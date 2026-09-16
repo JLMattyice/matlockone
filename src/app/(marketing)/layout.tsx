@@ -111,10 +111,19 @@ export default async function MarketingLayout({
             >
               {ctx ? "Dashboard" : "Log in"}
             </Link>
-            <a href="#download" className={buttonClasses("primary", "sm")}>
-              Download
-              <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-            </a>
+            {/* Somebody already signed in has an account; what they are
+                still missing is the app. */}
+            {ctx ? (
+              <a href="#download" className={buttonClasses("primary", "sm")}>
+                Download
+                <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              </a>
+            ) : (
+              <Link href="/signup" className={buttonClasses("primary", "sm")}>
+                Sign up
+                <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              </Link>
+            )}
           </div>
         </div>
       </header>

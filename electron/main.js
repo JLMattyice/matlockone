@@ -18,6 +18,8 @@ const { setupUpdates } = require("./updater");
 const {
   encryptionKey,
   ensureDatabase,
+  launchMode,
+  onlineAppUrl,
   stablePort,
   legacyDataDirs,
   migrateLegacyData,
@@ -37,6 +39,11 @@ const {
  *
  * The server binds to 0.0.0.0 on purpose: this machine is the office server,
  * and phones and laptops on the same network sign in against it.
+ *
+ * That is local mode, and only an install that already holds a business runs
+ * it now. Everything else is online: no server starts, and the window opens the
+ * account the customer created on the website, which is what lets one sign-in
+ * work on every computer they own. See launchMode in runtime.js.
  */
 
 // Only one copy may run: two servers would fight over the same database file.
@@ -70,6 +77,8 @@ let mainWindow = null;
 let recoveryWindow = null;
 let log = null;
 let connectionInfo = { local: "", lan: [] };
+/** "local" or "online", decided once at launch. */
+let mode = "local";
 
 const isPackaged = app.isPackaged;
 
@@ -158,11 +167,16 @@ function openLog(logFile) {
   };
 }
 
-async function startServer() {
+/**
+ * Decides, once per launch, whether this install runs its own server.
+ *
+ * Earlier product names' data is carried forward first, and that order is
+ * what matters here. A customer upgrading across a rename keeps their business
+ * in the old folder until this copies it. Asking before the copy would find
+ * the new folder empty and send them online, away from everything they had.
+ */
+function chooseMode() {
   const store = paths(app);
-  const resources = resourcePaths();
-
-  fs.mkdirSync(store.storageDir, { recursive: true });
 
   // The app shipped as "Fieldbase", then "Work Suite", before it was renamed
   // to this, and Electron derives the data folder from the product name.
@@ -178,6 +192,38 @@ async function startServer() {
     legacyDataDirs(app),
     store.databaseFile,
   );
+
+  const chosen = launchMode({
+    databaseExists: fs.existsSync(store.databaseFile),
+    listAccounts: () => runRecovery(["list"]),
+  });
+
+  return { mode: chosen, carried };
+}
+
+/**
+ * Online there is nothing to start. The log still opens, because the updater
+ * writes to it and an update that goes wrong is exactly when it gets read.
+ */
+function startOnline() {
+  const store = paths(app);
+  fs.mkdirSync(store.root, { recursive: true });
+
+  log = openLog(store.logFile);
+
+  const url = onlineAppUrl();
+  log.write(`
+=== Matlock One started ${new Date().toISOString()}, online at ${url} ===
+`);
+
+  return url;
+}
+
+async function startServer(carried) {
+  const store = paths(app);
+  const resources = resourcePaths();
+
+  fs.mkdirSync(store.storageDir, { recursive: true });
 
   const { created, addedTables, addedColumns, needsMigration } = ensureDatabase({
     nodeBinary: resources.nodeBinary,
@@ -323,16 +369,60 @@ function createWindow(url) {
   attachContextMenu(mainWindow.webContents, { Menu }, clipboard);
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
-  mainWindow.loadURL(appEntry(url));
+  // A failed load rejects this promise as well as firing did-fail-load. The
+  // event is where it is handled, so the rejection has nothing left to say.
+  mainWindow.loadURL(appEntry(url)).catch(() => {});
+
+  const appOrigin = new URL(url).origin;
+  const inApp = (target) => {
+    try {
+      return new URL(target).origin === appOrigin;
+    } catch {
+      return false;
+    }
+  };
+
+  // Only web addresses go to the browser. Online, this window shows content
+  // from the network, and handing the operating system whatever a page asks
+  // it to open (a file: path, a custom scheme) would let a page run things.
+  const openOutside = (target) => {
+    if (/^https?:\/\//i.test(target)) shell.openExternal(target);
+  };
 
   // External links open in the real browser, not inside the app frame.
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (!target.startsWith(connectionInfo.local)) {
-      shell.openExternal(target);
+    if (!inApp(target)) {
+      openOutside(target);
       return { action: "deny" };
     }
     return { action: "allow" };
   });
+
+  // The same rule for a link that navigates in place. The window is the
+  // business and nothing else. A payment page or a help article belongs in the
+  // browser, where it has an address bar and a way back.
+  mainWindow.webContents.on("will-navigate", (event, target) => {
+    if (inApp(target)) return;
+    event.preventDefault();
+    openOutside(target);
+  });
+
+  // Online, no connection means a blank window with no explanation. Say what
+  // is wrong and offer the one thing that can be done about it.
+  if (mode === "online") {
+    mainWindow.webContents.on(
+      "did-fail-load",
+      (_event, errorCode, _description, failedUrl, isMainFrame) => {
+        // -3 is an aborted load, meaning a redirect or a newer navigation
+        // replaced it. Nothing failed.
+        if (!isMainFrame || errorCode === -3) return;
+
+        mainWindow.loadFile(path.join(__dirname, "offline.html"), {
+          query: { retry: inApp(failedUrl) ? failedUrl : appEntry(url) },
+        });
+      },
+    );
+  }
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -510,11 +600,12 @@ ipcMain.on("recovery:cancel", (event) => {
 function buildMenu() {
   const store = paths(app);
 
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      {
-        label: "File",
-        submenu: [
+  // Online there is no local database, server, or crew address, so the items
+  // that act on those would open empty folders and explain nothing.
+  const fileMenu =
+    mode === "online"
+      ? [{ role: "quit", label: "Exit Matlock One" }]
+      : [
           {
             label: "Connect your team…",
             accelerator: "CmdOrCtrl+Shift+C",
@@ -536,7 +627,13 @@ function buildMenu() {
           },
           { type: "separator" },
           { role: "quit", label: "Exit Matlock One" },
-        ],
+        ];
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "File",
+        submenu: fileMenu,
       },
       {
         label: "Edit",
@@ -585,7 +682,9 @@ function buildMenu() {
                 title: "About Matlock One",
                 message: `Matlock One ${app.getVersion()}`,
                 detail:
-                  "Field service management.\n\nYour data never leaves this computer unless you choose to share it.",
+                  mode === "online"
+                    ? "Field service management.\n\nYour business lives in your Matlock One account, so you can sign in to it on any computer."
+                    : "Field service management.\n\nYour data never leaves this computer unless you choose to share it.",
                 buttons: ["Close"],
                 noLink: true,
               }),
@@ -604,11 +703,13 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(async () => {
-  buildMenu();
-
   let url;
   try {
-    url = await startServer();
+    const choice = chooseMode();
+    mode = choice.mode;
+    buildMenu();
+
+    url = mode === "online" ? startOnline() : await startServer(choice.carried);
   } catch (error) {
     // Without this, a failure here rejects into nothing: the process stays
     // alive with no window and no explanation.
@@ -639,8 +740,11 @@ ${paths(app).root}`,
   });
   if (checkForUpdates) buildMenu();
 
-  // Tell them how to get the crew connected the first time only.
-  if (connectionInfo.firstRun) setTimeout(showConnectionInfo, 1200);
+  // Tell them how to get the crew connected the first time only. Online, the
+  // crew signs in to the same account from their own computers instead.
+  if (mode === "local" && connectionInfo.firstRun) {
+    setTimeout(showConnectionInfo, 1200);
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(url);

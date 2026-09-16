@@ -74,12 +74,12 @@ function Hero() {
         </p>
 
         <div className="mt-9 flex flex-wrap items-center gap-3">
-          <a href="#download" className={buttonClasses("primary", "lg")}>
-            Download free
+          <Link href="/signup" className={buttonClasses("primary", "lg")}>
+            Create your free account
             <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />
-          </a>
-          <a href="#platform" className={buttonClasses("outline", "lg")}>
-            Explore Matlock One
+          </Link>
+          <a href="#download" className={buttonClasses("outline", "lg")}>
+            Download the app
           </a>
         </div>
 
@@ -174,8 +174,8 @@ const REAL = [
     body: "Every amount is whole cents and every tax rate is basis points. One function computes each total, server-side, from the submitted lines — a tampered payload cannot set its own price.",
   },
   {
-    title: "Your data can stay on your machine",
-    body: "Matlock One also ships as a Windows installer. The database is a file on that PC and the office machine serves the crew over your own network.",
+    title: "One account on every computer",
+    body: "Sign up once, then sign in from the desktop app on each computer, or from a browser. Every one of them shows the same customers, jobs and invoices.",
   },
 ];
 
@@ -317,13 +317,13 @@ function Industries() {
 /* ------------------------------------------------------------ 06 pricing --- */
 
 /**
- * Every plan carries the whole product, including the install you own. The
+ * Every plan carries the whole product, including the desktop app. The
  * tiers differ by how many people are in the workspace — which is the only
  * difference the software could honestly enforce, and it keeps the ownership
  * argument out of the upsell.
  */
 const INCLUDED = [
-  "The Windows install — run it on your own machine",
+  "The desktop app for Windows and Mac",
   "Customers, leads, jobs and scheduling",
   "Estimates, invoices and payments",
   "Documents, job photos and reports",
@@ -338,7 +338,7 @@ const PLANS = planList();
 
 function Pricing() {
   // Whether this deployment can actually take money right now. Without it the
-  // cards point at the free download instead of a button that would fail.
+  // cards point at free sign-up instead of a button that would fail.
   const sellable = canSellOnline();
 
   return (
@@ -411,8 +411,8 @@ function Pricing() {
                 label={`Subscribe to ${plan.name}`}
               />
             ) : (
-              <a
-                href="#download"
+              <Link
+                href="/signup"
                 className={buttonClasses(
                   plan.featured ? "primary" : "outline",
                   "md",
@@ -420,7 +420,7 @@ function Pricing() {
                 )}
               >
                 Start with the free version
-              </a>
+              </Link>
             )}
           </div>
         ))}
@@ -443,8 +443,7 @@ function Pricing() {
           ))}
         </ul>
         <p className="mt-5 text-sm text-ink-muted">
-          The install is not an upgrade. Owning your data is the point of the
-          product, so it is in the cheapest plan too.
+          The desktop app is not an upgrade. It is in the cheapest plan too.
         </p>
       </div>
 
@@ -453,9 +452,9 @@ function Pricing() {
           <h3 className="text-sm font-medium text-ink">How buying works</h3>
           <ol className="mt-3 space-y-2 text-sm text-ink-muted">
             <li>
-              1. Download and use it free for up to {DEMO_SEATS} people. No
-              time limit, no card, and it is the whole product, not a cut-down
-              one.
+              1. Create your account and use it free for up to {DEMO_SEATS}{" "}
+              people. No time limit, no card, and it is the whole product, not
+              a cut-down one.
             </li>
             <li>
               2. When you need more people, subscribe and a licence key arrives
@@ -473,10 +472,9 @@ function Pricing() {
             What the licence does
           </h3>
           <p className="mt-3 text-sm text-ink-muted">
-            It is checked on your own machine, against a key built into the
-            software — never by calling us. Matlock One keeps working on a job
-            site with no signal, and nothing about your business is transmitted
-            to verify it.
+            It is checked against a key built into the software, never by
+            calling out to a licensing service, so a licence server having a
+            bad day cannot lock you out of your own business.
           </p>
           <p className="mt-3 text-sm text-ink-muted">
             If a licence lapses, the workspace returns to the free limits.
@@ -566,21 +564,20 @@ function DownloadSection() {
       <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-20">
         <div>
           <h2 className="display text-3xl text-ink sm:text-4xl lg:text-5xl">
-            Run it on your own machine
+            Sign up once, sign in everywhere
           </h2>
           <p className="mt-5 text-ink-muted">
-            The desktop build is the same application, served from your own
-            computer instead of ours. The database is a file on that machine,
-            and the office PC hosts the crew over your own network — a phone in
-            the driveway sees today&rsquo;s work without any of it leaving the
-            building.
+            Create your account here first. Then install Matlock One on each
+            computer you work from and sign in with the same email and
+            password. Your business lives in that account, so a job booked at
+            the office is already on the laptop.
           </p>
           <p className="mt-4 text-ink-muted">
-            It installs without a terminal and opens to a sign-in screen. On
-            first run it creates its own database; nothing else to configure.
+            Away from your own computers, sign in from any browser instead. The
+            app needs an internet connection.
           </p>
           <p className="mt-4 text-ink-muted">
-            No account and no card to download it. It runs free for up to{" "}
+            No card to sign up or to download. It runs free for up to{" "}
             {DEMO_SEATS} active people, for as long as you like — every module,
             no expiry, no watermark. Add a licence key when your crew outgrows
             that.
@@ -591,6 +588,19 @@ function DownloadSection() {
         </div>
 
         <div className="space-y-3">
+          {/* First, because the app has nothing to sign in to without it. */}
+          <div className="rounded-xl border border-line bg-surface-2 p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p className="text-sm font-medium text-ink">1. Your account</p>
+              <p className="text-xs text-ink-subtle">Free, no card</p>
+            </div>
+            <div className="mt-4">
+              <Link href="/signup" className={buttonClasses("primary", "md")}>
+                Create your free account
+              </Link>
+            </div>
+          </div>
+
           {downloads().map((build) => (
             <div
               key={build.platform}
@@ -598,7 +608,7 @@ function DownloadSection() {
             >
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                 <p className="text-sm font-medium text-ink">
-                  {build.platform}
+                  2. The app for {build.platform}
                 </p>
                 <p className="text-xs text-ink-subtle">{build.detail}</p>
               </div>
@@ -607,7 +617,7 @@ function DownloadSection() {
                 {build.url ? (
                   <a
                     href={build.url}
-                    className={buttonClasses("primary", "md")}
+                    className={buttonClasses("outline", "md")}
                   >
                     <Download
                       className="h-4 w-4"
@@ -644,10 +654,10 @@ function FinalCta() {
         </h2>
 
         <div className="mt-10 flex flex-wrap justify-center gap-3">
-          <a href="#download" className={buttonClasses("primary", "lg")}>
-            Download Matlock One
+          <Link href="/signup" className={buttonClasses("primary", "lg")}>
+            Create your free account
             <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />
-          </a>
+          </Link>
           <Link href="/login" className={buttonClasses("outline", "lg")}>
             Try the demo first
           </Link>

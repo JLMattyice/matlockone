@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Shown when the online account cannot be reached. Nothing here loads from
+      the network, which is the one thing known not to work.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"
+    />
+    <title>Matlock One</title>
+    <style>
+      :root {
+        --bg: #0b1120;
+        --surface: #111a2e;
+        --line: #243049;
+        --ink: #e6edf7;
+        --muted: #94a3b8;
+        --brand: #2563eb;
+        --brand-ink: #ffffff;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body { height: 100%; }
+
+      body {
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+      }
+
+      main {
+        width: 100%;
+        max-width: 400px;
+        padding: 28px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+      }
+
+      h1 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+
+      p { margin: 0 0 20px; color: var(--muted); }
+
+      button {
+        width: 100%;
+        padding: 10px 14px;
+        background: var(--brand);
+        color: var(--brand-ink);
+        border: 0;
+        border-radius: 8px;
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+      button:disabled { opacity: 0.6; cursor: default; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Can’t reach your account</h1>
+      <p>
+        Matlock One needs an internet connection to open your business. Check
+        that this computer is online, then try again.
+      </p>
+      <button id="retry" type="button" autofocus>Try again</button>
+    </main>
+
+    <script>
+      // The launcher passes the page that failed. Only a web address is
+      // followed, so this page can never be pointed at a local file.
+      const requested = new URLSearchParams(location.search).get("retry") || "";
+      const target = /^https?:\/\//i.test(requested) ? requested : null;
+
+      const button = document.getElementById("retry");
+
+      function retry() {
+        if (!target) return;
+        button.disabled = true;
+        button.textContent = "Connecting…";
+        location.replace(target);
+      }
+
+      button.addEventListener("click", retry);
+
+      // Coming back online is the moment worth trying again, without waiting
+      // for somebody to notice and click.
+      window.addEventListener("online", retry);
+    </script>
+  </body>
+</html>
