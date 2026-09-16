@@ -34,6 +34,12 @@ export function LoginForm({
   // type is the password — so that is where the cursor goes.
   const known = rememberedEmail.length > 0;
 
+  // A rejected sign-in comes back carrying the address that was typed, and it
+  // wins over the remembered one. React resets the form when the action
+  // returns, so without this a wrong password also silently swaps the address
+  // in the box for a different account's.
+  const emailValue = state.values?.email ?? rememberedEmail;
+
   return (
     <form action={formAction} className="space-y-4">
       {next ? <input type="hidden" name="next" value={next} /> : null}
@@ -52,7 +58,7 @@ export function LoginForm({
           type="email"
           autoComplete="username"
           autoFocus={!known}
-          defaultValue={rememberedEmail}
+          defaultValue={emailValue}
           required
           placeholder="you@business.com"
           aria-invalid={Boolean(state.fieldErrors?.email)}

@@ -10,7 +10,32 @@ import { forgetRememberedEmail, rememberEmail } from "@/lib/remembered-email";
 import { createSession } from "@/lib/session";
 import { slugify } from "@/lib/utils";
 
-export type AuthFormState = { error?: string; fieldErrors?: Record<string, string> };
+export type AuthFormState = {
+  error?: string;
+  fieldErrors?: Record<string, string>;
+  /**
+   * What was typed, handed back so a rejected submission can put it on screen
+   * again.
+   *
+   * React resets an uncontrolled form as soon as its action returns, so
+   * without this a single slip — a password missing a digit — empties all four
+   * fields, including the three that were right. On the one screen that asks
+   * somebody to set up their business that does not read as a validation
+   * error; it reads as a button that threw the page away.
+   *
+   * Passwords are deliberately absent. They are the one value worth retyping
+   * rather than round-tripping back through the page.
+   */
+  values?: Record<string, string>;
+};
+
+/**
+ * FormData.get() returns string | File | null. Only the string form is ever a
+ * field on these forms, and the rest is not worth echoing back.
+ */
+function text(value: FormDataEntryValue | null): string {
+  return typeof value === "string" ? value : "";
+}
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),
@@ -27,6 +52,8 @@ export async function loginAction(
   _prev: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
+  const values = { email: text(formData.get("email")) };
+
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -45,14 +72,16 @@ export async function loginAction(
     const orphan = Object.keys(fieldErrors).find(
       (key) => key !== "email" && key !== "password" && key !== "remember",
     );
-    if (orphan) return { error: "Something went wrong. Please try again." };
-    return { fieldErrors };
+    if (orphan) {
+      return { error: "Something went wrong. Please try again.", values };
+    }
+    return { fieldErrors, values };
   }
 
   const { remember } = parsed.data;
 
   const result = await login(parsed.data.email, parsed.data.password, { remember });
-  if (!result.ok) return { error: result.error };
+  if (!result.ok) return { error: result.error, values };
 
   // Only once the credentials were right, so a mistyped address is not the one
   // waiting on the screen next time.
@@ -84,8 +113,16 @@ export async function signupAction(
   _prev: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
+  // Read before validation, so a submission that never parses still comes back
+  // with what was in the boxes.
+  const values = {
+    businessName: text(formData.get("businessName")),
+    name: text(formData.get("name")),
+    email: text(formData.get("email")),
+  };
+
   if (process.env.ALLOW_SIGNUP === "false") {
-    return { error: "Signup is disabled on this installation." };
+    return { error: "Signup is disabled on this installation.", values };
   }
 
   const parsed = signupSchema.safeParse({
@@ -101,17 +138,20 @@ export async function signupAction(
       const key = String(issue.path[0] ?? "form");
       fieldErrors[key] ??= issue.message;
     }
-    return { fieldErrors };
+    return { fieldErrors, values };
   }
 
   const { businessName, name, email, password } = parsed.data;
 
   const weak = passwordProblem(password);
-  if (weak) return { fieldErrors: { password: weak } };
+  if (weak) return { fieldErrors: { password: weak }, values };
 
   const existing = await prisma.user.findFirst({ where: { email } });
   if (existing) {
-    return { fieldErrors: { email: "An account already uses that email." } };
+    return {
+      fieldErrors: { email: "An account already uses that email." },
+      values,
+    };
   }
 
   const slug = await uniqueSlug(businessName);

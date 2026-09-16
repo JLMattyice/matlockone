@@ -30,6 +30,12 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
     {},
   );
 
+  // The defaultValue on each field below is what survives a rejected
+  // submission. React resets the form once the action returns, and a reset
+  // restores inputs to their defaults — so the defaults have to be the values
+  // that came back, or the whole form empties itself and the error message is
+  // left explaining a field nobody can still see they filled in.
+
   return (
     <form action={formAction} className="space-y-4">
       <FormError>{state.error}</FormError>
@@ -45,6 +51,7 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
           id="businessName"
           name="businessName"
           autoFocus
+          defaultValue={state.values?.businessName ?? ""}
           required
           placeholder="Northside Services"
           aria-invalid={Boolean(state.fieldErrors?.businessName)}
@@ -56,6 +63,7 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
           id="name"
           name="name"
           autoComplete="name"
+          defaultValue={state.values?.name ?? ""}
           required
           placeholder="Alex Rivera"
           aria-invalid={Boolean(state.fieldErrors?.name)}
@@ -68,6 +76,7 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
           name="email"
           type="email"
           autoComplete="username"
+          defaultValue={state.values?.email ?? ""}
           required
           placeholder="you@business.com"
           aria-invalid={Boolean(state.fieldErrors?.email)}
