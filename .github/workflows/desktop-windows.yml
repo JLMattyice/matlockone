@@ -1,0 +1,93 @@
+# The Windows build, as a counterpart to desktop-macos.yml.
+#
+# Windows is the platform this product was developed on, so unlike macOS it has
+# always been buildable on the developer's own machine. What it lacked was a
+# build that happens whether or not anyone remembers to run it: releases v0.2.1
+# through v0.3.0 shipped a macOS build and no Windows one, because the tag
+# started the Mac runner and nothing else. The download page kept offering
+# v0.2.0 to every Windows customer.
+#
+# The compiled parts are the same argument as on the Mac. The SQLite binding is
+# a native module and the bundled Node is a native binary, so both have to be
+# produced on the platform they will run on.
+
+name: Windows desktop build
+
+on:
+  # A release tag builds and attaches the installer to that release
+  # automatically, the same trigger the macOS build uses.
+  push:
+    tags:
+      - "v*"
+
+  # Or build an existing tag by hand — used to fill in a release that was cut
+  # before this workflow existed.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach to, e.g. v0.3.0"
+        required: true
+
+# electron-builder attaches the .exe, its blockmap and latest.yml to the
+# release using GITHUB_TOKEN, which cannot write to releases without this.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # There is no signing-secret check here, and no signing step. The macOS
+      # build cannot finish unsigned, because electron-builder.yml sets
+      # notarize: true and Apple refuses the app otherwise. Windows has no such
+      # gate: an unsigned installer builds and runs, and SmartScreen warns on
+      # first launch until a purchased Authenticode certificate says otherwise.
+      # Adding one later means secrets and two env lines on the package step,
+      # not a different workflow.
+
+      - name: Install dependencies
+        # Not `npm i`: the SQLite binding compiles here, against this runner's
+        # Node and this runner's architecture, and the lockfile is what keeps
+        # that reproducible.
+        run: npm ci
+
+      - name: Assemble the desktop bundle
+        run: npm run desktop:build
+
+      - name: Generate the icon
+        # Emits build/icon.ico, which the win target in electron-builder.yml
+        # names. Generated rather than committed, so it is not in the checkout.
+        run: node scripts/make-icon.mjs
+
+      - name: Package and attach to the release
+        env:
+          # Attaches to the release whose tag matches package.json's version.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always
+
+      # Keeping the artifacts means a failure in the publish step does not cost
+      # the whole run.
+      - name: Keep the build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist-installer/*.exe
+            dist-installer/*.blockmap
+            dist-installer/latest.yml
+          if-no-files-found: warn
+          retention-days: 14

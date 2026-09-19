@@ -38,6 +38,25 @@ MATLOCK_ONE_URL=http://localhost:3000 npm run desktop
 `npm run desktop:pack` on a Windows machine. That is the platform this has been
 built and tested on.
 
+### Two ways to produce the Windows build
+
+**On CI.** `.github/workflows/desktop-windows.yml`, the counterpart to the
+macOS one: a `windows-latest` runner, triggered by pushing a `v*` tag or run by
+hand against an existing one, ending in `electron-builder --win --publish
+always`. It needs no secrets. The macOS build cannot finish unsigned, because
+`notarize: true` means Apple has to have seen it; Windows has no such gate, and
+an unsigned installer builds and runs with a SmartScreen warning on first
+launch.
+
+Prefer CI. A tag then produces both platforms, which is the whole point: v0.2.1
+through v0.3.0 each shipped a Mac build and no Windows one, because the tag
+started the Mac runner and nothing else, and the download page went on offering
+v0.2.0 to every Windows customer for three releases.
+
+**By hand**, which is what `npm run desktop:pack` above does. Note that it
+stops at `dist-installer/` — the script carries no `--publish`, so a build made
+this way reaches nobody until it is uploaded. See Publishing a release.
+
 ### macOS
 
 The application itself is platform-neutral — Electron, Next.js and SQLite all
