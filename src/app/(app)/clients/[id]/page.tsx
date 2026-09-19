@@ -248,7 +248,7 @@ export default async function ClientDetailPage({
                 tab(
                   client.id,
                   "estimates",
-                  "Estimates",
+                  org.labelEstimatePlural,
                   view,
                   client._count.estimates,
                 ),

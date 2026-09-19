@@ -25,6 +25,7 @@ import {
   LEAD_SOURCES,
   LEAD_STATUS_META,
   LEAD_STATUSES,
+  leadStatusLabel,
   type LeadSource,
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
@@ -73,7 +74,7 @@ export default async function LeadsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Leads"
+        title={org.labelLeadPlural}
         description={`${summary.openCount} open · ${money(summary.openValueCents)} in the pipeline`}
         actions={
           <>
@@ -88,7 +89,7 @@ export default async function LeadsPage({
             {writable ? (
               <Link href="/leads/new" className={buttonClasses("primary", "md")}>
                 <Plus className="h-4 w-4" strokeWidth={2} />
-                New lead
+                New {org.labelLeadSingular.toLowerCase()}
               </Link>
             ) : null}
           </>
@@ -96,7 +97,10 @@ export default async function LeadsPage({
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Open leads" value={String(summary.openCount)} />
+        <Stat
+          label={`Open ${org.labelLeadPlural.toLowerCase()}`}
+          value={String(summary.openCount)}
+        />
         <Stat label="Pipeline value" value={money(summary.openValueCents)} />
         <Stat
           label="Won"
@@ -127,7 +131,7 @@ export default async function LeadsPage({
             label: "statuses",
             options: LEAD_STATUSES.map((status) => ({
               value: status,
-              label: `${LEAD_STATUS_META[status].label} (${summary.byStatus.get(status)?.count ?? 0})`,
+              label: `${leadStatusLabel(status, org.labelEstimateSingular)} (${summary.byStatus.get(status)?.count ?? 0})`,
             })),
           },
           {
@@ -154,7 +158,11 @@ export default async function LeadsPage({
         <Card>
           <EmptyState
             icon={<Target className="h-5 w-5" strokeWidth={1.75} />}
-            title={isFiltered ? "No matching leads" : "No leads yet"}
+            title={
+              isFiltered
+                ? `No matching ${org.labelLeadPlural.toLowerCase()}`
+                : `No ${org.labelLeadPlural.toLowerCase()} yet`
+            }
             description={
               isFiltered
                 ? "Try a different search or clear the filters."
@@ -164,7 +172,7 @@ export default async function LeadsPage({
               !isFiltered && writable ? (
                 <Link href="/leads/new" className={buttonClasses("primary", "md")}>
                   <Plus className="h-4 w-4" strokeWidth={2} />
-                  New lead
+                  New {org.labelLeadSingular.toLowerCase()}
                 </Link>
               ) : null
             }
@@ -174,16 +182,20 @@ export default async function LeadsPage({
         <div className="scrollbar-thin -mx-4 flex gap-4 overflow-x-auto px-4 pb-2 lg:-mx-6 lg:px-6">
           {columns.map((column) => {
             const meta = LEAD_STATUS_META[column.status];
+            const stageLabel = leadStatusLabel(
+              column.status,
+              org.labelEstimateSingular,
+            );
             return (
               <section
                 key={column.status}
                 className="flex w-72 shrink-0 flex-col rounded-card border border-line bg-surface-2"
-                aria-label={meta.label}
+                aria-label={stageLabel}
               >
                 <header className="flex items-center justify-between gap-2 border-b border-line px-3.5 py-2.5">
                   <div className="flex items-center gap-2">
                     <Badge tone={meta.tone} dot>
-                      {meta.label}
+                      {stageLabel}
                     </Badge>
                     <span className="tabular text-xs text-ink-subtle">
                       {column.leads.length}
@@ -208,6 +220,7 @@ export default async function LeadsPage({
                         lead={lead}
                         money={money}
                         writable={writable}
+                        estimateSingular={org.labelEstimateSingular}
                       />
                     ))
                   )}
@@ -278,9 +291,18 @@ export default async function LeadsPage({
                     </Td>
                     <Td>
                       {writable ? (
-                        <LeadStatusSelect leadId={lead.id} status={lead.status} />
+                        <LeadStatusSelect
+                          leadId={lead.id}
+                          status={lead.status}
+                          estimateSingular={org.labelEstimateSingular}
+                        />
                       ) : (
-                        <Badge tone={meta.tone}>{meta.label}</Badge>
+                        <Badge tone={meta.tone}>
+                          {leadStatusLabel(
+                            asStatus(LEAD_STATUSES, lead.status, "NEW"),
+                            org.labelEstimateSingular,
+                          )}
+                        </Badge>
                       )}
                     </Td>
                   </Tr>
@@ -298,10 +320,12 @@ function LeadCard({
   lead,
   money,
   writable,
+  estimateSingular,
 }: {
   lead: LeadRow;
   money: (cents: number) => string;
   writable: boolean;
+  estimateSingular: string;
 }) {
   const stale =
     lead.lastContactedAt === null &&
@@ -347,7 +371,11 @@ function LeadCard({
         </span>
 
         {writable ? (
-          <LeadStatusSelect leadId={lead.id} status={lead.status} />
+          <LeadStatusSelect
+            leadId={lead.id}
+            status={lead.status}
+            estimateSingular={estimateSingular}
+          />
         ) : null}
       </div>
 

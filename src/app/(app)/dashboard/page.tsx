@@ -93,7 +93,7 @@ export default async function DashboardPage() {
           </>
         ) : (
           <StatTile
-            label="Active clients"
+            label={`Active ${org.labelClientPlural.toLowerCase()}`}
             value={String(data.activeClients)}
             icon={Users}
             tone="brand"
@@ -179,7 +179,8 @@ export default async function DashboardPage() {
                           : null,
                       ]
                         .filter(Boolean)
-                        .join(" · ") || "No client attached"}
+                        .join(" · ") ||
+                        `No ${org.labelClientSingular.toLowerCase()} attached`}
                     </p>
                     {job.assignments.length ? (
                       <p className="mt-1 truncate text-xs text-ink-subtle">
@@ -387,8 +388,16 @@ export default async function DashboardPage() {
 
 function QuickActions({ ctx }: { ctx: Awaited<ReturnType<typeof requireContext>> }) {
   const actions = [
-    { href: "/jobs/new", label: `New ${ctx.org.labelJobSingular}`, permission: "jobs:write" as const },
-    { href: "/estimates/new", label: "New estimate", permission: "estimates:write" as const },
+    {
+      href: "/jobs/new",
+      label: `New ${ctx.org.labelJobSingular.toLowerCase()}`,
+      permission: "jobs:write" as const,
+    },
+    {
+      href: "/estimates/new",
+      label: `New ${ctx.org.labelEstimateSingular.toLowerCase()}`,
+      permission: "estimates:write" as const,
+    },
     { href: "/invoices/new", label: "New invoice", permission: "invoices:write" as const },
     { href: "/clients/new", label: `New ${ctx.org.labelClientSingular.toLowerCase()}`, permission: "clients:write" as const },
   ].filter((action) => can(ctx.user, action.permission));

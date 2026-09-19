@@ -32,6 +32,7 @@ import {
   LEAD_SOURCES,
   LEAD_STATUS_META,
   LEAD_STATUSES,
+  leadStatusLabel,
   type LeadSource,
   type LeadStatus,
 } from "@/lib/constants";
@@ -79,6 +80,8 @@ export default async function LeadDetailPage({
   const canConvert = writable && can(user, "clients:write");
   const status = asStatus(LEAD_STATUSES, lead.status, "NEW") as LeadStatus;
   const meta = LEAD_STATUS_META[status];
+  const stageLabel = (step: LeadStatus) =>
+    leadStatusLabel(step, org.labelEstimateSingular);
   const stageIndex = PIPELINE.indexOf(status);
 
   return (
@@ -122,7 +125,7 @@ export default async function LeadDetailPage({
                 {lead.name}
               </h1>
               <Badge tone={meta.tone} dot>
-                {meta.label}
+                {stageLabel(status)}
               </Badge>
             </div>
 
@@ -200,6 +203,7 @@ export default async function LeadDetailPage({
           <div className="flex flex-wrap items-center gap-1.5">
             {PIPELINE.map((step, index) => {
               const stepMeta = LEAD_STATUS_META[step];
+              const stepLabel = stageLabel(step);
               const reached = stageIndex >= index && status !== "LOST";
               const current = status === step;
 
@@ -218,7 +222,7 @@ export default async function LeadDetailPage({
                   {reached && !current ? (
                     <Check className="h-3 w-3" strokeWidth={2.5} />
                   ) : null}
-                  {stepMeta.label}
+                  {stepLabel}
                 </span>
               );
 

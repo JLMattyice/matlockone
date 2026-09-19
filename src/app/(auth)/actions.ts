@@ -4,6 +4,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { login, logout } from "@/lib/auth";
+import {
+  DEFAULT_BUSINESS_TYPE,
+  isBusinessType,
+  vocabularyColumns,
+} from "@/lib/business-types";
 import { signupOpen } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { hashPassword, passwordProblem } from "@/lib/password";
@@ -108,6 +113,15 @@ const signupSchema = z.object({
   name: z.string().trim().min(2, "Enter your name."),
   email: z.string().trim().toLowerCase().email("Enter a valid email."),
   password: z.string(),
+  /**
+   * Chooses the starting vocabulary. Never a reason to refuse a signup: an
+   * unknown value, or none at all, is the general preset — which is the
+   * wording the product shipped with, and all of it editable in Settings.
+   */
+  businessType: z
+    .string()
+    .trim()
+    .transform((value) => (isBusinessType(value) ? value : DEFAULT_BUSINESS_TYPE)),
 });
 
 export async function signupAction(
@@ -120,6 +134,7 @@ export async function signupAction(
     businessName: text(formData.get("businessName")),
     name: text(formData.get("name")),
     email: text(formData.get("email")),
+    businessType: text(formData.get("businessType")),
   };
 
   // The page no longer offers the form when this is shut, but an action is a
@@ -133,6 +148,7 @@ export async function signupAction(
     name: formData.get("name"),
     email: formData.get("email"),
     password: formData.get("password"),
+    businessType: formData.get("businessType") ?? DEFAULT_BUSINESS_TYPE,
   });
 
   if (!parsed.success) {
@@ -144,7 +160,7 @@ export async function signupAction(
     return { fieldErrors, values };
   }
 
-  const { businessName, name, email, password } = parsed.data;
+  const { businessName, name, email, password, businessType } = parsed.data;
 
   const weak = passwordProblem(password);
   if (weak) return { fieldErrors: { password: weak }, values };
@@ -166,6 +182,12 @@ export async function signupAction(
         slug,
         name: businessName,
         email,
+        businessType,
+        // The preset's words, written onto the row rather than looked up on
+        // every read: what the app renders is the organization's own
+        // terminology, and changing a preset later must not silently rename
+        // records for a business that has been using them for a year.
+        ...vocabularyColumns(businessType),
         invoicePrefix: "INV-",
         estimatePrefix: "EST-",
         jobPrefix: "JOB-",

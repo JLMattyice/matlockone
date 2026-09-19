@@ -12,6 +12,7 @@ import {
   type ActionState,
 } from "@/lib/action-state";
 import { requireContext, requirePermission } from "@/lib/auth";
+import { DEFAULT_BUSINESS_TYPE, isBusinessType } from "@/lib/business-types";
 import { prisma } from "@/lib/db";
 import { parseRateToBp } from "@/lib/money";
 import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
@@ -79,14 +80,30 @@ export async function updateBusinessProfile(
 
 // --------------------------------------------------------------- branding ---
 
+/** A label has to say something; beyond that the business knows best. */
+const label = z.string().trim().min(1, "Required.").max(40, "Keep it short.");
+
 const brandingSchema = z.object({
   primaryColor: hexColor,
   accentColor: hexColor,
   logoUrl: z.string().trim().nullable(),
-  labelJobSingular: z.string().trim().min(1, "Required."),
-  labelJobPlural: z.string().trim().min(1, "Required."),
-  labelClientSingular: z.string().trim().min(1, "Required."),
-  labelClientPlural: z.string().trim().min(1, "Required."),
+  /**
+   * Which preset the words came from, kept so Settings can show it. An
+   * unrecognized value falls back rather than refusing: the labels are what
+   * the app renders, and they were submitted alongside it.
+   */
+  businessType: z
+    .string()
+    .trim()
+    .transform((value) => (isBusinessType(value) ? value : DEFAULT_BUSINESS_TYPE)),
+  labelJobSingular: label,
+  labelJobPlural: label,
+  labelClientSingular: label,
+  labelClientPlural: label,
+  labelEstimateSingular: label,
+  labelEstimatePlural: label,
+  labelLeadSingular: label,
+  labelLeadPlural: label,
 });
 
 export async function updateBranding(
@@ -99,10 +116,15 @@ export async function updateBranding(
     primaryColor: formData.get("primaryColor"),
     accentColor: formData.get("accentColor"),
     logoUrl: text(formData, "logoUrl"),
+    businessType: formData.get("businessType") ?? DEFAULT_BUSINESS_TYPE,
     labelJobSingular: formData.get("labelJobSingular"),
     labelJobPlural: formData.get("labelJobPlural"),
     labelClientSingular: formData.get("labelClientSingular"),
     labelClientPlural: formData.get("labelClientPlural"),
+    labelEstimateSingular: formData.get("labelEstimateSingular"),
+    labelEstimatePlural: formData.get("labelEstimatePlural"),
+    labelLeadSingular: formData.get("labelLeadSingular"),
+    labelLeadPlural: formData.get("labelLeadPlural"),
   });
 
   if (!parsed.success) return invalid(parsed.error);

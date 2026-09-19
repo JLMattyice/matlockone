@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { signupAction, type AuthFormState } from "../actions";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
-import { Field, FormError, Input } from "@/components/ui/form";
+import { Field, FormError, Input, Select } from "@/components/ui/form";
+import {
+  BUSINESS_TYPES,
+  businessType,
+  DEFAULT_BUSINESS_TYPE,
+  vocabularyChanges,
+} from "@/lib/business-types";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -29,6 +35,23 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
     signupAction,
     {},
   );
+
+  // Controlled, unlike the text fields: the hint under it names the words this
+  // choice is about to apply, so it has to re-render as the choice changes. A
+  // rejected submission comes back carrying what was picked.
+  const [type, setType] = useState(
+    state.values?.businessType || DEFAULT_BUSINESS_TYPE,
+  );
+  // Names what the choice changes, so the wording is visible before it is
+  // applied. Two examples is enough to make the point without a paragraph
+  // under a dropdown.
+  const changes = vocabularyChanges(type);
+  const typeHint = changes.length
+    ? `${changes
+        .slice(0, 2)
+        .map((change) => `${change.to} rather than ${change.from}`)
+        .join(", ")}. Change any of it later in Settings.`
+    : businessType(type).description;
 
   // The defaultValue on each field below is what survives a rejected
   // submission. React resets the form once the action returns, and a reset
@@ -56,6 +79,26 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
           placeholder="Northside Services"
           aria-invalid={Boolean(state.fieldErrors?.businessName)}
         />
+      </Field>
+
+      <Field
+        label="What kind of business is it?"
+        htmlFor="businessType"
+        error={state.fieldErrors?.businessType}
+        hint={typeHint}
+      >
+        <Select
+          id="businessType"
+          name="businessType"
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+        >
+          {BUSINESS_TYPES.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </Select>
       </Field>
 
       <Field label="Your name" htmlFor="name" required error={state.fieldErrors?.name}>

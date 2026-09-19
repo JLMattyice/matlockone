@@ -45,10 +45,15 @@ business before this keep running it locally, with the office PC serving the
 crew over the network, rather than being moved online out from under their
 owner. See DESKTOP.md.
 
-**It is a re-skinnable template, deliberately.** Business name, logo, colors and
-the core record labels ("Jobs" to "Work Orders", "Clients" to "Customers") are
-editable in Settings, so one codebase demos to different trades without a
-rebuild.
+**The trade is a setting, not a version.** Signup asks what kind of business
+this is and fills the vocabulary from it: a contractor gets Jobs, Clients and
+Estimates, an agency gets Projects, Clients and Proposals, a shop gets Repair
+Orders and Customers. The records underneath are identical, so one codebase
+serves trades that would otherwise each need their own product. Business name,
+logo, colors and every one of those words stay editable in Settings afterwards.
+Invoices and payments are deliberately not renameable — a bank, an accountant
+and a customer all have to read that word the same way. See
+src/lib/business-types.ts.
 
 **It is not married to one payment processor, and never touches a card.**
 PayPal, Stripe, Square, or just a payment link the business already has. Clients

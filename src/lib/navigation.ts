@@ -15,6 +15,10 @@ export type OrgLabels = {
   jobPlural: string;
   clientSingular: string;
   clientPlural: string;
+  estimateSingular: string;
+  estimatePlural: string;
+  leadSingular: string;
+  leadPlural: string;
 };
 
 export type NavIcon =
@@ -61,7 +65,7 @@ export const NAVIGATION: NavGroup[] = [
       },
       {
         href: "/estimates",
-        label: "Estimates",
+        label: (l) => l.estimatePlural,
         icon: "file-text",
         permission: "estimates:read",
       },
@@ -96,7 +100,7 @@ export const NAVIGATION: NavGroup[] = [
       },
       {
         href: "/leads",
-        label: "Leads",
+        label: (l) => l.leadPlural,
         icon: "target",
         permission: "leads:read",
       },
@@ -169,11 +173,19 @@ export function orgLabels(org: {
   labelJobPlural: string;
   labelClientSingular: string;
   labelClientPlural: string;
+  labelEstimateSingular: string;
+  labelEstimatePlural: string;
+  labelLeadSingular: string;
+  labelLeadPlural: string;
 }): OrgLabels {
   return {
     jobSingular: org.labelJobSingular,
     jobPlural: org.labelJobPlural,
     clientSingular: org.labelClientSingular,
     clientPlural: org.labelClientPlural,
+    estimateSingular: org.labelEstimateSingular,
+    estimatePlural: org.labelEstimatePlural,
+    leadSingular: org.labelLeadSingular,
+    leadPlural: org.labelLeadPlural,
   };
 }

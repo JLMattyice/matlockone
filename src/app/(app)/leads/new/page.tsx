@@ -23,11 +23,12 @@ export default async function NewLeadPage() {
           <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
           Leads
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">New lead</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-ink">New {org.labelLeadSingular.toLowerCase()}</h1>
       </div>
 
       <LeadForm
         team={team}
+        estimateSingular={org.labelEstimateSingular}
         currencySymbol={currencySymbol(org.currency, org.locale)}
         values={{
           name: "",

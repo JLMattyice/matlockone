@@ -12,8 +12,8 @@ import { IDLE, type ActionState } from "@/lib/action-state";
 import {
   LEAD_SOURCE_LABELS,
   LEAD_SOURCES,
-  LEAD_STATUS_META,
   LEAD_STATUSES,
+  leadStatusLabel,
   type LeadStatus,
 } from "@/lib/constants";
 
@@ -34,10 +34,13 @@ export function LeadForm({
   values,
   team,
   currencySymbol,
+  estimateSingular,
 }: {
   values: LeadFormValues;
   team: { id: string; name: string }[];
   currencySymbol: string;
+  /** What this workspace calls an estimate, for the stage named after one. */
+  estimateSingular: string;
 }) {
   const isEdit = Boolean(values.id);
   const [state, formAction] = useActionState<ActionState, FormData>(
@@ -148,7 +151,7 @@ export function LeadForm({
               >
                 {LEAD_STATUSES.map((option) => (
                   <option key={option} value={option}>
-                    {LEAD_STATUS_META[option].label}
+                    {leadStatusLabel(option, estimateSingular)}
                   </option>
                 ))}
               </Select>

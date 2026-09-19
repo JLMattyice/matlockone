@@ -3,10 +3,11 @@
 Field service management for small trade businesses — clients, leads, scheduling,
 jobs, estimates, invoicing and payments.
 
-Built as a re-skinnable template: business name, logo, colors and the core
-record labels ("Jobs" → "Work Orders", "Clients" → "Customers") are all editable
-in Settings, so the same codebase can be demoed to different trades without a
-rebuild.
+Built as a re-skinnable template: signup asks what kind of business this is and
+sets the vocabulary to match — Jobs and Estimates for a contractor, Projects and
+Proposals for an agency, Repair Orders and Customers for a shop. Business name,
+logo, colors and each of those labels stay editable in Settings, so the same
+codebase serves different trades without a rebuild.
 
 ## Two ways to run it
 

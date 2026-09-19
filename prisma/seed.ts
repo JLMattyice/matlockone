@@ -19,6 +19,7 @@
 // reads DATABASE_URL at import time.
 import "../scripts/load-env";
 
+import { vocabularyColumns } from "../src/lib/business-types";
 import { createPrismaClient } from "../src/lib/db";
 import { computeTotals } from "../src/lib/money";
 import { hashPassword } from "../src/lib/password";
@@ -185,10 +186,10 @@ async function main() {
       currency: "USD",
       locale: "en-US",
       timeZone: "America/New_York",
-      labelJobSingular: "Job",
-      labelJobPlural: "Jobs",
-      labelClientSingular: "Client",
-      labelClientPlural: "Clients",
+      // A plumbing and heating company, so the contractor vocabulary — which
+      // is also what the demo screens on the marketing site are captured from.
+      businessType: "CONTRACTOR",
+      ...vocabularyColumns("CONTRACTOR"),
       defaultTaxRateBp: 725,
       invoicePrefix: "INV-",
       estimatePrefix: "EST-",

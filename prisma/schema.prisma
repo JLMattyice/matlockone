@@ -51,11 +51,22 @@ model Organization {
   locale   String @default("en-US")
   timeZone String @default("America/New_York")
 
+  /// Which preset the terminology below started from. Kept so settings can
+  /// show what was chosen and re-apply it, and so the defaults for anything
+  /// named later have somewhere to come from. It is a starting point, never a
+  /// constraint: the labels are what the app reads, and any of them can be
+  /// edited afterwards. See BUSINESS_TYPES in src/lib/business-types.ts.
+  businessType String @default("GENERAL")
+
   // configurable terminology
-  labelJobSingular    String @default("Job")
-  labelJobPlural      String @default("Jobs")
-  labelClientSingular String @default("Client")
-  labelClientPlural   String @default("Clients")
+  labelJobSingular      String @default("Job")
+  labelJobPlural        String @default("Jobs")
+  labelClientSingular   String @default("Client")
+  labelClientPlural     String @default("Clients")
+  labelEstimateSingular String @default("Estimate")
+  labelEstimatePlural   String @default("Estimates")
+  labelLeadSingular     String @default("Lead")
+  labelLeadPlural       String @default("Leads")
 
   // documents & numbering
   defaultTaxRateBp         Int     @default(0)

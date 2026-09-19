@@ -1,3 +1,4 @@
+import { businessType, DEFAULT_BUSINESS_TYPE } from "./business-types";
 import { ROLES, ROLE_META, type Role, type Tone } from "./constants";
 import {
   NAVIGATION,
@@ -23,12 +24,7 @@ import { PERMISSIONS, can, permissionsFor } from "./permissions";
  * The demo business in the frame uses stock terminology. A real organization
  * renames these in Settings, which is the point of `resolveLabel`.
  */
-const DEMO_LABELS: OrgLabels = {
-  jobSingular: "Job",
-  jobPlural: "Jobs",
-  clientSingular: "Client",
-  clientPlural: "Clients",
-};
+const DEMO_LABELS: OrgLabels = businessType(DEFAULT_BUSINESS_TYPE).labels;
 
 export type RoleNavItem = { label: string; icon: NavIcon; allowed: boolean };
 export type RoleNavGroup = { title: string; items: RoleNavItem[] };

@@ -16,10 +16,15 @@ export default async function BrandingPage() {
         primaryColor: org.primaryColor,
         accentColor: org.accentColor,
         logoUrl: org.logoUrl,
+        businessType: org.businessType,
         labelJobSingular: org.labelJobSingular,
         labelJobPlural: org.labelJobPlural,
         labelClientSingular: org.labelClientSingular,
         labelClientPlural: org.labelClientPlural,
+        labelEstimateSingular: org.labelEstimateSingular,
+        labelEstimatePlural: org.labelEstimatePlural,
+        labelLeadSingular: org.labelLeadSingular,
+        labelLeadPlural: org.labelLeadPlural,
         readOnly: !can(user, "settings:write"),
       }}
     />

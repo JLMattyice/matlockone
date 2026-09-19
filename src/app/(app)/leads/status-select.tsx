@@ -3,7 +3,7 @@
 import { useRef } from "react";
 
 import { setLeadStatus } from "./actions";
-import { LEAD_STATUS_META, LEAD_STATUSES } from "@/lib/constants";
+import { LEAD_STATUSES, leadStatusLabel } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,10 +14,13 @@ import { cn } from "@/lib/utils";
 export function LeadStatusSelect({
   leadId,
   status,
+  estimateSingular,
   className,
 }: {
   leadId: string;
   status: string;
+  /** The word this workspace uses for an estimate, for the one stage named after it. */
+  estimateSingular: string;
   className?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -37,7 +40,7 @@ export function LeadStatusSelect({
       >
         {LEAD_STATUSES.map((option) => (
           <option key={option} value={option}>
-            {LEAD_STATUS_META[option].label}
+            {leadStatusLabel(option, estimateSingular)}
           </option>
         ))}
       </select>

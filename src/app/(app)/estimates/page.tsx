@@ -51,13 +51,13 @@ export default async function EstimatesPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Estimates"
+        title={org.labelEstimatePlural}
         description={`${summary.pendingCount} awaiting a decision · ${money(summary.pendingCents)} out`}
         actions={
           writable ? (
             <Link href="/estimates/new" className={buttonClasses("primary", "md")}>
               <Plus className="h-4 w-4" strokeWidth={2} />
-              New estimate
+              New {org.labelEstimateSingular.toLowerCase()}
             </Link>
           ) : null
         }
@@ -68,7 +68,7 @@ export default async function EstimatesPage({
         <Stat
           label="Out for decision"
           value={money(summary.pendingCents)}
-          sub={`${summary.pendingCount} estimate${summary.pendingCount === 1 ? "" : "s"}`}
+          sub={`${summary.pendingCount} ${(summary.pendingCount === 1 ? org.labelEstimateSingular : org.labelEstimatePlural).toLowerCase()}`}
         />
         <Stat
           label="Accepted"
@@ -109,11 +109,15 @@ export default async function EstimatesPage({
         {list.rows.length === 0 ? (
           <EmptyState
             icon={<FileText className="h-5 w-5" strokeWidth={1.75} />}
-            title={isFiltered ? "No matches" : "No estimates yet"}
+            title={
+              isFiltered
+                ? "No matches"
+                : `No ${org.labelEstimatePlural.toLowerCase()} yet`
+            }
             description={
               isFiltered
                 ? "Try a different search or clear the filters."
-                : "Quote a job, send it, and turn it into work when the client accepts."
+                : `Price a ${org.labelJobSingular.toLowerCase()}, send it, and turn it into work when the ${org.labelClientSingular.toLowerCase()} accepts.`
             }
             action={
               !isFiltered && writable ? (
@@ -122,7 +126,7 @@ export default async function EstimatesPage({
                   className={buttonClasses("primary", "md")}
                 >
                   <Plus className="h-4 w-4" strokeWidth={2} />
-                  New estimate
+                  New {org.labelEstimateSingular.toLowerCase()}
                 </Link>
               ) : null
             }
@@ -224,7 +228,7 @@ export default async function EstimatesPage({
                 status: params.status,
                 clientId: params.clientId,
               }}
-              itemLabel="estimates"
+              itemLabel={org.labelEstimatePlural.toLowerCase()}
             />
           </>
         )}

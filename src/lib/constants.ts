@@ -69,10 +69,26 @@ export const LEAD_STATUS_META: Record<LeadStatus, StatusMeta> = {
   NEW: { label: "New", tone: "info" },
   CONTACTED: { label: "Contacted", tone: "neutral" },
   QUALIFIED: { label: "Qualified", tone: "accent" },
-  ESTIMATE_SENT: { label: "Estimate Sent", tone: "warning" },
+  ESTIMATE_SENT: { label: "Estimate sent", tone: "warning" },
   WON: { label: "Won", tone: "success" },
   LOST: { label: "Lost", tone: "danger" },
 };
+
+/**
+ * One pipeline stage names a record the business may have renamed: a workspace
+ * that calls them Proposals should not have "Estimate sent" sitting in its own
+ * pipeline. The stored value stays ESTIMATE_SENT; only the word shown moves.
+ *
+ * Takes the label rather than the organization so client components can use it
+ * with a single string passed across the boundary.
+ */
+export function leadStatusLabel(
+  status: LeadStatus,
+  estimateSingular = "Estimate",
+): string {
+  if (status !== "ESTIMATE_SENT") return LEAD_STATUS_META[status].label;
+  return `${estimateSingular} sent`;
+}
 
 export const LEAD_SOURCES = [
   "REFERRAL",
