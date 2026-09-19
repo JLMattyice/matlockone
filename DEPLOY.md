@@ -118,6 +118,21 @@ ahead of the code, not one behind it.
 `DIRECT_DATABASE_URL` is therefore optional. Set it only if you run migrations
 somewhere that cannot hold a session on the pooled connection.
 
+A development `.env` points `DATABASE_URL` at `file:./dev.db`, so the command
+above run as-is would reach the local SQLite file and fail with P3005 — an
+error about baselining a production database, describing neither the database
+it touched nor the credentials it lacked. `scripts/require-hosted-database.mjs`
+stops it first and says what to set. The usual way is one command:
+
+```
+DATABASE_URL="postgresql://…:5432/postgres" npm run db:deploy
+```
+
+Set `DATABASE_URL` rather than only `DIRECT_DATABASE_URL`, even though the
+latter is what connects: `prisma.config.ts` chooses *which schema to load* by
+whether `DATABASE_URL` begins with `file:`, so setting only the direct one
+carries the SQLite schema to Postgres. The guard refuses that pair too.
+
 ## First run
 
 There is no seeded account. The first person to reach `/signup` creates their
