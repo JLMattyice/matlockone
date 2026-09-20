@@ -198,7 +198,7 @@ To publish, tag the commit the build came from and let electron-builder do the
 upload:
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.3.0 && git push origin v0.3.0
 GH_TOKEN=<a token with repo scope> npx electron-builder --win --publish always
 ```
 
@@ -212,7 +212,7 @@ the download button and the update check return 404.
 Then turn the download button on, by setting this on the hosted deployment:
 
 ```
-DOWNLOAD_URL_WINDOWS="https://github.com/JLMattyice/matlockone/releases/download/v0.2.0/MatlockOne-Setup-0.2.0.exe"
+DOWNLOAD_URL_WINDOWS="https://github.com/JLMattyice/matlockone/releases/download/v0.3.0/MatlockOne-Setup-0.3.0.exe"
 ```
 
 Until that variable is set the marketing page renders a placeholder saying the
