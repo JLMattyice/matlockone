@@ -30,6 +30,7 @@ import {
   getClient,
 } from "../queries";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
+import { ActivityTimeline } from "@/components/activity/timeline";
 import { NotesPanel } from "@/components/notes/notes-panel";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,7 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
+import { clientTimeline } from "@/lib/activity";
 import { can } from "@/lib/permissions";
 import { formatPhone } from "@/lib/utils";
 
@@ -62,6 +64,7 @@ const VIEWS = [
   "payments",
   "files",
   "notes",
+  "activity",
 ] as const;
 type View = (typeof VIEWS)[number];
 
@@ -242,6 +245,10 @@ export default async function ClientDetailPage({
       <TabLinks
         tabs={[
           tab(client.id, "overview", "Overview", view),
+          // Second, not last: the timeline is the client's story, and the
+          // tabs after it are the detail behind it. Seven tabs overflow on a
+          // laptop, and this is not the one to hide off the end.
+          tab(client.id, "activity", "Activity", view),
           tab(client.id, "jobs", org.labelJobPlural, view, client._count.jobs),
           ...(seesMoney
             ? [
@@ -318,6 +325,19 @@ export default async function ClientDetailPage({
             entityType="client"
             entityId={client.id}
             canWrite={can(user, "files:write")}
+          />
+        </Card>
+      ) : null}
+
+      {view === "activity" ? (
+        <Card className="overflow-hidden">
+          {/* Everything that has happened to this client, their work and
+              their documents — which is the question somebody opens a client
+              record to answer. */}
+          <ActivityTimeline
+            events={await clientTimeline(org.id, client.id)}
+            emptyTitle="Nothing has happened yet"
+            emptyDescription={`Work, ${org.labelEstimatePlural.toLowerCase()}, invoices and payments will appear here as they happen.`}
           />
         </Card>
       ) : null}

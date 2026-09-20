@@ -10,10 +10,12 @@ import {
   JOB_KINDS,
   JOB_PRIORITIES,
   JOB_STATUS_FLOW,
+  JOB_STATUS_META,
   JOB_STATUSES,
   RECURRENCE_FREQUENCIES,
   type JobStatus,
 } from "@/lib/constants";
+import { record } from "@/lib/activity";
 import { prisma } from "@/lib/db";
 import { parseMoneyToCents } from "@/lib/money";
 import { notify } from "@/lib/notifications";
@@ -248,6 +250,15 @@ export async function createJob(
     actionUrl: `/jobs/${firstJobId}`,
   });
 
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "job.created",
+    entityType: "JOB",
+    entityId: firstJobId,
+    summary: `${org.labelJobSingular} created — ${input.title}`,
+  });
+
   revalidatePath("/jobs");
   revalidatePath("/schedule");
   redirect(`/jobs/${firstJobId}`);
@@ -367,7 +378,7 @@ export async function updateJob(
  * claiming it finished.
  */
 export async function setJobStatus(formData: FormData) {
-  const { org } = await requirePermission("jobs:write");
+  const { user, org } = await requirePermission("jobs:write");
 
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "") as JobStatus;
@@ -375,7 +386,7 @@ export async function setJobStatus(formData: FormData) {
 
   const job = await prisma.job.findFirst({
     where: { id, organizationId: org.id },
-    select: { status: true, startedAt: true },
+    select: { status: true, startedAt: true, number: true, title: true },
   });
   if (!job) return;
 
@@ -397,6 +408,16 @@ export async function setJobStatus(formData: FormData) {
           ? (text(formData, "cancelReason") ?? null)
           : null,
     },
+  });
+
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "job.status",
+    entityType: "JOB",
+    entityId: id,
+    summary: `${org.labelJobSingular} ${job.number} marked ${JOB_STATUS_META[status].label.toLowerCase()}`,
+    metadata: { from: current, to: status },
   });
 
   revalidatePath("/jobs");

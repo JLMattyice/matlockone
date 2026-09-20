@@ -7,6 +7,7 @@ import { z } from "zod";
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
 import { requirePermission } from "@/lib/auth";
 import { CLIENT_STATUSES, CLIENT_TYPES } from "@/lib/constants";
+import { record } from "@/lib/activity";
 import { prisma } from "@/lib/db";
 
 const addressSchema = z.object({
@@ -146,6 +147,15 @@ export async function createClient(
         })),
       },
     },
+  });
+
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "client.created",
+    entityType: "CLIENT",
+    entityId: client.id,
+    summary: `${org.labelClientSingular} ${client.displayName} added`,
   });
 
   revalidatePath("/clients");

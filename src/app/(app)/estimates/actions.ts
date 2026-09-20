@@ -7,6 +7,7 @@ import { z } from "zod";
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
 import { requirePermission } from "@/lib/auth";
 import { DISCOUNT_TYPES, LINE_ITEM_KINDS } from "@/lib/constants";
+import { record } from "@/lib/activity";
 import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import { publicUrl, sendMessage } from "@/lib/messaging";
@@ -355,6 +356,15 @@ export async function sendEstimate(
     },
   });
 
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "estimate.sent",
+    entityType: "ESTIMATE",
+    entityId: id,
+    summary: `${org.labelEstimateSingular} ${estimate.number} sent to ${to}`,
+  });
+
   revalidatePath("/estimates");
   revalidatePath(`/estimates/${id}`);
 
@@ -369,7 +379,7 @@ export async function sendEstimate(
 
 /** Records a response the client gave over the phone or in person. */
 export async function setEstimateResponse(formData: FormData) {
-  const { org } = await requirePermission("estimates:write");
+  const { user, org } = await requirePermission("estimates:write");
 
   const id = String(formData.get("id") ?? "");
   const decision = String(formData.get("decision") ?? "");
@@ -377,7 +387,7 @@ export async function setEstimateResponse(formData: FormData) {
 
   const estimate = await prisma.estimate.findFirst({
     where: { id, organizationId: org.id },
-    select: { id: true },
+    select: { id: true, number: true },
   });
   if (!estimate) return;
 
@@ -395,6 +405,17 @@ export async function setEstimateResponse(formData: FormData) {
         : { status: "SENT", acceptedAt: null, declinedAt: null, declineReason: null };
 
   await prisma.estimate.update({ where: { id }, data });
+
+  if (decision === "ACCEPTED" || decision === "DECLINED") {
+    await record({
+      organizationId: org.id,
+      userId: user.id,
+      action: decision === "ACCEPTED" ? "estimate.accepted" : "estimate.declined",
+      entityType: "ESTIMATE",
+      entityId: id,
+      summary: `${org.labelEstimateSingular} ${estimate.number} ${decision === "ACCEPTED" ? "accepted" : "declined"}`,
+    });
+  }
 
   revalidatePath("/estimates");
   revalidatePath(`/estimates/${id}`);

@@ -11,6 +11,7 @@ import {
   LINE_ITEM_KINDS,
   PAYMENT_METHODS,
 } from "@/lib/constants";
+import { record } from "@/lib/activity";
 import { prisma } from "@/lib/db";
 import { recalculateInvoice } from "@/lib/invoice-balance";
 import { publicUrl, sendMessage } from "@/lib/messaging";
@@ -565,6 +566,16 @@ export async function sendInvoice(
     },
   });
 
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "invoice.sent",
+    entityType: "INVOICE",
+    entityId: id,
+    summary: `Invoice ${invoice.number} sent to ${to}`,
+    metadata: { payLink: Boolean(payUrl) },
+  });
+
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
 
@@ -703,6 +714,18 @@ export async function recordPayment(
     relatedType: "invoice",
     relatedId: invoice.id,
     createdById: user.id,
+  });
+
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "payment.recorded",
+    entityType: "INVOICE",
+    entityId: invoice.id,
+    summary: `${money(amountCents)} received against invoice ${invoice.number}${
+      result?.settled ? " — paid in full" : ""
+    }`,
+    metadata: { amountCents, settled: Boolean(result?.settled) },
   });
 
   revalidatePath("/invoices");
