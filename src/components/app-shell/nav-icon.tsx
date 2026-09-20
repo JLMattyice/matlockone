@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Receipt,
   Settings,
+  Tag,
   Target,
   Users,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const ICONS = {
   "hard-hat": HardHat,
   "bar-chart": BarChart3,
   folder: FolderClosed,
+  tag: Tag,
   settings: Settings,
 } as const;
 

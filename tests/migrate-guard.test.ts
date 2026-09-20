@@ -30,8 +30,10 @@ function run(env: Record<string, string>, cwd = sandbox()) {
   const result = spawnSync(process.execPath, [SCRIPT], {
     cwd,
     encoding: "utf8",
-    // An inherited DATABASE_URL would decide the outcome instead of the case.
-    env: { PATH: process.env.PATH ?? "", ...env },
+    // An inherited DATABASE_URL would decide the outcome instead of the case,
+    // so the child gets only PATH, NODE_ENV (which the typed env requires) and
+    // whatever this case sets.
+    env: { PATH: process.env.PATH ?? "", NODE_ENV: "test", ...env },
   });
 
   return { code: result.status, stderr: result.stderr };

@@ -45,6 +45,13 @@ export const PERMISSIONS = [
   "expenses:write",
   "expenses:delete",
 
+  // What the business sells. No separate :delete — a catalog entry is a price
+  // and a name, and every document that used one copied its values at the
+  // time, so removing one cannot reach an estimate or an invoice already
+  // written. Archiving is the ordinary move and deleting is the tidy-up.
+  "catalog:read",
+  "catalog:write",
+
   "employees:read",
   "employees:write",
 
@@ -81,6 +88,8 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "payments:record",
   "expenses:read",
   "expenses:write",
+  "catalog:read",
+  "catalog:write",
   "employees:read",
   "files:read",
   "files:write",

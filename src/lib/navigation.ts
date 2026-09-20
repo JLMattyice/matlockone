@@ -34,6 +34,7 @@ export type NavIcon =
   | "hard-hat"
   | "bar-chart"
   | "folder"
+  | "tag"
   | "settings";
 
 export const NAVIGATION: NavGroup[] = [
@@ -115,6 +116,12 @@ export const NAVIGATION: NavGroup[] = [
   {
     title: "Business",
     items: [
+      {
+        href: "/catalog",
+        label: "Products & services",
+        icon: "tag",
+        permission: "catalog:read",
+      },
       {
         href: "/reports",
         label: "Reports",
