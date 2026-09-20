@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { PaymentProviderId } from "./catalog";
+import { cloverAdapter } from "./clover";
 import { paypalAdapter } from "./paypal";
 import { squareAdapter } from "./square";
 import { stripeAdapter } from "./stripe";
@@ -37,6 +38,18 @@ export type PaymentRequest = {
   clientName: string;
   clientEmail: string | null;
   organizationName: string;
+  /**
+   * This invoice's own payable page on the deployment, absolute.
+   *
+   * For a processor that cannot hand out a link which lasts. Clover's hosted
+   * checkout session expires fifteen minutes after it is created, so a session
+   * minted when the invoice is sent is dead long before anybody opens the
+   * email. Such an adapter returns this address instead, and the route behind
+   * it mints a session when the client actually clicks.
+   *
+   * Adapters whose own link is durable — PayPal, Stripe, Square — ignore it.
+   */
+  payPageUrl: string;
 };
 
 export type PaymentLink = {
@@ -146,6 +159,7 @@ const ADAPTERS: Partial<Record<PaymentProviderId, PaymentAdapter>> = {
   PAYPAL: paypalAdapter,
   STRIPE: stripeAdapter,
   SQUARE: squareAdapter,
+  CLOVER: cloverAdapter,
 };
 
 export function adapterFor(

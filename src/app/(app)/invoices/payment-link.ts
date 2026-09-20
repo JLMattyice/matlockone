@@ -26,6 +26,7 @@ async function loadInvoice(organizationId: string, id: string) {
     select: {
       id: true,
       number: true,
+      publicToken: true,
       title: true,
       status: true,
       balanceCents: true,

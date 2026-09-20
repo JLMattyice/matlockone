@@ -24,6 +24,7 @@ const REQUEST = {
   clientName: "Desmond Achterberg",
   clientEmail: "desmond@example.test",
   organizationName: "Matlock Field Services",
+  payPageUrl: "https://app.example.test/share/invoice/tok_test/pay",
 };
 
 let square: FakeSquare | undefined;

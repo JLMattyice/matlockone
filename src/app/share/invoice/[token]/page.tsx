@@ -24,16 +24,26 @@ export const metadata: Metadata = {
 
 export default async function PublicInvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ pay?: string }>;
 }) {
   const { token } = await params;
+  const { pay } = await searchParams;
   const invoice = await getInvoiceByToken(token);
 
   if (!invoice) notFound();
 
   const org = invoice.organization;
   const status = effectiveInvoiceStatus(invoice);
+
+  const payProblem =
+    pay === "unavailable"
+      ? "Paying online is not available right now. Please try again shortly, or contact the sender to arrange payment."
+      : pay === "not-payable"
+        ? "This invoice cannot be paid online — it may already be settled or cancelled."
+        : null;
   const brand = hexToRgbChannels(org.primaryColor) ? org.primaryColor : "#2563eb";
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
 
@@ -63,6 +73,16 @@ export default async function PublicInvoicePage({
           dueDate={invoice.dueDate}
           balance={money(invoice.balanceCents)}
         />
+
+        {/* A processor whose page has to be made at the last moment sends
+            people back here when that fails, rather than showing them an
+            error of its own. Without this they would arrive at an unchanged
+            invoice and conclude the button is broken. */}
+        {payProblem ? (
+          <p className="no-print rounded-card border border-warning/30 bg-warning/8 px-4 py-3 text-sm text-ink">
+            {payProblem}
+          </p>
+        ) : null}
 
         {invoice.paymentUrl && invoice.balanceCents > 0 ? (
           <a

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { publicUrl } from "@/lib/messaging";
 import { resolveProcessor } from "./account";
 import type { Organization } from "@/generated/prisma/client";
 
@@ -15,6 +16,8 @@ import type { Organization } from "@/generated/prisma/client";
 export type InvoiceForLink = {
   id: string;
   number: string;
+  /** Addresses the client-facing page, which some processors link through. */
+  publicToken: string;
   title: string | null;
   status: string;
   balanceCents: number;
@@ -73,6 +76,7 @@ export async function attachPaymentLink(
       clientName: invoice.client.displayName,
       clientEmail: invoice.client.email,
       organizationName: org.name,
+      payPageUrl: publicUrl(`/share/invoice/${invoice.publicToken}/pay`),
     },
     processor.config,
     processor.credentials,

@@ -236,6 +236,7 @@ describe("manual payment link", () => {
         clientName: "Desmond Achterberg",
         clientEmail: null,
         organizationName: "Matlock Field Services",
+        payPageUrl: "https://app.example.test/share/invoice/tok_test/pay",
       },
       { paymentUrl: "https://paypal.me/matlockfield" },
       {},

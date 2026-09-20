@@ -11,7 +11,13 @@
  * server-only. Same split as email/catalog vs email/providers.
  */
 
-export const PAYMENT_PROVIDERS = ["MANUAL", "PAYPAL", "STRIPE", "SQUARE"] as const;
+export const PAYMENT_PROVIDERS = [
+  "MANUAL",
+  "PAYPAL",
+  "STRIPE",
+  "SQUARE",
+  "CLOVER",
+] as const;
 export type PaymentProviderId = (typeof PAYMENT_PROVIDERS)[number];
 
 export function isPaymentProvider(value: unknown): value is PaymentProviderId {
@@ -141,6 +147,39 @@ export const PAYMENT_PROVIDER_META: Record<
         label: "Location ID",
         optional: true,
         hint: "Which of your Square locations the money belongs to. Leave it blank and press Test, and the ids on your account are listed back.",
+      },
+    ],
+  },
+
+  CLOVER: {
+    label: "Clover",
+    description:
+      "Clients pay by card on a Clover-hosted page, against the same merchant account as your Clover terminal. The invoice links to Matlock One, which opens the Clover page when the client clicks — Clover's own checkout pages last only fifteen minutes, so one made in advance would be dead before the email was read.",
+    // Each click opens its own Clover checkout, so there is no single request
+    // to ask about afterwards. Saying so here is what stops the settings
+    // screen promising a reconciliation that cannot happen.
+    reconciles: false,
+    available: true,
+    helpUrl: "https://docs.clover.com/dev/docs/create-ecommerce-api-tokens",
+    fields: [
+      {
+        name: "environment",
+        label: "Environment",
+        options: [
+          { value: "production", label: "Live — real money" },
+          { value: "sandbox", label: "Sandbox — testing only" },
+        ],
+      },
+      {
+        name: "merchantId",
+        label: "Merchant ID",
+        hint: "From your Clover dashboard. Clover calls it the MID.",
+      },
+      {
+        name: "privateKey",
+        label: "Private key",
+        secret: true,
+        hint: "An Ecommerce API token whose integration type is Hosted Checkout. The public key is not used here.",
       },
     ],
   },
