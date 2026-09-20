@@ -41,6 +41,8 @@ export default async function PublicInvoicePage({
   const payProblem =
     pay === "unavailable"
       ? "Paying online is not available right now. Please try again shortly, or contact the sender to arrange payment."
+      : pay === "too-many"
+        ? "That was tried a few too many times just now. Please wait a little while before trying again."
       : pay === "not-payable"
         ? "This invoice cannot be paid online — it may already be settled or cancelled."
         : null;

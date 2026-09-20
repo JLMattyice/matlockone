@@ -9,10 +9,19 @@ import {
   isBusinessType,
   vocabularyColumns,
 } from "@/lib/business-types";
-import { signupOpen } from "@/lib/config";
+import { dataStaysOnThisMachine, signupOpen } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { hashPassword, passwordProblem } from "@/lib/password";
 import { forgetRememberedEmail, rememberEmail } from "@/lib/remembered-email";
+import {
+  clientAddress,
+  forget,
+  hit,
+  LOGIN_PER_EMAIL,
+  LOGIN_PER_IP,
+  retryAfterPhrase,
+  SIGNUP_PER_IP,
+} from "@/lib/rate-limit";
 import { createSession } from "@/lib/session";
 import { slugify } from "@/lib/utils";
 
@@ -85,9 +94,34 @@ export async function loginAction(
   }
 
   const { remember } = parsed.data;
+  const email = parsed.data.email;
 
-  const result = await login(parsed.data.email, parsed.data.password, { remember });
+  // Counted before the password is checked, so being rate limited costs an
+  // attacker a request rather than a password hash — and so the answer cannot
+  // be timed to tell whether the address exists.
+  const address = await clientAddress();
+  const [perEmail, perAddress] = await Promise.all([
+    hit(`login:email:${email}`, LOGIN_PER_EMAIL),
+    hit(`login:ip:${address}`, LOGIN_PER_IP),
+  ]);
+
+  if (!perEmail.ok || !perAddress.ok) {
+    const wait = Math.max(perEmail.retryAfterSeconds, perAddress.retryAfterSeconds);
+
+    // Deliberately the same message either way: which limit was hit would say
+    // whether anybody has been trying this address.
+    return {
+      error: `Too many sign-in attempts. Try again ${retryAfterPhrase(wait)}.`,
+      values,
+    };
+  }
+
+  const result = await login(email, parsed.data.password, { remember });
   if (!result.ok) return { error: result.error, values };
+
+  // Whoever this is knows the password, so they are not the attacker the count
+  // was accumulating against.
+  await forget(`login:email:${email}`);
 
   // Only once the credentials were right, so a mistyped address is not the one
   // waiting on the screen next time.
@@ -161,6 +195,22 @@ export async function signupAction(
   }
 
   const { businessName, name, email, password, businessType } = parsed.data;
+
+  // Skipped where the database is a file on this machine: that is a desktop
+  // install, whose very first screen is this form, and locking somebody out of
+  // setting up the copy they just installed would be absurd. Hosted, this is
+  // the door a script would walk through a thousand times.
+  if (!dataStaysOnThisMachine()) {
+    const address = await clientAddress();
+    const allowed = await hit(`signup:ip:${address}`, SIGNUP_PER_IP);
+
+    if (!allowed.ok) {
+      return {
+        error: `Too many workspaces have been created from here. Try again ${retryAfterPhrase(allowed.retryAfterSeconds)}.`,
+        values,
+      };
+    }
+  }
 
   const weak = passwordProblem(password);
   if (weak) return { fieldErrors: { password: weak }, values };

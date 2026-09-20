@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { resolveProcessor } from "@/lib/payments/account";
 import { createCheckoutSession } from "@/lib/payments/clover";
 import { canTakePayment } from "@/lib/payments/link";
+import { hit, PAY_REDIRECT_PER_INVOICE } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
 
 /**
@@ -43,6 +44,14 @@ export async function GET(
 ) {
   const { token } = await params;
   const { origin } = new URL(request.url);
+
+  // Counted per invoice, before anything is looked up. This route calls a
+  // processor on every hit, so a token in the wrong hands is a way to make
+  // Matlock One hammer somebody's merchant account. Keyed on the token rather
+  // than the caller: the caller is unauthenticated and can come from anywhere,
+  // while the thing being abused is the one invoice.
+  const allowed = await hit(`pay:invoice:${token}`, PAY_REDIRECT_PER_INVOICE);
+  if (!allowed.ok) return back(origin, token, "too-many");
 
   const invoice = await prisma.invoice.findUnique({
     where: { publicToken: token },

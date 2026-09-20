@@ -166,6 +166,41 @@ walkthroughs.
 Without this, the deployment has no users at all, and `isFirstRun()` sends
 every route to `/signup` — including the `/login` the landing page points at.
 
+## Abuse limits
+
+Sign-up is the front of the product now, not a desktop first-run screen, so
+the two unauthenticated forms are limited. Counts live in the `RateLimit`
+table, keyed by what is being limited, in fixed windows:
+
+| Door | Limit | Window | Keyed on |
+| --- | --- | --- | --- |
+| Sign in | 10 | 15 minutes | The email address |
+| Sign in | 50 | 15 minutes | The caller's address |
+| Sign up | 5 | 1 hour | The caller's address |
+| Pay redirect | 20 | 1 hour | The invoice token |
+
+Sign-in counts every attempt and a correct password clears the count, so a
+forgetful evening costs nothing. While a window is shut the right password is
+refused too — the count is what is being answered, not the credentials — and
+the message is identical whether or not the account exists, because a
+different one would answer "does this person bank here".
+
+**Sign-up limiting is skipped on a desktop install**, decided by
+`dataStaysOnThisMachine()` rather than a flag: the first screen of a fresh
+install is that form, and on an office network every machine shares one
+address.
+
+**To unlock somebody early**, delete their row:
+
+```sql
+DELETE FROM "RateLimit" WHERE key = 'login:email:someone@example.com';
+```
+
+What this does not stop is a distributed attacker — a thousand addresses
+trying ten passwords each still gets ten thousand attempts. It stops the
+single source working through a word list, which is the attack a small
+business's login actually sees.
+
 ## Configuration is checked at boot
 
 `src/instrumentation.ts` validates the environment when the server starts.

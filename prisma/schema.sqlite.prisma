@@ -962,3 +962,29 @@ model PriceBookItem {
 
   @@index([organizationId, kind])
 }
+
+// --------------------------------------------------------- abuse controls ---
+
+/**
+ * One counter per thing being limited, in a fixed window.
+ *
+ * In the database rather than in memory because neither deployment can rely on
+ * process memory: the hosted app runs as serverless instances that come and go
+ * and do not share anything, so an in-memory count would reset whenever a new
+ * one started and would be kept separately by each. The desktop build is a
+ * single process and could, but one mechanism that works in both places beats
+ * two that each work in one.
+ *
+ * The key names what is limited — an email address, an address the request
+ * came from, an invoice token — prefixed by which limit it is. It is not a
+ * foreign key: rows exist for addresses and emails that belong to no account,
+ * which is exactly the case worth counting.
+ */
+model RateLimit {
+  key       String   @id
+  count     Int      @default(0)
+  /// When this window closes and the count starts again.
+  windowEnd DateTime
+
+  @@index([windowEnd])
+}
