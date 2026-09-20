@@ -17,6 +17,7 @@ export const PAYMENT_PROVIDERS = [
   "STRIPE",
   "SQUARE",
   "CLOVER",
+  "SHOPIFY",
 ] as const;
 export type PaymentProviderId = (typeof PAYMENT_PROVIDERS)[number];
 
@@ -180,6 +181,30 @@ export const PAYMENT_PROVIDER_META: Record<
         label: "Private key",
         secret: true,
         hint: "An Ecommerce API token whose integration type is Hosted Checkout. The public key is not used here.",
+      },
+    ],
+  },
+
+  SHOPIFY: {
+    label: "Shopify",
+    description:
+      "For a business that already runs a Shopify store. Each invoice becomes a draft order, and the client pays at a Shopify checkout with whatever that store accepts — Shopify Payments included. The money lands in the store's payouts and the sale appears among its orders. If you do not have a store, one of the others is a better fit.",
+    reconciles: true,
+    available: true,
+    helpUrl: "https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens",
+    fields: [
+      {
+        name: "shopDomain",
+        label: "Store domain",
+        placeholder: "northside-supply.myshopify.com",
+        hint: "The myshopify.com address from your store's admin, not your storefront domain.",
+      },
+      {
+        name: "accessToken",
+        label: "Admin API access token",
+        secret: true,
+        placeholder: "shpat_…",
+        hint: "From a custom app in your store: Settings → Apps and sales channels → Develop apps. It needs write_draft_orders and read_orders.",
       },
     ],
   },

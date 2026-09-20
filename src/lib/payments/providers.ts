@@ -3,6 +3,7 @@ import "server-only";
 import type { PaymentProviderId } from "./catalog";
 import { cloverAdapter } from "./clover";
 import { paypalAdapter } from "./paypal";
+import { shopifyAdapter } from "./shopify";
 import { squareAdapter } from "./square";
 import { stripeAdapter } from "./stripe";
 
@@ -160,6 +161,7 @@ const ADAPTERS: Partial<Record<PaymentProviderId, PaymentAdapter>> = {
   STRIPE: stripeAdapter,
   SQUARE: squareAdapter,
   CLOVER: cloverAdapter,
+  SHOPIFY: shopifyAdapter,
 };
 
 export function adapterFor(
