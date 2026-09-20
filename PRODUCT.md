@@ -123,7 +123,9 @@ partly paid, a payment recorded twice.
   offered only when `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` and
   `PAYPAL_WEBHOOK_ID` are all set, so an unconfigured deployment shows the free
   download rather than a button that fails after taking money. Stripe stays
-  `implemented: false`, and a test asserts nothing unimplemented is offered.
+  `implemented: false` *here* — this is selling Matlock One itself, which is a
+  different system from how a customer's own clients pay them, where Stripe
+  does ship. A test asserts nothing unimplemented is offered.
 - **Renewals are keyed on the payment, never the subscription.** Each period
   arrives as its own `PAYMENT.SALE.COMPLETED` with its own id, so each earns its
   own licence with a fresh expiry. Keying on the subscription id would hand a

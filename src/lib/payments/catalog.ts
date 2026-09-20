@@ -100,9 +100,9 @@ export const PAYMENT_PROVIDER_META: Record<
   STRIPE: {
     label: "Stripe",
     description:
-      "Clients pay by card on a Stripe-hosted page. Matlock One creates the request and asks Stripe whether it has been paid.",
+      "Clients pay by card on a Stripe-hosted invoice page that stays up for thirty days. Matlock One raises the request and asks Stripe whether it has been paid.",
     reconciles: true,
-    available: false,
+    available: true,
     helpUrl: "https://dashboard.stripe.com/apikeys",
     fields: [
       {
@@ -110,7 +110,7 @@ export const PAYMENT_PROVIDER_META: Record<
         label: "Secret key",
         secret: true,
         placeholder: "sk_live_…",
-        hint: "The secret key, not the publishable one.",
+        hint: "The secret key, not the publishable one. A test key (sk_test_…) connects too, and takes no real money.",
       },
     ],
   },

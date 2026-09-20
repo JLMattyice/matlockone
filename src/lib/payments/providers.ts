@@ -2,6 +2,7 @@ import "server-only";
 
 import type { PaymentProviderId } from "./catalog";
 import { paypalAdapter } from "./paypal";
+import { stripeAdapter } from "./stripe";
 
 /**
  * The seam every payment processor plugs into.
@@ -142,6 +143,7 @@ const manual: PaymentAdapter = {
 const ADAPTERS: Partial<Record<PaymentProviderId, PaymentAdapter>> = {
   MANUAL: manual,
   PAYPAL: paypalAdapter,
+  STRIPE: stripeAdapter,
 };
 
 export function adapterFor(
