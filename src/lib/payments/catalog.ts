@@ -118,9 +118,9 @@ export const PAYMENT_PROVIDER_META: Record<
   SQUARE: {
     label: "Square",
     description:
-      "Clients pay by card on a Square-hosted page, alongside whatever you already take in person. Matlock One asks Square whether a request has been paid.",
+      "Clients pay by card on a Square-hosted invoice page, alongside whatever you already take in person. Matlock One raises the request and asks Square whether it has been paid.",
     reconciles: true,
-    available: false,
+    available: true,
     helpUrl: "https://developer.squareup.com/apps",
     fields: [
       {
@@ -133,9 +133,14 @@ export const PAYMENT_PROVIDER_META: Record<
       },
       { name: "accessToken", label: "Access token", secret: true },
       {
+        // Optional in the form so it can be saved blank: Test then answers
+        // with the locations on the account and their ids, which is easier
+        // than sending somebody to hunt for one in the Square dashboard.
+        // createLink still refuses without it.
         name: "locationId",
         label: "Location ID",
-        hint: "Which of your Square locations the money belongs to.",
+        optional: true,
+        hint: "Which of your Square locations the money belongs to. Leave it blank and press Test, and the ids on your account are listed back.",
       },
     ],
   },

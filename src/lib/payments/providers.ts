@@ -2,6 +2,7 @@ import "server-only";
 
 import type { PaymentProviderId } from "./catalog";
 import { paypalAdapter } from "./paypal";
+import { squareAdapter } from "./square";
 import { stripeAdapter } from "./stripe";
 
 /**
@@ -144,6 +145,7 @@ const ADAPTERS: Partial<Record<PaymentProviderId, PaymentAdapter>> = {
   MANUAL: manual,
   PAYPAL: paypalAdapter,
   STRIPE: stripeAdapter,
+  SQUARE: squareAdapter,
 };
 
 export function adapterFor(
