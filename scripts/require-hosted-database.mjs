@@ -78,3 +78,22 @@ if (databaseUrl && isLocalFile(databaseUrl)) {
 if (directUrl && isLocalFile(directUrl)) {
   refuse("DIRECT_DATABASE_URL is a local SQLite file.");
 }
+
+/**
+ * What actually connects, checked for being a Postgres URL at all.
+ *
+ * Prisma's own complaint here is "the scheme is not recognized in database
+ * URL", which describes the symptom of the commonest mistake without naming
+ * it: the example from the documentation was pasted with its angle brackets
+ * still on, so the variable holds `<direct connection string>` rather than a
+ * connection string.
+ */
+const connecting = directUrl || databaseUrl;
+
+if (!/^postgres(ql)?:\/\//i.test(connecting)) {
+  refuse(
+    /^<.*>$/.test(connecting)
+      ? `the connection string is still the placeholder (${connecting}). Replace it, angle brackets and all, with the real one.`
+      : `"${connecting.slice(0, 40)}" is not a Postgres connection string. It should begin with postgresql://.`,
+  );
+}

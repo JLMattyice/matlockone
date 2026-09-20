@@ -72,6 +72,22 @@ describe("the db:deploy guard", () => {
     expect(stderr).toContain("DATABASE_URL is still a local file");
   });
 
+  it("catches the placeholder from the documentation, brackets and all", () => {
+    // Prisma's own complaint is "the scheme is not recognized in database
+    // URL", which names the symptom rather than the mistake.
+    const { code, stderr } = run({ DATABASE_URL: "<direct connection string>" });
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("still the placeholder");
+  });
+
+  it("refuses anything that is not a Postgres URL", () => {
+    const { code, stderr } = run({ DATABASE_URL: "mysql://root@localhost/app" });
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("not a Postgres connection string");
+  });
+
   it("refuses when nothing is set at all", () => {
     const { code, stderr } = run({});
 
