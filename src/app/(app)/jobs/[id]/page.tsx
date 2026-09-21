@@ -31,6 +31,8 @@ import { createInvoiceFromJob } from "../../invoices/actions";
 import { activeCrew, getJob, jobCostTotals, jobExpenses } from "../queries";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { NotesPanel } from "@/components/notes/notes-panel";
+import { TaskList } from "@/components/tasks/task-list";
+import { tasksFor } from "@/app/(app)/tasks/queries";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -524,6 +526,24 @@ export default async function JobDetailPage({
                 entityId={job.id}
                 canWrite={can(user, "files:write")}
                 allowPhotoStage
+              />
+            </Card>
+          ) : null}
+
+          {/* ----------------------------------------------------- tasks --- */}
+          {can(user, "tasks:read") ? (
+            <Card className="overflow-hidden">
+              <CardHeader
+                title="Tasks"
+                description="What still has to happen on this one."
+              />
+              <TaskList
+                tasks={await tasksFor(org.id, user, { jobId: job.id })}
+                people={await activeCrew(org.id)}
+                canWrite={can(user, "tasks:write")}
+                jobId={job.id}
+                showContext={false}
+                emptyDescription="Anything that needs doing before this can be finished."
               />
             </Card>
           ) : null}

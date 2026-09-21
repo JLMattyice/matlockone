@@ -52,6 +52,13 @@ export const PERMISSIONS = [
   "catalog:read",
   "catalog:write",
 
+  // Everybody has things to do, including the technician whose list is three
+  // items and a van. :read:all separates "my list" from "the whole business's
+  // list", the same split jobs already makes.
+  "tasks:read",
+  "tasks:read:all",
+  "tasks:write",
+
   "employees:read",
   "employees:write",
 
@@ -90,6 +97,9 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "expenses:write",
   "catalog:read",
   "catalog:write",
+  "tasks:read",
+  "tasks:read:all",
+  "tasks:write",
   "employees:read",
   "files:read",
   "files:write",
@@ -101,6 +111,9 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   "clients:read",
   "jobs:read",
   "jobs:log-time",
+  // Their own list, and the right to tick things off it.
+  "tasks:read",
+  "tasks:write",
   "schedule:read",
   "files:read",
   "files:write",
@@ -172,4 +185,19 @@ export function assignableRoles(actor: Actor): Role[] {
 export function jobVisibilityWhere(actor: Actor) {
   if (can(actor, "jobs:read:all")) return {};
   return { assignments: { some: { userId: actor.id ?? "" } } };
+}
+
+/**
+ * Which tasks somebody may see.
+ *
+ * Without the wider permission, a person sees the ones assigned to them and
+ * the ones they raised — the second half matters, because a task you wrote
+ * and handed to somebody else is still yours to follow up. Unassigned tasks
+ * are a shared pile and stay visible to whoever can see the whole list.
+ */
+export function taskVisibilityWhere(actor: Actor) {
+  if (can(actor, "tasks:read:all")) return {};
+
+  const id = actor.id ?? "";
+  return { OR: [{ assignedToId: id }, { createdById: id }] };
 }

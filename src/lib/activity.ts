@@ -51,7 +51,8 @@ export type ActivityAction =
   | "invoice.cancelled"
   | "payment.recorded"
   | "note.added"
-  | "file.uploaded";
+  | "file.uploaded"
+  | "task.completed";
 
 export type ActivityTone = "brand" | "success" | "warning" | "danger" | "neutral";
 
@@ -73,6 +74,7 @@ export const ACTIVITY_META: Record<
   "payment.recorded": { icon: "banknote", tone: "success" },
   "note.added": { icon: "note", tone: "neutral" },
   "file.uploaded": { icon: "paperclip", tone: "neutral" },
+  "task.completed": { icon: "check", tone: "success" },
 };
 
 export type ActivityIcon =

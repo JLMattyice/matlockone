@@ -3,6 +3,7 @@ import {
   BarChart3,
   Briefcase,
   Calendar,
+  CheckSquare,
   CreditCard,
   FileText,
   FolderClosed,
@@ -20,6 +21,7 @@ import type { NavIcon as NavIconName } from "@/lib/navigation";
 const ICONS = {
   dashboard: LayoutDashboard,
   calendar: Calendar,
+  "check-square": CheckSquare,
   briefcase: Briefcase,
   "file-text": FileText,
   receipt: Receipt,

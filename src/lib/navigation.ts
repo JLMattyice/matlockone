@@ -35,6 +35,7 @@ export type NavIcon =
   | "bar-chart"
   | "folder"
   | "tag"
+  | "check-square"
   | "settings";
 
 export const NAVIGATION: NavGroup[] = [
@@ -46,6 +47,12 @@ export const NAVIGATION: NavGroup[] = [
         label: "Dashboard",
         icon: "dashboard",
         permission: "jobs:read",
+      },
+      {
+        href: "/tasks",
+        label: "Tasks",
+        icon: "check-square",
+        permission: "tasks:read",
       },
     ],
   },

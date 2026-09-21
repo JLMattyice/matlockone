@@ -103,6 +103,7 @@ model Organization {
   auditLogs      AuditLog[]
   priceBookItems PriceBookItem[]
   integrations   Integration[]
+  tasks          Task[]
 }
 
 // ------------------------------------------------------------------- auth ---
@@ -147,6 +148,9 @@ model User {
   auditLogs        AuditLog[]
   queuedMessages   OutboxMessage[] @relation("OutboxCreator")
   integrations     Integration[]   @relation("IntegrationCreator")
+  assignedTasks    Task[]          @relation("TaskAssignee")
+  createdTasks     Task[]          @relation("TaskCreator")
+  completedTasks   Task[]          @relation("TaskCompleter")
 
   @@unique([organizationId, email])
   @@index([organizationId, isActive])
@@ -258,6 +262,7 @@ model Client {
 
   @@index([organizationId, displayName])
   @@index([organizationId, status])
+  tasks Task[]
 }
 
 model Address {
@@ -327,6 +332,7 @@ model Lead {
   attachments Attachment[]
 
   @@index([organizationId, status])
+  tasks Task[]
 }
 
 // -------------------------------------------------------- jobs / schedule ---
@@ -390,6 +396,7 @@ model Job {
   @@unique([organizationId, number])
   @@index([organizationId, status])
   @@index([organizationId, scheduledStart])
+  tasks Task[]
 }
 
 model JobAssignment {
@@ -987,4 +994,57 @@ model RateLimit {
   windowEnd DateTime
 
   @@index([windowEnd])
+}
+
+// ------------------------------------------------------------------ tasks ---
+
+/**
+ * Something somebody has to do.
+ *
+ * Deliberately not a job. A job is work sold to a client and scheduled; a task
+ * is "ring the supplier about the part" — no number, no money, no place on the
+ * calendar, and frequently attached to nothing at all. Conflating the two is
+ * how a schedule fills up with items nobody meant to book.
+ *
+ * The optional links follow the Note pattern: a task can hang off a client, a
+ * job or a lead, or stand on its own. Cascade on each, because a task about a
+ * deleted job is a question nobody can answer.
+ */
+model Task {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  title String
+  notes String?
+
+  /// OPEN | DONE. Not an enum: the schema stays provider-neutral.
+  status String    @default("OPEN")
+  dueAt  DateTime?
+
+  /// Whoever has to do it. Unassigned is normal — a shared list of chores.
+  assignedToId String?
+  assignedTo   User?   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdById  String?
+  createdBy    User?   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  jobId    String?
+  job      Job?    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  leadId   String?
+  lead     Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  completedAt   DateTime?
+  completedById String?
+  completedBy   User?     @relation("TaskCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// The list is nearly always "what is still open, soonest first".
+  @@index([organizationId, status, dueAt])
+  @@index([assignedToId, status])
+  @@index([jobId])
+  @@index([clientId])
 }

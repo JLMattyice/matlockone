@@ -31,6 +31,8 @@ import {
 } from "../queries";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { ActivityTimeline } from "@/components/activity/timeline";
+import { TaskList } from "@/components/tasks/task-list";
+import { tasksFor } from "@/app/(app)/tasks/queries";
 import { NotesPanel } from "@/components/notes/notes-panel";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +67,7 @@ const VIEWS = [
   "files",
   "notes",
   "activity",
+  "tasks",
 ] as const;
 type View = (typeof VIEWS)[number];
 
@@ -249,6 +252,9 @@ export default async function ClientDetailPage({
           // tabs after it are the detail behind it. Seven tabs overflow on a
           // laptop, and this is not the one to hide off the end.
           tab(client.id, "activity", "Activity", view),
+          ...(can(user, "tasks:read")
+            ? [tab(client.id, "tasks", "Tasks", view)]
+            : []),
           tab(client.id, "jobs", org.labelJobPlural, view, client._count.jobs),
           ...(seesMoney
             ? [
@@ -325,6 +331,23 @@ export default async function ClientDetailPage({
             entityType="client"
             entityId={client.id}
             canWrite={can(user, "files:write")}
+          />
+        </Card>
+      ) : null}
+
+      {view === "tasks" ? (
+        <Card className="overflow-hidden">
+          <TaskList
+            tasks={await tasksFor(org.id, user, { clientId: client.id })}
+            people={await prisma.user.findMany({
+              where: { organizationId: org.id, isActive: true },
+              orderBy: { name: "asc" },
+              select: { id: true, name: true },
+            })}
+            canWrite={can(user, "tasks:write")}
+            clientId={client.id}
+            showContext={false}
+            emptyDescription="Follow-ups, callbacks and anything else this customer needs."
           />
         </Card>
       ) : null}

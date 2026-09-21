@@ -6,6 +6,7 @@ import {
   Banknote,
   CalendarClock,
   CheckCircle2,
+  CheckSquare,
   CircleDollarSign,
   Plus,
   Timer,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { loadDashboard } from "./queries";
+import { taskSummary } from "../tasks/queries";
 import { CashFlowChart } from "@/components/dashboard/cash-flow-chart";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Badge } from "@/components/ui/badge";
@@ -39,13 +41,16 @@ export default async function DashboardPage() {
   const ctx = await requireContext();
   const { user, org } = ctx;
   const data = await loadDashboard(ctx);
+  const tasks = await taskSummary(org.id, user);
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
   const firstName = user.name.split(" ")[0];
 
   // Five tiles do not divide into four columns, so the grid widens to match
   // rather than leaving a stranded tile on a row of its own.
-  const tileCount = (data.seesMoney ? 3 : 1) + (data.seesExpenses ? 1 : 0) + 1;
+  const showTasks = tasks.dueToday > 0 || tasks.overdue > 0;
+  const tileCount =
+    (data.seesMoney ? 3 : 1) + (data.seesExpenses ? 1 : 0) + (showTasks ? 1 : 0) + 1;
 
   return (
     <div className="space-y-6">
@@ -112,6 +117,21 @@ export default async function DashboardPage() {
             }
             icon={Banknote}
             href="/expenses"
+          />
+        ) : null}
+
+        {showTasks ? (
+          <StatTile
+            label="Tasks due"
+            value={String(tasks.dueToday)}
+            sublabel={
+              tasks.overdue > 0
+                ? `${tasks.overdue} overdue`
+                : "Nothing late"
+            }
+            icon={CheckSquare}
+            tone={tasks.overdue > 0 ? "danger" : "brand"}
+            href="/tasks"
           />
         ) : null}
 
