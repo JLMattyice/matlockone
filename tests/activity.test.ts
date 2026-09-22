@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   activityHref,
+  canSeeBusinessActivity,
   clientTimeline,
+  hiddenActions,
   groupByDay,
   jobTimeline,
   record,
@@ -20,6 +22,10 @@ import { prisma } from "@/lib/db";
  * their work and documents rather than only from the client row, and that
  * recording can never take down the thing it is describing.
  */
+
+/** The two viewers the permission split is about. */
+const OWNER = { role: "OWNER" as const };
+const TECH = { role: "EMPLOYEE" as const };
 
 let organizationId: string;
 let otherOrganizationId: string;
@@ -65,7 +71,7 @@ describe("record", () => {
       summary: "Client Oscar Nakamura added",
     });
 
-    const [event] = await clientTimeline(organizationId, clientId);
+    const [event] = await clientTimeline(organizationId, clientId, OWNER);
 
     expect(event.summary).toBe("Client Oscar Nakamura added");
     expect(event.actor).toBe("Alex Rivera");
@@ -88,7 +94,7 @@ describe("record", () => {
       data: { displayName: "Oscar N. Holdings" },
     });
 
-    const [event] = await clientTimeline(organizationId, clientId);
+    const [event] = await clientTimeline(organizationId, clientId, OWNER);
     expect(event.summary).toBe("Client Oscar Nakamura added");
   });
 
@@ -119,7 +125,7 @@ describe("record", () => {
     // A departed employee is deleted; the history they made stays.
     await prisma.user.delete({ where: { id: userId } });
 
-    const [event] = await clientTimeline(organizationId, clientId);
+    const [event] = await clientTimeline(organizationId, clientId, OWNER);
     expect(event.summary).toBe("Job created — Ductwork cleaning");
     expect(event.actor).toBeNull();
   });
@@ -174,7 +180,7 @@ describe("clientTimeline", () => {
       summary: "Invoice sent",
     });
 
-    const events = await clientTimeline(organizationId, clientId);
+    const events = await clientTimeline(organizationId, clientId, OWNER);
 
     // All three, which is the whole reason somebody opens this tab.
     expect(events.map((e) => e.summary).sort()).toEqual([
@@ -202,7 +208,7 @@ describe("clientTimeline", () => {
       summary: "Second",
     });
 
-    const events = await clientTimeline(organizationId, clientId);
+    const events = await clientTimeline(organizationId, clientId, OWNER);
     expect(events[0].summary).toBe("Second");
   });
 
@@ -217,7 +223,7 @@ describe("clientTimeline", () => {
       summary: "Their invoice",
     });
 
-    const events = await clientTimeline(organizationId, clientId);
+    const events = await clientTimeline(organizationId, clientId, OWNER);
     expect(events).toHaveLength(0);
   });
 });
@@ -245,7 +251,7 @@ describe("jobTimeline", () => {
       summary: "Client added",
     });
 
-    const events = await jobTimeline(organizationId, job.id);
+    const events = await jobTimeline(organizationId, job.id, OWNER);
     expect(events.map((e) => e.summary)).toEqual(["Job marked in progress"]);
   });
 });
@@ -263,7 +269,7 @@ describe("recentActivity", () => {
       });
     }
 
-    const events = await recentActivity(organizationId, 2);
+    const events = await recentActivity(organizationId, OWNER, 2);
     expect(events).toHaveLength(2);
     expect(events[0].summary).toBe("Three");
   });
@@ -321,5 +327,56 @@ describe("activityHref", () => {
 
   it("has nowhere to send a payment, which is read on its invoice", () => {
     expect(activityHref("PAYMENT", "p1")).toBeNull();
+  });
+});
+
+
+describe("who may read the timeline", () => {
+  /**
+   * The timeline is written in plain sentences, and those sentences carry what
+   * the screens underneath are careful to hide. This shipped first without the
+   * check: any employee could open a client and read their payment history as
+   * timeline lines.
+   */
+  it("is for people who can see the whole business and its money", () => {
+    expect(canSeeBusinessActivity(OWNER)).toBe(true);
+    expect(canSeeBusinessActivity({ role: "MANAGER" })).toBe(true);
+    expect(canSeeBusinessActivity(TECH)).toBe(false);
+  });
+
+  it("hides the money events from anyone without the screens they describe", () => {
+    expect(hiddenActions(OWNER)).toEqual([]);
+    expect(hiddenActions(TECH)).toEqual(
+      expect.arrayContaining(["payment.recorded", "invoice.sent", "estimate.sent"]),
+    );
+  });
+
+  it("never hands a payment line to a technician, even if a caller forgets the gate", async () => {
+    await record({
+      organizationId,
+      userId,
+      action: "payment.recorded",
+      entityType: "CLIENT",
+      entityId: clientId,
+      summary: "$1,250.00 received against invoice INV-1042",
+    });
+    await record({
+      organizationId,
+      userId,
+      action: "job.created",
+      entityType: "CLIENT",
+      entityId: clientId,
+      summary: "Job created — Panel upgrade",
+    });
+
+    const asTech = await clientTimeline(organizationId, clientId, TECH);
+    const asOwner = await clientTimeline(organizationId, clientId, OWNER);
+
+    expect(asTech.map((e) => e.summary)).toEqual(["Job created — Panel upgrade"]);
+    expect(asOwner).toHaveLength(2);
+
+    // The same filter on the business-wide feed.
+    const recentForTech = await recentActivity(organizationId, TECH, 10);
+    expect(recentForTech.some((e) => e.action === "payment.recorded")).toBe(false);
   });
 });

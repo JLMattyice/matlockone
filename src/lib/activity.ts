@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "./db";
+import { can, type Actor } from "./permissions";
 
 /**
  * What happened, in the order it happened.
@@ -163,14 +164,63 @@ export function activityMeta(action: string) {
   );
 }
 
+/**
+ * Whether somebody may see the business's activity at all.
+ *
+ * The timeline is written in plain sentences, and plain sentences carry what
+ * the underlying screens are careful to hide: "$1,250 received against invoice
+ * INV-1042" is a payment amount, and "Job created — Kitchen remodel" names work
+ * that a technician is not assigned and cannot otherwise see. So the feed is
+ * for people who can see the whole business and its money — owners, admins
+ * and managers — and not for a technician, whose own screens are narrowed to
+ * their own work.
+ *
+ * This shipped first without the check, on the client page, where any
+ * employee could read a client's payment history as timeline lines.
+ */
+export function canSeeBusinessActivity(actor: Actor): boolean {
+  return can(actor, "jobs:read:all") && can(actor, "invoices:read");
+}
+
+/**
+ * The events a given person may not see, by the permission that guards the
+ * screen each event describes.
+ *
+ * Defence in depth behind canSeeBusinessActivity(): a caller that forgets the
+ * gate still cannot hand a payment line to somebody without payments:read.
+ */
+export function hiddenActions(actor: Actor): ActivityAction[] {
+  const hidden: ActivityAction[] = [];
+
+  if (!can(actor, "estimates:read")) {
+    hidden.push(
+      "estimate.sent",
+      "estimate.accepted",
+      "estimate.declined",
+      "estimate.converted",
+    );
+  }
+  if (!can(actor, "invoices:read")) {
+    hidden.push("invoice.sent", "invoice.cancelled");
+  }
+  if (!can(actor, "payments:read")) {
+    hidden.push("payment.recorded");
+  }
+
+  return hidden;
+}
+
 type EntityRef = { entityType: ActivityEntity; entityId: string };
 
 async function eventsFor(
   organizationId: string,
   refs: EntityRef[],
   limit: number,
+  viewer: Actor,
 ): Promise<ActivityEvent[]> {
   if (refs.length === 0) return [];
+
+  const hidden = hiddenActions(viewer);
 
   const rows = await prisma.auditLog.findMany({
     where: {
@@ -179,6 +229,7 @@ async function eventsFor(
         entityType: ref.entityType,
         entityId: ref.entityId,
       })),
+      ...(hidden.length ? { action: { notIn: hidden } } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -219,6 +270,7 @@ async function eventsFor(
 export async function clientTimeline(
   organizationId: string,
   clientId: string,
+  viewer: Actor,
   limit = 50,
 ): Promise<ActivityEvent[]> {
   const [jobs, estimates, invoices] = await Promise.all([
@@ -243,25 +295,37 @@ export async function clientTimeline(
     ...invoices.map((i) => ({ entityType: "INVOICE" as const, entityId: i.id })),
   ];
 
-  return eventsFor(organizationId, refs, limit);
+  return eventsFor(organizationId, refs, limit, viewer);
 }
 
 /** Everything that has happened to one job. */
 export async function jobTimeline(
   organizationId: string,
   jobId: string,
+  viewer: Actor,
   limit = 30,
 ): Promise<ActivityEvent[]> {
-  return eventsFor(organizationId, [{ entityType: "JOB", entityId: jobId }], limit);
+  return eventsFor(
+    organizationId,
+    [{ entityType: "JOB", entityId: jobId }],
+    limit,
+    viewer,
+  );
 }
 
 /** The whole workspace, newest first — what the business did this week. */
 export async function recentActivity(
   organizationId: string,
+  viewer: Actor,
   limit = 20,
 ): Promise<ActivityEvent[]> {
+  const hidden = hiddenActions(viewer);
+
   const rows = await prisma.auditLog.findMany({
-    where: { organizationId },
+    where: {
+      organizationId,
+      ...(hidden.length ? { action: { notIn: hidden } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take: limit,
     select: {

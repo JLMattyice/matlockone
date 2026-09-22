@@ -13,6 +13,7 @@ import type { AppContext } from "@/lib/auth";
 import { INVOICE_OPEN_STATUSES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { can, jobVisibilityWhere } from "@/lib/permissions";
+import { leadPipelineSummary } from "../leads/queries";
 
 /**
  * Every query here is scoped to `organizationId` and, for employees, further
@@ -188,9 +189,32 @@ export async function loadDashboard(ctx: AppContext) {
       : null,
   ]);
 
+  // Asked separately from the batch above so the permission that gates each is
+  // right beside it. Neither is fetched for a role that may not see it.
+  const seesPipeline = can(ctx.user, "leads:read");
+
+  const [activeWork, pipeline] = await Promise.all([
+    // Work that is booked or under way: the "what is on" number. Scoped like
+    // every other job query, so a technician counts their own.
+    prisma.job.count({
+      where: {
+        ...jobScope,
+        kind: "JOB",
+        status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] },
+      },
+    }),
+    seesPipeline
+      ? leadPipelineSummary(orgId)
+      : Promise.resolve(null),
+  ]);
+
   return {
     seesMoney,
     seesExpenses,
+    seesPipeline,
+    activeWork,
+    pipelineCount: pipeline?.openCount ?? 0,
+    pipelineValueCents: pipeline?.openValueCents ?? 0,
     upcoming,
     inProgress,
     completedThisMonth,

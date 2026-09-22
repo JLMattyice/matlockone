@@ -54,7 +54,7 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
-import { clientTimeline } from "@/lib/activity";
+import { canSeeBusinessActivity, clientTimeline } from "@/lib/activity";
 import { can } from "@/lib/permissions";
 import { formatPhone } from "@/lib/utils";
 
@@ -251,7 +251,9 @@ export default async function ClientDetailPage({
           // Second, not last: the timeline is the client's story, and the
           // tabs after it are the detail behind it. Seven tabs overflow on a
           // laptop, and this is not the one to hide off the end.
-          tab(client.id, "activity", "Activity", view),
+          ...(canSeeBusinessActivity(user)
+            ? [tab(client.id, "activity", "Activity", view)]
+            : []),
           ...(can(user, "tasks:read")
             ? [tab(client.id, "tasks", "Tasks", view)]
             : []),
@@ -352,13 +354,13 @@ export default async function ClientDetailPage({
         </Card>
       ) : null}
 
-      {view === "activity" ? (
+      {view === "activity" && canSeeBusinessActivity(user) ? (
         <Card className="overflow-hidden">
           {/* Everything that has happened to this client, their work and
               their documents — which is the question somebody opens a client
               record to answer. */}
           <ActivityTimeline
-            events={await clientTimeline(org.id, client.id)}
+            events={await clientTimeline(org.id, client.id, user)}
             emptyTitle="Nothing has happened yet"
             emptyDescription={`Work, ${org.labelEstimatePlural.toLowerCase()}, invoices and payments will appear here as they happen.`}
           />

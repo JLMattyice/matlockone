@@ -2,27 +2,36 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { format, isToday, isTomorrow } from "date-fns";
 import {
-  AlertTriangle,
   Banknote,
+  Briefcase,
   CalendarClock,
   CheckCircle2,
   CheckSquare,
   CircleDollarSign,
   Plus,
+  Scale,
+  Target,
   Timer,
-  Users,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
 
 import { loadDashboard } from "./queries";
 import { taskSummary } from "../tasks/queries";
+import { ActivityTimeline } from "@/components/activity/timeline";
 import { CashFlowChart } from "@/components/dashboard/cash-flow-chart";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
+import { canSeeBusinessActivity, recentActivity } from "@/lib/activity";
 import { requireContext } from "@/lib/auth";
+import {
+  healthBands,
+  type HealthIcon,
+  type HealthTile,
+} from "@/lib/business-health";
 import {
   asStatus,
   JOB_STATUS_META,
@@ -46,11 +55,26 @@ export default async function DashboardPage() {
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
   const firstName = user.name.split(" ")[0];
 
-  // Five tiles do not divide into four columns, so the grid widens to match
-  // rather than leaving a stranded tile on a row of its own.
-  const showTasks = tasks.dueToday > 0 || tasks.overdue > 0;
-  const tileCount =
-    (data.seesMoney ? 3 : 1) + (data.seesExpenses ? 1 : 0) + (showTasks ? 1 : 0) + 1;
+  const health = healthBands({
+    seesMoney: data.seesMoney,
+    seesExpenses: data.seesExpenses,
+    seesPipeline: data.seesPipeline,
+    collectedCents: data.revenueThisMonthCents,
+    spentCents: data.spentThisMonthCents,
+    outstandingCents: data.outstandingCents,
+    outstandingCount: data.outstandingCount,
+    overdueCents: data.overdueCents,
+    overdueCount: data.overdueCount,
+    pipelineCount: data.pipelineCount,
+    pipelineValueCents: data.pipelineValueCents,
+    activeWork: data.activeWork,
+    completedThisMonth: data.completedThisMonth,
+    tasksDueToday: tasks.dueToday,
+    tasksOverdue: tasks.overdue,
+    labels: { jobPlural: org.labelJobPlural, leadPlural: org.labelLeadPlural },
+    money,
+    monthLabel: format(new Date(), "MMMM yyyy"),
+  });
 
   return (
     <div className="space-y-6">
@@ -60,90 +84,14 @@ export default async function DashboardPage() {
         actions={<QuickActions ctx={ctx} />}
       />
 
-      <div
-        className={cn(
-          "grid gap-4 sm:grid-cols-2",
-          tileCount >= 5 ? "lg:grid-cols-3 xl:grid-cols-5" : "xl:grid-cols-4",
-        )}
-      >
-        {data.seesMoney ? (
-          <>
-            <StatTile
-              label="Revenue this month"
-              value={money(data.revenueThisMonthCents)}
-              sublabel={format(new Date(), "MMMM yyyy")}
-              icon={CircleDollarSign}
-              tone="brand"
-            />
-            <StatTile
-              label="Outstanding"
-              value={money(data.outstandingCents)}
-              sublabel={`${data.outstandingCount} unpaid ${plural(data.outstandingCount, "invoice")}`}
-              icon={Wallet}
-              tone="warning"
-              href="/invoices"
-            />
-            <StatTile
-              label="Overdue"
-              value={money(data.overdueCents)}
-              sublabel={
-                data.overdueCount
-                  ? `${data.overdueCount} past due`
-                  : "Nothing past due"
-              }
-              icon={AlertTriangle}
-              tone={data.overdueCents > 0 ? "danger" : "success"}
-              href="/invoices"
-            />
-          </>
-        ) : (
-          <StatTile
-            label={`Active ${org.labelClientPlural.toLowerCase()}`}
-            value={String(data.activeClients)}
-            icon={Users}
-            tone="brand"
-            href="/clients"
-          />
-        )}
+      {/* Two questions, in the order an owner asks them: how is the money,
+          and how is the work. Each band shows only what this person may see,
+          which healthBands() decides — an employee gets the work band alone. */}
+      {health.money.length > 0 ? (
+        <HealthBand title="Money this month" tiles={health.money} />
+      ) : null}
 
-        {data.seesExpenses ? (
-          <StatTile
-            label="Spent this month"
-            value={money(data.spentThisMonthCents)}
-            sublabel={
-              data.spentThisMonthCount
-                ? `${data.spentThisMonthCount} ${plural(data.spentThisMonthCount, "expense")}`
-                : "Nothing recorded yet"
-            }
-            icon={Banknote}
-            href="/expenses"
-          />
-        ) : null}
-
-        {showTasks ? (
-          <StatTile
-            label="Tasks due"
-            value={String(tasks.dueToday)}
-            sublabel={
-              tasks.overdue > 0
-                ? `${tasks.overdue} overdue`
-                : "Nothing late"
-            }
-            icon={CheckSquare}
-            tone={tasks.overdue > 0 ? "danger" : "brand"}
-            href="/tasks"
-          />
-        ) : null}
-
-        <StatTile
-          label={`${org.labelJobPlural} completed`}
-          value={String(data.completedThisMonth)}
-          sublabel={format(new Date(), "MMMM yyyy")}
-          icon={CheckCircle2}
-          tone="success"
-          href="/jobs"
-        />
-      </div>
+      <HealthBand title="Work" tiles={health.work} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -315,6 +263,22 @@ export default async function DashboardPage() {
         </div>
       ) : null}
 
+      {/* What the business actually did lately — the timeline across every
+          client, which is the part of the dashboard that changes every day. */}
+      {canSeeBusinessActivity(user) ? (
+        <Card>
+          <CardHeader
+            title="Recent activity"
+            description="Across the whole business"
+          />
+          <ActivityTimeline
+            events={await recentActivity(org.id, user, 8)}
+            emptyTitle="Nothing has happened yet"
+            emptyDescription="Sent documents, payments, finished work and completed tasks will show up here."
+          />
+        </Card>
+      ) : null}
+
       {data.seesExpenses && data.reimbursementsOwed.length > 0 ? (
         <Card>
           <CardHeader
@@ -477,4 +441,53 @@ function partOfDay() {
   if (hour < 12) return "morning";
   if (hour < 18) return "afternoon";
   return "evening";
+}
+
+const HEALTH_ICONS: Record<HealthIcon, LucideIcon> = {
+  collected: CircleDollarSign,
+  spent: Banknote,
+  net: Scale,
+  outstanding: Wallet,
+  pipeline: Target,
+  work: Briefcase,
+  tasks: CheckSquare,
+  completed: CheckCircle2,
+};
+
+/**
+ * One row of tiles under a small heading.
+ *
+ * The grid is sized from the tile count, because a band of three tiles in four
+ * columns leaves a hole at the end that reads as something failing to load.
+ */
+function HealthBand({ title, tiles }: { title: string; tiles: HealthTile[] }) {
+  if (tiles.length === 0) return null;
+
+  const columns =
+    tiles.length >= 4
+      ? "sm:grid-cols-2 xl:grid-cols-4"
+      : tiles.length === 3
+        ? "sm:grid-cols-3"
+        : "sm:grid-cols-2";
+
+  return (
+    <section>
+      <h2 className="mb-2.5 text-xs font-semibold tracking-wider text-ink-subtle uppercase">
+        {title}
+      </h2>
+      <div className={cn("grid gap-4", columns)}>
+        {tiles.map((tile) => (
+          <StatTile
+            key={tile.key}
+            label={tile.label}
+            value={tile.value}
+            sublabel={tile.sublabel}
+            icon={HEALTH_ICONS[tile.icon]}
+            tone={tile.tone}
+            href={tile.href}
+          />
+        ))}
+      </div>
+    </section>
+  );
 }
