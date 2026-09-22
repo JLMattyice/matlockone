@@ -14,6 +14,7 @@ import {
   planList,
 } from "@/lib/checkout/plans";
 import { canSellOnline } from "@/lib/checkout/providers";
+import { demoAvailable } from "@/lib/demo";
 // The page's "up to N people" claim is the application's own constant, so the
 // two can never drift into a promise the software does not keep.
 import { DEMO_SEATS } from "@/lib/license/status";
@@ -179,7 +180,7 @@ const REAL = [
   },
 ];
 
-function Real() {
+function Real({ demo }: { demo: boolean }) {
   return (
     <Section className="pt-28 lg:pt-36">
       <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-20">
@@ -187,17 +188,42 @@ function Real() {
           <h2 className="display text-3xl text-ink sm:text-4xl lg:text-5xl">
             This is real software, not a landing page
           </h2>
-          <p className="mt-5 text-ink-muted">
-            Everything above is the running application. You can sign in to it
-            right now with a demo account and a year of seeded work — quote
-            something, schedule it, invoice it, take a payment.
-          </p>
-          <p className="mt-4 text-ink-muted">
-            Sign in as the technician account to watch the permissions work:
-            the financial tiles disappear, most of the navigation goes with
-            them, and the job list narrows to that person&rsquo;s own work.
-          </p>
+          {demo ? (
+            <>
+              <p className="mt-5 text-ink-muted">
+                Everything above is the running application. You can sign in to
+                it right now with a demo account and a year of seeded work —
+                quote something, schedule it, invoice it, take a payment.
+              </p>
+              <p className="mt-4 text-ink-muted">
+                Sign in as the technician account to watch the permissions work:
+                the financial tiles disappear, most of the navigation goes with
+                them, and the job list narrows to that person&rsquo;s own work.
+              </p>
+            </>
+          ) : (
+            // Without the demo the section still has a true thing to say, and
+            // a real account is the honest way to find out whether it is so.
+            <>
+              <p className="mt-5 text-ink-muted">
+                Everything above is the running application, not a mock-up of
+                one. Create an account and it is yours to try — quote
+                something, schedule it, invoice it, take a payment.
+              </p>
+              <p className="mt-4 text-ink-muted">
+                It is free for up to {DEMO_SEATS} people with no card and no
+                time limit, so trying it costs nothing.
+              </p>
+              <Link
+                href="/signup"
+                className={buttonClasses("primary", "md", "mt-8")}
+              >
+                Create your free account
+              </Link>
+            </>
+          )}
 
+          {demo ? (
           <div className="mt-8 rounded-xl border border-line bg-surface-2 p-5">
             <p className="text-sm font-medium text-ink">
               Try it on the demo workspace
@@ -234,6 +260,7 @@ function Real() {
               </p>
             </details>
           </div>
+          ) : null}
         </div>
 
         <ul className="space-y-4 lg:pt-4">
@@ -640,7 +667,7 @@ function DownloadSection() {
 
 /* ---------------------------------------------------------------- 08 cta --- */
 
-function FinalCta() {
+function FinalCta({ demo }: { demo: boolean }) {
   return (
     <div className="relative mt-28 overflow-hidden border-t border-line lg:mt-36">
       <div
@@ -658,9 +685,11 @@ function FinalCta() {
             Create your free account
             <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />
           </Link>
-          <Link href="/login" className={buttonClasses("outline", "lg")}>
-            Try the demo first
-          </Link>
+          {demo ? (
+            <Link href="/login" className={buttonClasses("outline", "lg")}>
+              Try the demo first
+            </Link>
+          ) : null}
         </div>
 
         <p className="mt-8 text-sm text-ink-subtle">
@@ -671,17 +700,21 @@ function FinalCta() {
   );
 }
 
-export default function MatlockOnePage() {
+export default async function MatlockOnePage() {
+  // Asked once here and passed down, so every mention of the demo on this page
+  // agrees with the others and with the sign-in screen.
+  const demo = await demoAvailable();
+
   return (
     <>
       <Hero />
       <Problem />
       <Platform />
-      <Real />
+      <Real demo={demo} />
       <Industries />
       <Pricing />
       <DownloadSection />
-      <FinalCta />
+      <FinalCta demo={demo} />
     </>
   );
 }

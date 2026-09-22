@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "./login-form";
 import { Card, CardBody } from "@/components/ui/card";
 import { signupOpen } from "@/lib/config";
-import { prisma } from "@/lib/db";
+import { demoAvailable } from "@/lib/demo";
 import { isFirstRun } from "@/lib/first-run";
 import { readRememberedEmail } from "@/lib/remembered-email";
 
@@ -41,10 +41,7 @@ export default async function LoginPage({
 
   // The seeded demo account is advertised only while it still exists, so a real
   // deployment never shows credentials on its sign-in screen.
-  const demo = await prisma.user.findFirst({
-    where: { email: "owner@demo.test" },
-    select: { email: true },
-  });
+  const demo = await demoAvailable();
 
   return (
     <Card>

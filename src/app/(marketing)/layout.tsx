@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 
 import { buttonClasses } from "@/components/ui/button";
 import { getContext } from "@/lib/auth";
+import { demoAvailable } from "@/lib/demo";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -66,6 +67,7 @@ export default async function MarketingLayout({
   children: React.ReactNode;
 }) {
   const ctx = await getContext();
+  const demo = await demoAvailable();
 
   return (
     <div
@@ -167,11 +169,19 @@ export default async function MarketingLayout({
                       Download
                     </a>
                   </li>
-                  <li>
-                    <Link href="/login" className="hover:text-ink">
-                      Try the demo
-                    </Link>
-                  </li>
+                  {demo ? (
+                    <li>
+                      <Link href="/login" className="hover:text-ink">
+                        Try the demo
+                      </Link>
+                    </li>
+                  ) : (
+                    <li>
+                      <Link href="/signup" className="hover:text-ink">
+                        Create an account
+                      </Link>
+                    </li>
+                  )}
                 </ul>
               </div>
             </nav>
