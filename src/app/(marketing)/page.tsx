@@ -167,7 +167,10 @@ function Platform() {
 
 const REAL = [
   {
-    title: "265 tests, the money paths checked by mutation",
+    // No count. It was "265" for long enough to be wrong by hundreds, and a
+    // marketing number kept by hand is one that eventually lies — the same
+    // reason the seat limit on this page is imported rather than typed.
+    title: "A test suite aimed at the money, checked by mutation",
     body: "Aimed where a bug costs money: cent arithmetic, discount apportionment, invoice balances against a real database, payment reconciliation. The suite was proved by breaking things on purpose.",
   },
   {
