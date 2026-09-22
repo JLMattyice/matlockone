@@ -111,6 +111,8 @@ model Organization {
   priceBookItems PriceBookItem[]
   integrations   Integration[]
   tasks          Task[]
+  workflows      Workflow[]
+  workflowRuns   WorkflowRun[]
 }
 
 // ------------------------------------------------------------------- auth ---
@@ -158,6 +160,7 @@ model User {
   assignedTasks    Task[]          @relation("TaskAssignee")
   createdTasks     Task[]          @relation("TaskCreator")
   completedTasks   Task[]          @relation("TaskCompleter")
+  createdWorkflows Workflow[]      @relation("WorkflowCreator")
 
   @@unique([organizationId, email])
   @@index([organizationId, isActive])
@@ -1054,4 +1057,68 @@ model Task {
   @@index([assignedToId, status])
   @@index([jobId])
   @@index([clientId])
+}
+
+// -------------------------------------------------------------- workflows ---
+
+/**
+ * One automation a business has turned on.
+ *
+ * Deliberately not a rule builder. A business this size does not want to
+ * compose triggers and conditions; it wants four or five obviously useful
+ * things to happen by themselves. So the shapes live in code
+ * (src/lib/workflows/templates.ts) and a row here says which one is on and
+ * with what numbers — a day count, a task title.
+ *
+ * One row per template per organization, so turning something on twice is the
+ * same as turning it on.
+ */
+model Workflow {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Which automation in the catalog. Not a foreign key: the catalog is code.
+  templateId String
+  isActive   Boolean @default(true)
+  /// The template's settings, as JSON. Absent means its defaults.
+  config     String?
+
+  lastRunAt DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("WorkflowCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs WorkflowRun[]
+
+  @@unique([organizationId, templateId])
+}
+
+/**
+ * That an automation has already fired for one particular thing.
+ *
+ * The whole point is to fire once. Without this a sweep run twice on a Monday
+ * raises two tasks to chase the same invoice, which is how people learn to
+ * ignore the tasks an automation makes.
+ */
+model WorkflowRun {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workflowId     String
+  workflow       Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  /// What it fired for — an invoice, a client, an estimate.
+  entityType String
+  entityId   String
+  /// What it did, in the same plain-sentence style as the timeline.
+  summary    String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([workflowId, entityType, entityId])
+  @@index([organizationId, createdAt])
 }

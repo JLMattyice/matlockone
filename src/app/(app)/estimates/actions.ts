@@ -8,6 +8,7 @@ import { failed, invalid, saved, text, type ActionState } from "@/lib/action-sta
 import { requirePermission } from "@/lib/auth";
 import { DISCOUNT_TYPES, LINE_ITEM_KINDS } from "@/lib/constants";
 import { record } from "@/lib/activity";
+import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import { publicUrl, sendMessage } from "@/lib/messaging";
@@ -387,7 +388,12 @@ export async function setEstimateResponse(formData: FormData) {
 
   const estimate = await prisma.estimate.findFirst({
     where: { id, organizationId: org.id },
-    select: { id: true, number: true },
+    select: {
+      id: true,
+      number: true,
+      clientId: true,
+      client: { select: { displayName: true } },
+    },
   });
   if (!estimate) return;
 
@@ -405,6 +411,17 @@ export async function setEstimateResponse(formData: FormData) {
         : { status: "SENT", acceptedAt: null, declinedAt: null, declineReason: null };
 
   await prisma.estimate.update({ where: { id }, data });
+
+  if (decision === "ACCEPTED") {
+    await runEventWorkflows("estimate.accepted", {
+      organizationId: org.id,
+      entityType: "ESTIMATE",
+      entityId: id,
+      subject: estimate.client?.displayName ?? "the customer",
+      document: estimate.number,
+      clientId: estimate.clientId,
+    });
+  }
 
   if (decision === "ACCEPTED" || decision === "DECLINED") {
     await record({

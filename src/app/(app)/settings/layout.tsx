@@ -19,6 +19,7 @@ export default async function SettingsLayout({
       { href: "/settings/documents", label: "Documents" },
       { href: "/settings/email", label: "Email" },
       { href: "/settings/payments", label: "Payments" },
+      { href: "/settings/automations", label: "Automations" },
       { href: "/settings/license", label: "Licence" },
     );
   }

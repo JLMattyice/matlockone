@@ -12,6 +12,7 @@ import {
   PAYMENT_METHODS,
 } from "@/lib/constants";
 import { record } from "@/lib/activity";
+import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
 import { recalculateInvoice } from "@/lib/invoice-balance";
 import { publicUrl, sendMessage } from "@/lib/messaging";
@@ -728,8 +729,22 @@ export async function recordPayment(
     metadata: { amountCents, settled: Boolean(result?.settled) },
   });
 
+  // Only when the last of it is settled: an automation that fires on every
+  // part payment would raise three tasks to thank somebody once.
+  if (result?.settled) {
+    await runEventWorkflows("invoice.paid", {
+      organizationId: org.id,
+      entityType: "INVOICE",
+      entityId: invoice.id,
+      subject: invoice.client?.displayName ?? "the customer",
+      document: invoice.number,
+      clientId: invoice.clientId,
+    });
+  }
+
   revalidatePath("/invoices");
   revalidatePath("/payments");
+  revalidatePath("/tasks");
   revalidatePath(`/invoices/${invoice.id}`);
 
   return saved(
