@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   asTaskView,
@@ -149,6 +149,23 @@ describe("who sees what", () => {
 });
 
 describe("the views", () => {
+  /**
+   * Pinned to midday, because "due today" depends on what time it is now.
+   *
+   * These used to create "Later today" two hours ahead of the real clock, so
+   * they passed until 10pm and failed after it — two hours from 11pm is
+   * tomorrow, and the product is right not to count it. Only Date is faked:
+   * faking timers as well stalls the database driver, which schedules its own.
+   */
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 20, 12, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(async () => {
     await addTask({ title: "Late", dueAt: hoursFromNow(-48) });
     await addTask({ title: "Later today", dueAt: hoursFromNow(2) });
