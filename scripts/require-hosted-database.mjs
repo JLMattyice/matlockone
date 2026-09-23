@@ -59,6 +59,10 @@ function refuse(problem) {
     "Local development does not use migrations at all: `npm run db:push`",
   );
   console.error("applies the schema to dev.db. See DEPLOY.md.\n");
+  console.error(
+    "`npm run db:check` reports what these settings parse to, without",
+  );
+  console.error("printing the password.\n");
   process.exit(1);
 }
 

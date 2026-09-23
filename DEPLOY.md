@@ -133,6 +133,34 @@ latter is what connects: `prisma.config.ts` chooses *which schema to load* by
 whether `DATABASE_URL` begins with `file:`, so setting only the direct one
 carries the SQLite schema to Postgres. The guard refuses that pair too.
 
+### When it will not connect
+
+`npm run db:check` prints what `DATABASE_URL` and `DIRECT_DATABASE_URL` parse
+to — user, host, and the password's length. It never prints the password, and
+it connects to nothing.
+
+It exists because every failure here arrives described as something else:
+
+| What Prisma says | What it usually means |
+| --- | --- |
+| `P1000: Authentication failed` | The password is right but the URL split early, because a reserved character in it was never percent-encoded. Or the password is genuinely unknown — see below. |
+| `FATAL: tenant/user postgres.… not found` | The string is a documentation example nobody edited, or the project ref does not belong to that pooler host. |
+| `the scheme is not recognized` | The variable holds `<direct connection string>`, angle brackets and all. |
+| Authentication failed, user `postgres` | The Direct connection string was copied instead of the Session pooler one. The poolers need `postgres.<project-ref>`. |
+
+**The database password is not the Supabase account login.** It is generated at
+project creation, shown once, and cannot be recovered — only reset, under
+Project Settings → Database. A reset changes what the deployed app needs too,
+so update `DATABASE_URL` on the host and redeploy in the same sitting or the
+live site loses its database on the next request.
+
+Until it is reset, a migration can still be applied by hand: paste the
+`migration.sql` into Supabase's SQL editor wrapped in `DO $$ ... IF
+to_regclass('public."Table"') IS NULL ... END $$;` so it is safe to run twice.
+That leaves Prisma's `_prisma_migrations` table not knowing it ran, which
+`prisma migrate resolve --applied <name>` squares up once credentials work
+again.
+
 ## First run
 
 There is no seeded account. The first person to reach `/signup` creates their
