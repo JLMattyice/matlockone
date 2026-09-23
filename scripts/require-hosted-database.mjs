@@ -97,3 +97,51 @@ if (!/^postgres(ql)?:\/\//i.test(connecting)) {
       : `"${connecting.slice(0, 40)}" is not a Postgres connection string. It should begin with postgresql://.`,
   );
 }
+
+/**
+ * An example string, pasted whole.
+ *
+ * A documented example is a perfectly well-formed URL, so every check above
+ * waves it through and the failure arrives from the far end as "FATAL:
+ * (ENOTFOUND) tenant/user postgres.abcdefgh not found" — which reads as though
+ * the database were missing, rather than as though the string had never been
+ * edited. These markers appear in examples and never in a real credential.
+ */
+const EXAMPLE_MARKERS = [
+  "yourrealpassword",
+  "yourpassword",
+  "your-password",
+  "your_password",
+  "abcdefgh",
+  "xxxx",
+  "…",
+  "<",
+  ">",
+];
+
+const marker = EXAMPLE_MARKERS.find((token) =>
+  connecting.toLowerCase().includes(token),
+);
+
+if (marker) {
+  refuse(
+    `the connection string still contains "${marker}", so it is the example ` +
+      `rather than yours. Supabase → Connect → Direct connection has the real ` +
+      `one; the password in it is your database password.`,
+  );
+}
+
+/**
+ * The transaction pooler, which cannot run migrations.
+ *
+ * Port 6543 is what the application uses and what is therefore already on the
+ * clipboard. It multiplexes connections and drops the prepared statements and
+ * advisory locks the migration engine needs, so it fails in the middle of the
+ * work rather than at the start.
+ */
+if (/:6543(\/|$)/.test(connecting)) {
+  refuse(
+    "this is the transaction pooler (port 6543), which the application uses " +
+      "but which cannot run migrations. Migrations need port 5432.",
+  );
+}
