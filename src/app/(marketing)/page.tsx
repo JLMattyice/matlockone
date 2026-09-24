@@ -18,6 +18,7 @@ import { demoAvailable } from "@/lib/demo";
 // The page's "up to N people" claim is the application's own constant, so the
 // two can never drift into a promise the software does not keep.
 import { DEMO_SEATS } from "@/lib/license/status";
+import { latestInstaller, type InstallerLookup } from "@/lib/releases";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -538,45 +539,68 @@ function Pricing() {
 /**
  * The two builds, and the honest state of each.
  *
- * A link that does not exist yet renders as a marked blank rather than a dead
+ * A build that is not published renders as a marked blank rather than a dead
  * button: a download that 404s costs more trust than one that is openly not
  * ready.
  *
- * The addresses come from the environment rather than being written in here,
- * because building a release and deploying this site are two separate events
- * in two different places. A URL committed to this file goes live the moment
- * it merges — whether or not anything is behind it yet — and an installer
- * published an hour after the deploy needs a code change to become reachable.
- * Setting the variable is the deliberate act that turns the button on, and
- * clearing it puts the placeholder back rather than leaving a dead link.
+ * What is published is asked of GitHub rather than configured here. Each
+ * button links to /download/<platform>, which resolves the newest installer
+ * when somebody clicks, so a release reaches this page within a few minutes of
+ * being published and nobody edits a setting to make it happen. The same
+ * lookup decides what the page says about each build — whether there is one,
+ * which version, which Macs it runs on — so the words and the file cannot
+ * drift apart the way a hand-written description did.
  *
- * Read inside the function, not at module scope, so a dynamically rendered
- * page picks up a change without a rebuild.
+ * When GitHub cannot be asked, the button stays and says less. The lookup
+ * failing is not evidence that the build went away.
  */
-function downloads() {
+async function downloads() {
+  const [windows, mac] = await Promise.all([
+    latestInstaller("windows"),
+    latestInstaller("mac"),
+  ]);
+
   return [
     {
       platform: "Windows",
-      detail: "Windows 10 and 11 · 64-bit",
-      url: process.env.DOWNLOAD_URL_WINDOWS?.trim() || null,
+      href: "/download/windows",
+      available: windows.status !== "none",
+      detail: withVersion(windows, "Windows 10 and 11 · 64-bit"),
       missing:
-        "The installer builds with npm run desktop:pack and publishes to GitHub Releases. Set DOWNLOAD_URL_WINDOWS to its address once that release is up.",
+        "No published release has a Windows installer yet. npm run release builds one, and it appears here within five minutes of being published.",
     },
     {
       platform: "macOS",
-      // Both halves are facts about the build this links to, not about macOS in
-      // general, so both go stale when the build changes. The architecture is
-      // whichever machine produced it — electron-builder builds for its host —
-      // and this release came from an Intel Mac, which Apple Silicon runs
-      // through Rosetta. The minimum is LSMinimumSystemVersion in the shipped
-      // app's Info.plist, which Electron sets: 13.0 as of Electron 44. Re-check
-      // both after an Electron upgrade or a build from a different machine.
-      detail: "Intel and Apple Silicon (via Rosetta) · macOS 13 and later",
-      url: process.env.DOWNLOAD_URL_MACOS?.trim() || null,
+      href: "/download/mac",
+      available: mac.status !== "none",
+      detail: withVersion(mac, macDetail(mac)),
       missing:
-        "The installer builds with npm run desktop:pack:mac on a Mac and publishes to GitHub Releases. Set DOWNLOAD_URL_MACOS to its address once that release is up.",
+        "No published release has a macOS installer yet. The release workflow builds one once the Apple signing secrets are set, and it appears here within five minutes of being published.",
     },
   ];
+}
+
+/**
+ * Which Macs the published build runs on, read from the build itself.
+ *
+ * electron-builder builds for the machine doing the building, so this follows
+ * whichever one made the release: the CI runner is Apple Silicon, and the
+ * releases before it came from an Intel Mac, which Apple Silicon runs through
+ * Rosetta. The minimum is LSMinimumSystemVersion in the shipped app's
+ * Info.plist, which Electron sets: 13.0 as of Electron 44. Re-check it after
+ * an Electron upgrade.
+ */
+function macDetail(lookup: InstallerLookup) {
+  const arch = lookup.status === "found" ? lookup.installer.arch : null;
+  if (arch === "arm64") return "Apple Silicon · macOS 13 and later";
+  if (arch === "x64") return "Intel and Apple Silicon (via Rosetta) · macOS 13 and later";
+  return "macOS 13 and later";
+}
+
+function withVersion(lookup: InstallerLookup, detail: string) {
+  return lookup.status === "found"
+    ? `Version ${lookup.installer.version} · ${detail}`
+    : detail;
 }
 
 /** An unfilled blank, marked as one. Never a guess dressed up as content. */
@@ -588,7 +612,9 @@ function Placeholder({ children }: { children: React.ReactNode }) {
   );
 }
 
-function DownloadSection() {
+async function DownloadSection() {
+  const builds = await downloads();
+
   return (
     <Section id="download" className="scroll-mt-24 pt-28 lg:pt-36">
       <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-20">
@@ -631,7 +657,7 @@ function DownloadSection() {
             </div>
           </div>
 
-          {downloads().map((build) => (
+          {builds.map((build) => (
             <div
               key={build.platform}
               className="rounded-xl border border-line bg-surface-2 p-5"
@@ -644,9 +670,11 @@ function DownloadSection() {
               </div>
 
               <div className="mt-4">
-                {build.url ? (
+                {build.available ? (
+                  // A plain anchor, not Link: this leaves the site for a file
+                  // on GitHub, and client-side navigation has nothing to do.
                   <a
-                    href={build.url}
+                    href={build.href}
                     className={buttonClasses("outline", "md")}
                   >
                     <Download

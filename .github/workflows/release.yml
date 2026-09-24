@@ -1,0 +1,291 @@
+# Building and publishing a release, for both platforms, from one tag.
+#
+# Replaces desktop-macos.yml and desktop-windows.yml, which each built one
+# platform and had electron-builder attach it to the release by itself. That
+# arrangement had three ways to go wrong, and all three happened:
+#
+#  - A release could be half there. v0.2.1 through v0.3.0 shipped a Mac build
+#    and no Windows one, because the tag started the Mac runner and nothing
+#    else. Every Windows install sat on v0.2.0, and the download page kept
+#    offering it.
+#  - Two jobs racing to create the same release can create two.
+#  - electron-builder makes a *draft*, and installed copies cannot see drafts.
+#    Nothing reached anybody until someone remembered to press Publish.
+#
+# So the builds only build. Each uploads what it made as an artifact, and a
+# final job creates the release with every file at once and publishes it —
+# only if every build that ran succeeded. A tag either becomes a whole release
+# or no release.
+#
+# macOS runs only when the five Apple signing secrets exist, because
+# electron-builder.yml sets notarize: true and Apple refuses the app otherwise.
+# Without them the release goes out for Windows alone, with a warning on the
+# run saying so; the download page keeps offering the last Mac build it can
+# find. With them, a failed Mac build blocks the release like any other.
+#
+# The native parts are why these are separate runners at all. The SQLite
+# binding is a native module and the bundled Node is a native binary, so each
+# has to be produced on the platform it will run on.
+
+name: Release
+
+on:
+  # `npm run release` pushes one of these.
+  push:
+    tags:
+      - "v*"
+
+  # Or rebuild an existing tag by hand — to fill in a platform a release is
+  # missing, or to retry one that failed. Publishing a tag older than the
+  # current Latest leaves Latest alone.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish, e.g. v0.3.1"
+        required: true
+
+# Creating and editing releases with GITHUB_TOKEN needs this.
+permissions:
+  contents: write
+
+# One run per tag. A second push of the same tag waits rather than racing the
+# first to create the release.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  prepare:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mac: ${{ steps.signing.outputs.mac }}
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      # electron-builder names the build after package.json, not after the
+      # tag. A mismatch produces a release called v0.3.1 holding installers
+      # that report themselves as 0.3.0 — and every installed copy on 0.3.0
+      # then sees nothing newer and never updates.
+      - name: The tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version. Tag v$version instead, or use npm run release, which does both."
+            exit 1
+          fi
+
+      - name: See whether macOS can be signed
+        id: signing
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          missing=""
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "mac=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No macOS build in this release. Missing repository secrets:$missing. See DESKTOP.md for how to produce them; until then Mac builds are made by hand."
+          else
+            echo "mac=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    name: Windows
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # No signing step. Windows has no gate like notarization: an unsigned
+      # installer builds and runs, and SmartScreen warns on first launch until
+      # a purchased Authenticode certificate says otherwise. Adding one later
+      # means two secrets and two env lines on the package step.
+
+      - name: Install dependencies
+        # Not `npm i`: the SQLite binding compiles here, against this runner's
+        # Node and architecture, and the lockfile keeps that reproducible.
+        run: npm ci
+
+      - name: Assemble the desktop bundle
+        run: npm run desktop:build
+
+      - name: Generate the icon
+        # Emits build/icon.ico, which the win target names. Generated rather
+        # than committed, so it is not in the checkout.
+        run: node scripts/make-icon.mjs
+
+      # --publish never: this job builds, and the publish job releases. The
+      # publish config in electron-builder.yml still writes latest.yml and
+      # embeds the update feed in the app, which is all it is needed for here.
+      - name: Package
+        run: npx electron-builder --win --publish never
+
+      - name: Hand the build to the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist-installer/*.exe
+            dist-installer/*.exe.blockmap
+            dist-installer/latest.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: macOS
+    needs: prepare
+    if: needs.prepare.outputs.mac == 'true'
+    # Apple Silicon. electron-builder.yml names no architecture, so this builds
+    # arm64 — and after-pack.cjs fails any build whose bundled Node and packed
+    # app disagree, so an Intel build cannot come from here. The releases
+    # before this workflow were Intel builds made by hand; see DESKTOP.md on
+    # why one release carries one Mac architecture.
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # APPLE_API_KEY is a *path* to the .p8, not the key itself — a secret has
+      # to become a file before electron-builder can be pointed at it.
+      - name: Write the App Store Connect key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "$APPLE_API_KEY_P8" > ~/private_keys/AuthKey.p8
+          chmod 600 ~/private_keys/AuthKey.p8
+
+      - name: Assemble the desktop bundle
+        run: npm run desktop:build
+
+      - name: Generate the icon
+        # Emits build/icon.png, which electron-builder converts to .icns here.
+        run: node scripts/make-icon.mjs
+
+      - name: Package, sign and notarize
+        env:
+          # The Developer ID Application certificate, as a base64 .p12.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # Notarization by App Store Connect API key rather than Apple ID: no
+          # app-specific password to rotate and nothing that can trip on 2FA.
+          APPLE_API_KEY: ~/private_keys/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: npx electron-builder --mac --publish never
+
+      # The zip is not optional: it is what an installed Mac copy updates
+      # itself from. The DMG is only what a person downloads.
+      - name: Hand the build to the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            dist-installer/*.dmg
+            dist-installer/*.zip
+            dist-installer/*.blockmap
+            dist-installer/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish the release
+    needs: [prepare, windows, macos]
+    # A skipped macOS job means the secrets are not set, which prepare already
+    # warned about. A failed one means a build broke, and a release missing
+    # a platform it was supposed to have is the thing this workflow exists to
+    # prevent.
+    if: >-
+      !cancelled()
+      && needs.prepare.result == 'success'
+      && needs.windows.result == 'success'
+      && (needs.macos.result == 'success' || needs.macos.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Collect the builds
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Publishing $TAG with:"
+          ls -l release
+
+          # The notes are the tag's own message, which npm run release writes
+          # from the commits since the last release.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          git tag -l --format='%(contents)' "$TAG" > notes.md
+          if [ ! -s notes.md ]; then echo "Matlock One ${TAG#v}" > notes.md; fi
+
+          # Latest is what every installed copy reads to decide whether to
+          # update, so only a release newer than the current Latest may take
+          # it. Filling in an old release's missing platform must not make
+          # every install think the old version is the newest.
+          latest=true
+          current=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
+          if [ -n "$current" ]; then
+            newest=$(printf '%s\n%s\n' "${current#v}" "${TAG#v}" | sort -V | tail -n1)
+            if [ "$newest" != "${TAG#v}" ]; then latest=false; fi
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber
+            gh release edit "$TAG" --draft=false --latest="$latest"
+          else
+            gh release create "$TAG" release/* \
+              --title "Matlock One ${TAG#v}" \
+              --notes-file notes.md \
+              --latest="$latest"
+          fi
+
+          echo "::notice::Published $TAG (latest: $latest). Installed copies pick it up within six hours, or thirty seconds after their next launch."

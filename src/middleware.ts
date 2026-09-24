@@ -10,7 +10,15 @@ import { SESSION_COOKIE } from "@/lib/session-cookie";
  * app chrome.
  */
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/share", "/session-expired"];
+// /download is the installer redirect behind the homepage's download buttons,
+// which are for people who do not have an account yet.
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/signup",
+  "/share",
+  "/session-expired",
+  "/download",
+];
 
 /**
  * Marketing routes, matched exactly rather than by prefix. "/" cannot go in

@@ -40,18 +40,18 @@ built and tested on.
 
 ### Two ways to produce the Windows build
 
-**On CI.** `.github/workflows/desktop-windows.yml`, the counterpart to the
-macOS one: a `windows-latest` runner, triggered by pushing a `v*` tag or run by
-hand against an existing one, ending in `electron-builder --win --publish
-always`. It needs no secrets. The macOS build cannot finish unsigned, because
+**On CI.** The Windows job in `.github/workflows/release.yml`: a
+`windows-latest` runner, started by `npm run release` (see Publishing a
+release). It needs no secrets. The macOS build cannot finish unsigned, because
 `notarize: true` means Apple has to have seen it; Windows has no such gate, and
 an unsigned installer builds and runs with a SmartScreen warning on first
 launch.
 
-Prefer CI. A tag then produces both platforms, which is the whole point: v0.2.1
-through v0.3.0 each shipped a Mac build and no Windows one, because the tag
-started the Mac runner and nothing else, and the download page went on offering
-v0.2.0 to every Windows customer for three releases.
+Prefer CI. One tag then produces every platform the repository can sign for,
+which is the whole point: v0.2.1 through v0.3.0 each shipped a Mac build and no
+Windows one, because the tag started the Mac runner and nothing else, and the
+download page went on offering v0.2.0 to every Windows customer for three
+releases.
 
 **By hand**, which is what `npm run desktop:pack` above does. Note that it
 stops at `dist-installer/` — the script carries no `--publish`, so a build made
@@ -132,16 +132,25 @@ For a build that only has to run locally, `npm run desktop:pack:mac:unsigned`
 skips both and produces a .dmg Gatekeeper will refuse until it is cleared by
 hand. Never ship that one.
 
-**On CI.** `.github/workflows/desktop-macos.yml` does the same thing on a
-macOS runner, triggered by pushing a `v*` tag or run by hand against an
-existing one. It needs five repository secrets — `CSC_LINK` (the Developer ID
-certificate as a base64 `.p12`), `CSC_KEY_PASSWORD`, `APPLE_API_KEY_P8` (the
-key's contents, which the workflow writes to a file because electron-builder
-wants a path), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` — and fails on the
-first step naming any that are missing.
+**On CI.** The macOS job in `.github/workflows/release.yml` does the same
+thing on a macOS runner. It needs five repository secrets — `CSC_LINK` (the
+Developer ID certificate as a base64 `.p12`), `CSC_KEY_PASSWORD`,
+`APPLE_API_KEY_P8` (the key's contents, which the workflow writes to a file
+because electron-builder wants a path), `APPLE_API_KEY_ID` and
+`APPLE_API_ISSUER`. Until all five exist the job is skipped, the run carries a
+warning naming the missing ones, and the release goes out for Windows alone.
 
 Prefer CI once there is more than one release: it keeps the signing identity
 off a laptop, and it cannot forget a step.
+
+**The CI runner is Apple Silicon, and every Mac release so far was Intel.**
+`macos-latest` builds arm64, while v0.2.0 through v0.3.0 were x64 builds made
+by hand. Read the architecture limit below before the first CI Mac release:
+publishing arm64 alone moves Apple Silicon installs onto a native build, which
+is good, and leaves Intel Macs with nothing they can install: electron-updater
+skips arm64 builds on an Intel machine, finds no other, and fails its check —
+quietly, so nobody on an Intel Mac would be told. If any customer is on one, keep
+building x64 by hand for them instead of setting the secrets.
 
 Either way, five files go to the release: the `.dmg` and the `.zip`, a
 `.blockmap` for each, and `latest-mac.yml` (not `latest.yml` — the two
@@ -179,6 +188,40 @@ npm run desktop         # launch it
 
 ## Publishing a release
 
+```bash
+npm run release patch     # fixes: 0.3.0 → 0.3.1
+npm run release minor     # new features: 0.3.0 → 0.4.0
+npm run release 0.4.0     # an exact version
+```
+
+That is the whole of it. `scripts/release.mjs` refuses unless `main` is clean
+and up to date with GitHub and the version is new; runs the typecheck and the
+tests; shows what is going out; asks for one sentence of release notes; and
+asks you to type the version back before it changes anything. Then it bumps
+`package.json` and `package-lock.json`, commits `Release <version>`, tags it
+with the notes, and pushes the commit and the tag together.
+
+The tag starts `.github/workflows/release.yml`, which builds every platform it
+can, then creates the GitHub release with all the files at once and publishes
+it. There is no draft to remember: electron-builder's own publishing made one
+by default, and installed copies cannot see drafts. If a build that ran fails,
+nothing is published. About fifteen minutes later:
+
+- **Installed copies** find it thirty seconds after their next launch, or
+  within six hours if they are left open, download it in the background and
+  ask before installing.
+- **The download buttons** on the site follow within five minutes. They look
+  up the newest installer themselves (`/download/windows`, `/download/mac`,
+  `src/lib/releases.ts`), so there is no setting to change per release.
+
+To rebuild a tag that already exists — to fill in a platform a release is
+missing, or retry a failed run — start the workflow by hand from the Actions
+tab and give it the tag. Rebuilding an older tag does not take Latest from a
+newer one.
+
+The rest of this section is what the workflow does, for when it has to be done
+by hand.
+
 The installer is not much use sitting in `dist-installer/`. `electron-builder.yml`
 publishes to **GitHub Releases**, which is also where the installed app looks
 for updates — one place instead of a download host plus an update feed.
@@ -194,7 +237,7 @@ electron-updater reads `latest.yml`, compares versions, and verifies the
 installer's hash against it before running anything. Upload a mismatched set and
 every existing install fails its update check with a hash error.
 
-To publish, tag the commit the build came from and let electron-builder do the
+By hand, tag the commit the build came from and let electron-builder do the
 upload:
 
 ```bash
@@ -202,6 +245,7 @@ git tag v0.3.0 && git push origin v0.3.0
 GH_TOKEN=<a token with repo scope> npx electron-builder --win --publish always
 ```
 
+That creates a **draft**, which reaches nobody until it is published on GitHub.
 Or create the release in the GitHub UI and attach the three files by hand.
 
 **The repository has to be public.** GitHub serves a private repository's
@@ -209,16 +253,14 @@ release assets only to an authenticated token — which an installed copy does n
 carry, and a visitor to the download page certainly does not. Private means both
 the download button and the update check return 404.
 
-Then turn the download button on, by setting this on the hosted deployment:
+The download buttons need nothing further. A platform with no published
+installer shows a placeholder rather than a button that 404s, and a release
+that has one turns the button on by itself within five minutes.
 
-```
-DOWNLOAD_URL_WINDOWS="https://github.com/JLMattyice/matlockone/releases/download/v0.3.0/MatlockOne-Setup-0.3.0.exe"
-```
-
-Until that variable is set the marketing page renders a placeholder saying the
-build is not published, rather than a button that 404s. Setting it is the
-deliberate act that makes the download real — do it *after* the release is up,
-not before.
+`DOWNLOAD_URL_WINDOWS` and `DOWNLOAD_URL_MACOS` still exist, as a fallback for
+when github.com cannot be reached at the moment somebody clicks. They used to
+be the only way the buttons knew where to point, and had to be edited after
+every release; a deployment that still has an old version in them is fine.
 
 ## How it is put together
 
