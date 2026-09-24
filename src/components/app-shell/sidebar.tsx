@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 
 import { NavIcon } from "./nav-icon";
-import type { ResolvedNavGroup } from "@/lib/navigation";
+import { useUnreadMessages } from "./use-unread-messages";
+import { MESSAGES_HREF, type ResolvedNavGroup } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 export type SidebarBrand = {
@@ -18,12 +19,16 @@ export type SidebarBrand = {
 export function Sidebar({
   groups,
   brand,
+  unreadMessages,
 }: {
   groups: ResolvedNavGroup[];
   brand: SidebarBrand;
+  /** Null when this role has no messages to count. */
+  unreadMessages: number | null;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const unread = useUnreadMessages(unreadMessages ?? 0, unreadMessages !== null, pathname);
 
   // Close the mobile drawer whenever navigation completes.
   useEffect(() => setOpen(false), [pathname]);
@@ -33,10 +38,19 @@ export function Sidebar({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Open navigation"
+        aria-label={
+          unread > 0 ? `Open navigation, ${unread} unread messages` : "Open navigation"
+        }
         className="fixed top-3 left-3 z-40 flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted shadow-sm lg:hidden print:hidden"
       >
         <Menu className="h-4.5 w-4.5" strokeWidth={1.75} />
+        {/* The drawer hides the badge on a phone; this says there is one. */}
+        {unread > 0 ? (
+          <span
+            className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-brand ring-2 ring-surface"
+            aria-hidden
+          />
+        ) : null}
       </button>
 
       {open ? (
@@ -92,6 +106,7 @@ export function Sidebar({
                 {group.items.map((item) => {
                   const active =
                     pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  const badge = item.href === MESSAGES_HREF ? unread : 0;
                   return (
                     <li key={item.href}>
                       <Link
@@ -106,6 +121,12 @@ export function Sidebar({
                       >
                         <NavIcon name={item.icon} className="h-4.5 w-4.5 shrink-0" />
                         <span className="truncate">{item.label}</span>
+                        {badge > 0 ? (
+                          <span className="tabular ml-auto flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-brand px-1.5 text-[0.625rem] font-semibold text-brand-ink">
+                            <span className="sr-only">, unread: </span>
+                            {badge > 99 ? "99+" : badge}
+                          </span>
+                        ) : null}
                       </Link>
                     </li>
                   );

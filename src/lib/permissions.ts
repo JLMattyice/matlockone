@@ -59,6 +59,11 @@ export const PERMISSIONS = [
   "tasks:read:all",
   "tasks:write",
 
+  // Talking to the rest of the team. Every role has it: a crew that cannot
+  // message the office from inside the app will message it from outside, and
+  // then the conversation about a job lives on somebody's personal phone.
+  "messages:use",
+
   "employees:read",
   "employees:write",
 
@@ -100,6 +105,7 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "tasks:read",
   "tasks:read:all",
   "tasks:write",
+  "messages:use",
   "employees:read",
   "files:read",
   "files:write",
@@ -114,6 +120,7 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   // Their own list, and the right to tick things off it.
   "tasks:read",
   "tasks:write",
+  "messages:use",
   "schedule:read",
   "files:read",
   "files:write",

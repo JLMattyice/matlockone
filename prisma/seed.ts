@@ -976,6 +976,98 @@ async function main() {
     });
   }
 
+  // ------------------------------------------------------------ messages ---
+
+  // A morning's worth of the office and the crew talking, so the inbox opens
+  // on something. Times are counted back from now rather than pinned to a
+  // clock, so the order holds whenever the seed runs. The owner is left with
+  // a little unread in the crew thread and the technician with the owner's
+  // last reply, so both demo logins show a badge.
+  const [admin, tech1, tech2] = [staff[1], technicians[0], technicians[1]];
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+
+  const threads: {
+    kind: "DIRECT" | "GROUP";
+    title?: string;
+    members: string[];
+    lines: [author: string, minutesAgo: number, body: string][];
+    /** Per member: the minute they last read up to. Absent means all of it. */
+    readTo?: Record<string, number | null>;
+  }[] = [
+    {
+      kind: "GROUP",
+      title: "Northside crew",
+      members: [owner.id, manager.id, tech1.id, tech2.id],
+      lines: [
+        [manager.id, 190, "Morning. Tom, the 9:30 in Brookfield moved to 11 — the customer is running late."],
+        [tech2.id, 186, "Got it. I'll stop at the supply house for filters first."],
+        [tech1.id, 150, "Can someone bring the spare condensate pump? Mine is still at the shop."],
+        [tech2.id, 147, "I have one in the van. Meet you at the Oakridge job around 1?"],
+        [tech1.id, 146, "Perfect, thanks."],
+        [manager.id, 35, "Reminder: timesheets in by Friday noon, please."],
+        [tech1.id, 12, "Oakridge is done. Photos are on the job — the drain line had a crack, replaced 4 ft of it."],
+      ],
+      readTo: { [owner.id]: 146, [manager.id]: 35 },
+    },
+    {
+      kind: "DIRECT",
+      members: [owner.id, tech1.id],
+      lines: [
+        [tech1.id, 1500, "Finished the Hendricks furnace. The heat exchanger is cracked — I tagged it and left the unit off."],
+        [owner.id, 1492, "Good call. Did you talk to them about a replacement?"],
+        [tech1.id, 1488, "Mrs. Hendricks wants a quote by Friday. Can the office put one together?"],
+        [owner.id, 64, "Dana has it. Thanks for flagging it on site instead of leaving it for the next visit."],
+      ],
+      readTo: { [tech1.id]: 1488 },
+    },
+    {
+      kind: "DIRECT",
+      members: [owner.id, admin.id],
+      lines: [
+        [admin.id, 2900, "The Parkview property manager called — they want all six units serviced before the first cold snap."],
+        [owner.id, 2880, "Let's do it. Spread it over two days so we're not tying up the whole crew."],
+        [admin.id, 2860, "Booked for next Tuesday and Wednesday. The estimate goes out today."],
+      ],
+    },
+  ];
+
+  for (const thread of threads) {
+    const last = Math.min(...thread.lines.map(([, minutes]) => minutes));
+    const conversation = await prisma.conversation.create({
+      data: {
+        organizationId: org.id,
+        kind: thread.kind,
+        title: thread.title ?? null,
+        directKey:
+          thread.kind === "DIRECT" ? [...thread.members].sort().join(":") : null,
+        createdById: thread.lines[0][0],
+        lastMessageAt: minutesAgo(last),
+        createdAt: minutesAgo(Math.max(...thread.lines.map(([, minutes]) => minutes)) + 1),
+        members: {
+          create: thread.members.map((userId) => {
+            const readTo = thread.readTo?.[userId];
+            return {
+              userId,
+              lastReadAt: readTo === undefined ? minutesAgo(last) : readTo === null ? null : minutesAgo(readTo),
+            };
+          }),
+        },
+      },
+    });
+
+    await prisma.message.createMany({
+      data: thread.lines.map(([authorId, minutes, body]) => ({
+        organizationId: org.id,
+        conversationId: conversation.id,
+        authorId,
+        body,
+        createdAt: minutesAgo(minutes),
+      })),
+    });
+  }
+
+  console.log(`  ${threads.length} team conversations`);
+
   await prisma.organization.update({
     where: { id: org.id },
     data: {

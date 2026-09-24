@@ -7,11 +7,13 @@ import {
   CheckCircle2,
   Clock,
   Mail,
+  MessageSquare,
   Pencil,
   Phone,
 } from "lucide-react";
 
 import { ResetPassword } from "./reset-password";
+import { openDirectMessage } from "../../messages/actions";
 import { setTeamMemberActive } from "../actions";
 import { getTeamMember, memberWorkload } from "../queries";
 import { Avatar } from "@/components/ui/avatar";
@@ -69,6 +71,7 @@ export default async function TeamMemberPage({
   const manageable = can(user, "employees:write") && canManageRole(user, role);
   const isSelf = member.id === user.id;
   const seesMoney = can(user, "invoices:read");
+  const canMessage = !isSelf && member.isActive && can(user, "messages:use");
 
   const hours = Math.round((workload.minutesThisMonth / 60) * 10) / 10;
 
@@ -120,17 +123,29 @@ export default async function TeamMemberPage({
             </div>
           </div>
 
-          {manageable ? (
+          {manageable || canMessage ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Link
-                href={`/team/${member.id}/edit`}
-                className={buttonClasses("outline", "md")}
-              >
-                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
-                Edit
-              </Link>
+              {canMessage ? (
+                <form action={openDirectMessage}>
+                  <input type="hidden" name="userId" value={member.id} />
+                  <button type="submit" className={buttonClasses("outline", "md")}>
+                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
+                    Message
+                  </button>
+                </form>
+              ) : null}
 
-              {!isSelf ? (
+              {manageable ? (
+                <Link
+                  href={`/team/${member.id}/edit`}
+                  className={buttonClasses("outline", "md")}
+                >
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                  Edit
+                </Link>
+              ) : null}
+
+              {manageable && !isSelf ? (
                 <form action={setTeamMemberActive}>
                   <input type="hidden" name="id" value={member.id} />
                   <input

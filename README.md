@@ -331,6 +331,15 @@ revenue.
 **Team** — roles and permissions, workload, hours, deactivation that preserves
 history.
 
+**Messages** — the office and the crew talking inside the app instead of across
+personal phones. One thread per pair of people however it is started, named
+group threads, web links that open, and an unread count on the sidebar that
+keeps itself current while the app is open. A thread is readable by the people
+in it and nobody else — the owner included — and it never leaves the business:
+mail to clients is a different system. Updates arrive by polling every few
+seconds while a thread is on screen, because neither deployment can hold a
+connection open.
+
 **Reports** — money in against money out over time, receivables ageing, spend by
 category and vendor, top services and clients, labor by person, lead-source
 performance, and CSV export. Spend is gated on the expenses permission, in the

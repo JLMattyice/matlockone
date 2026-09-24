@@ -91,6 +91,10 @@ partly paid, a payment recorded twice.
   payments, printable documents.
 - Team: roles and permissions, workload, hours, deactivation that preserves
   history.
+- Messages: team conversations inside the app, direct or group, with an
+  unread badge that follows you around the app. Internal only — nothing in a
+  thread is ever sent to a client — and readable by its members alone, the
+  owner included. New messages arrive by polling, not push.
 - Reports: revenue over time, receivables ageing, top services and clients,
   labor by person, lead-source performance, CSV export.
 - Global search across clients, leads, jobs, estimates and invoices, scoped to

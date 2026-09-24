@@ -10,6 +10,9 @@ export type NavItem = {
 
 export type NavGroup = { title: string; items: NavItem[] };
 
+/** The one nav item with a live count beside it: unread team messages. */
+export const MESSAGES_HREF = "/messages";
+
 export type OrgLabels = {
   jobSingular: string;
   jobPlural: string;
@@ -36,6 +39,7 @@ export type NavIcon =
   | "folder"
   | "tag"
   | "check-square"
+  | "message-square"
   | "settings";
 
 export const NAVIGATION: NavGroup[] = [
@@ -53,6 +57,12 @@ export const NAVIGATION: NavGroup[] = [
         label: "Tasks",
         icon: "check-square",
         permission: "tasks:read",
+      },
+      {
+        href: MESSAGES_HREF,
+        label: "Messages",
+        icon: "message-square",
+        permission: "messages:use",
       },
     ],
   },

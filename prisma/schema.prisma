@@ -113,6 +113,8 @@ model Organization {
   tasks          Task[]
   workflows      Workflow[]
   workflowRuns   WorkflowRun[]
+  conversations  Conversation[]
+  messages       Message[]
 }
 
 // ------------------------------------------------------------------- auth ---
@@ -161,6 +163,9 @@ model User {
   createdTasks     Task[]          @relation("TaskCreator")
   completedTasks   Task[]          @relation("TaskCompleter")
   createdWorkflows Workflow[]      @relation("WorkflowCreator")
+  conversations    ConversationMember[]
+  startedThreads   Conversation[]  @relation("ConversationCreator")
+  messages         Message[]       @relation("MessageAuthor")
 
   @@unique([organizationId, email])
   @@index([organizationId, isActive])
@@ -1121,4 +1126,90 @@ model WorkflowRun {
 
   @@unique([workflowId, entityType, entityId])
   @@index([organizationId, createdAt])
+}
+
+// --------------------------------------------------------------- messages ---
+
+/**
+ * A thread between teammates.
+ * Internal only. Mail and texts to clients are OutboxMessage; nothing written
+ * here ever leaves the business.
+ * DIRECT is two people and exactly one thread per pair. `directKey` is their
+ * two ids sorted and joined, unique per organization, so "message Priya"
+ * reopens the thread you already have rather than starting a second one next
+ * to it. That is enforced by the index, not by a lookup: two taps at once
+ * would both find nothing and both create. GROUP leaves the key null, and a
+ * business can have as many as it likes.
+ * Readable by its members and nobody else, the owner included. A technician
+ * who has to wonder whether the boss reads their messages to a colleague will
+ * go back to texting that colleague instead.
+ */
+model Conversation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// DIRECT | GROUP. Not an enum: the schema stays provider-neutral.
+  kind      String  @default("GROUP")
+  /// A group's name. Null on direct threads, and on groups nobody named —
+  /// both read as the names of the people in them.
+  title     String?
+  directKey String?
+
+  createdById String?
+  createdBy   User?   @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// Moved by every post, so the inbox sorts without reading every message.
+  lastMessageAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@unique([organizationId, directKey])
+  @@index([organizationId, lastMessageAt])
+}
+
+/**
+ * One person in one conversation, and how far they have read.
+ * Unread is "posted by somebody else after lastReadAt", worked out when asked
+ * rather than kept as a counter: a counter has to be incremented for every
+ * member on every post and drifts the first time one of those writes fails.
+ */
+model ConversationMember {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Null until they first open it, which makes everything in it unread.
+  lastReadAt DateTime?
+  joinedAt   DateTime  @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+/**
+ * Something one teammate said to others.
+ * The author is SetNull rather than Cascade: a thread with the departed
+ * person's half cut out of it reads as nonsense to everybody still in it.
+ */
+model Message {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String?
+  author         User?        @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  body String
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
 }

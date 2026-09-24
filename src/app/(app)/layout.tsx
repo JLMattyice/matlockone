@@ -2,6 +2,7 @@ import { LicenseBanner } from "@/components/app-shell/license-banner";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { Topbar } from "@/components/app-shell/topbar";
 import { requireContext } from "@/lib/auth";
+import { unreadMessageCount } from "@/lib/conversations";
 import { licenseState } from "@/lib/license/status";
 import { NAVIGATION, orgLabels, resolveNavigation } from "@/lib/navigation";
 import { can } from "@/lib/permissions";
@@ -24,6 +25,16 @@ export default async function AppLayout({
     orgLabels(org),
   );
 
+  // A badge is not worth a page. If the count cannot be read — a database
+  // that has not had the messages tables added yet, say — every screen still
+  // renders, just without the number.
+  const unreadMessages = can(user, "messages:use")
+    ? await unreadMessageCount(org.id, user.id).catch((error: unknown) => {
+        console.error("Could not count unread messages", error);
+        return 0;
+      })
+    : null;
+
   // The organization's saved colors become the CSS variables the whole design
   // system reads, so re-skinning for a prospect is a settings change.
   const brandRgb = hexToRgbChannels(org.primaryColor);
@@ -42,6 +53,7 @@ export default async function AppLayout({
           logoUrl: org.logoUrl,
           initials: initials(org.name) || "WS",
         }}
+        unreadMessages={unreadMessages}
       />
 
       <div className="lg:pl-64 print:pl-0">
