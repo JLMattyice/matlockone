@@ -8,6 +8,7 @@ import {
   CalendarClock,
   Clock,
   MapPin,
+  MessageSquare,
   Package,
   Paperclip,
   Pencil,
@@ -28,6 +29,7 @@ import {
   setJobStatus,
 } from "../actions";
 import { createInvoiceFromJob } from "../../invoices/actions";
+import { openJobChat } from "../../messages/actions";
 import { activeCrew, getJob, jobCostTotals, jobExpenses } from "../queries";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { NotesPanel } from "@/components/notes/notes-panel";
@@ -38,6 +40,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { EmptyState } from "@/components/ui/page-header";
+import { SubmitButton } from "@/components/ui/submit";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { getContext, requirePermission } from "@/lib/auth";
 import {
@@ -52,6 +55,8 @@ import {
   type ExpenseCategory,
   type JobStatus,
 } from "@/lib/constants";
+import { inboxStamp } from "@/lib/chat";
+import { jobThreadSummary } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
 import { currencySymbol, formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
@@ -94,6 +99,11 @@ export default async function JobDetailPage({
 
   // Fetched only when the role may see it, rather than fetched and hidden.
   const expenses = seesExpenses ? await jobExpenses(org.id, job.id) : null;
+
+  // The crew can talk about a job they cannot edit, so this is its own
+  // permission rather than riding on jobs:write.
+  const canChat = can(user, "messages:use");
+  const chat = canChat ? await jobThreadSummary(org.id, user, job.id) : null;
 
   const status = asStatus(JOB_STATUSES, job.status, "SCHEDULED") as JobStatus;
   const meta = JOB_STATUS_META[status];
@@ -158,16 +168,31 @@ export default async function JobDetailPage({
             ) : null}
           </div>
 
-          {writable ? (
+          {writable || canChat ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Link
-                href={`/jobs/${job.id}/edit`}
-                className={buttonClasses("outline", "md")}
-              >
-                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
-                Edit
-              </Link>
-              {can(user, "jobs:delete") ? (
+              {canChat ? (
+                <form action={openJobChat}>
+                  <input type="hidden" name="jobId" value={job.id} />
+                  {/* Starting a thread is a round trip; say so while it happens. */}
+                  <SubmitButton variant="outline" size="md" pendingLabel="Opening…">
+                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
+                    Chat
+                    {chat && chat.messageCount > 0 ? (
+                      <span className="tabular text-ink-subtle">{chat.messageCount}</span>
+                    ) : null}
+                  </SubmitButton>
+                </form>
+              ) : null}
+              {writable ? (
+                <Link
+                  href={`/jobs/${job.id}/edit`}
+                  className={buttonClasses("outline", "md")}
+                >
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                  Edit
+                </Link>
+              ) : null}
+              {writable && can(user, "jobs:delete") ? (
                 <form action={deleteJob}>
                   <input type="hidden" name="id" value={job.id} />
                   <ConfirmButton variant="ghost" size="md" confirmLabel="Delete?">
@@ -683,6 +708,57 @@ export default async function JobDetailPage({
               </ul>
             )}
           </Card>
+
+          {/* ------------------------------------------------------- chat --- */}
+          {canChat ? (
+            <Card className="overflow-hidden">
+              <CardHeader
+                title="Chat"
+                description={
+                  chat && chat.messageCount > 0
+                    ? `${chat.messageCount} message${chat.messageCount === 1 ? "" : "s"}`
+                    : "The office and the crew, about this job."
+                }
+              />
+              {chat && chat.recent.length > 0 ? (
+                <ul className="divide-y divide-line">
+                  {chat.recent.map((message) => (
+                    <li key={message.id} className="px-5 py-3">
+                      <p className="flex items-baseline justify-between gap-2 text-xs text-ink-subtle">
+                        <span className="truncate font-medium text-ink-muted">
+                          {message.author?.name ?? "Former teammate"}
+                        </span>
+                        <span className="tabular shrink-0">
+                          {inboxStamp(new Date(message.createdAt), org.timeZone)}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-sm text-ink">
+                        {message.body ||
+                          (message.photos.length === 1
+                            ? "Sent a photo"
+                            : `Sent ${message.photos.length} photos`)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="px-5 py-4 text-sm text-ink-muted">
+                  Nothing said yet. Photos sent in the chat are saved to this job.
+                </p>
+              )}
+              <form action={openJobChat} className="border-t border-line px-5 py-3">
+                <input type="hidden" name="jobId" value={job.id} />
+                <SubmitButton
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center"
+                  pendingLabel="Opening…"
+                >
+                  {chat ? "Open the chat" : "Start the chat"}
+                </SubmitButton>
+              </form>
+            </Card>
+          ) : null}
 
           {seesMoney ? (
             <Card>

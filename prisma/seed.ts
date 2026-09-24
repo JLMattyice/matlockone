@@ -986,9 +986,19 @@ async function main() {
   const [admin, tech1, tech2] = [staff[1], technicians[0], technicians[1]];
   const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
 
+  // A job on the go today gets its own conversation: the crew on it and the
+  // service manager, the way the office and a van actually talk about work.
+  const liveJob = await prisma.job.findFirst({
+    where: { organizationId: org.id, status: "IN_PROGRESS", assignments: { some: {} } },
+    orderBy: { scheduledStart: "desc" },
+    select: { id: true, assignments: { select: { userId: true }, orderBy: { assignedAt: "asc" } } },
+  });
+  const onSite = liveJob?.assignments[0]?.userId;
+
   const threads: {
-    kind: "DIRECT" | "GROUP";
+    kind: "DIRECT" | "GROUP" | "JOB";
     title?: string;
+    jobId?: string;
     members: string[];
     lines: [author: string, minutesAgo: number, body: string][];
     /** Per member: the minute they last read up to. Absent means all of it. */
@@ -1029,6 +1039,22 @@ async function main() {
         [admin.id, 2860, "Booked for next Tuesday and Wednesday. The estimate goes out today."],
       ],
     },
+    ...(liveJob && onSite
+      ? [
+          {
+            kind: "JOB" as const,
+            jobId: liveJob.id,
+            members: [...new Set([manager.id, ...liveJob.assignments.map((a) => a.userId)])],
+            lines: [
+              [manager.id, 95, "Customer says the unit trips the breaker when the compressor kicks on."] as [string, number, string],
+              [onSite, 40, "On site. Capacitor is swollen — swapping it now, I have one on the van."] as [string, number, string],
+              [manager.id, 37, "Great. Check the contactor while you're in there."] as [string, number, string],
+              [onSite, 8, "Contactor looks fine. Running clean for 20 minutes, no trips."] as [string, number, string],
+            ],
+            readTo: { [manager.id]: 37 },
+          },
+        ]
+      : []),
   ];
 
   for (const thread of threads) {
@@ -1040,6 +1066,7 @@ async function main() {
         title: thread.title ?? null,
         directKey:
           thread.kind === "DIRECT" ? [...thread.members].sort().join(":") : null,
+        jobId: thread.jobId ?? null,
         createdById: thread.lines[0][0],
         lastMessageAt: minutesAgo(last),
         createdAt: minutesAgo(Math.max(...thread.lines.map(([, minutes]) => minutes)) + 1),

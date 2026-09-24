@@ -16,6 +16,7 @@ import {
   type JobStatus,
 } from "@/lib/constants";
 import { record } from "@/lib/activity";
+import { joinJobThread } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
 import { parseMoneyToCents } from "@/lib/money";
 import { notify } from "@/lib/notifications";
@@ -350,6 +351,10 @@ export async function updateJob(
     actionUrl: `/jobs/${id}`,
   });
 
+  // Whoever was just put on the job gets its conversation in their inbox, with
+  // the history there to read but not counted against them as unread.
+  await joinJobThread({ organizationId: org.id, jobId: id, userIds: added });
+
   if (movedTo !== movedFrom) {
     await notify({
       organizationId: org.id,
@@ -510,8 +515,16 @@ export async function deleteJob(formData: FormData) {
     return;
   }
 
-  await prisma.job.deleteMany({ where: { id, organizationId: org.id } });
+  // The job's conversation goes with it. The foreign key says so too, but a
+  // desktop install that gained Conversation.jobId on upgrade got the column
+  // without the key — SQLite cannot add one to an existing table — so the
+  // thread would otherwise outlive its job there.
+  await prisma.$transaction([
+    prisma.conversation.deleteMany({ where: { jobId: id, organizationId: org.id } }),
+    prisma.job.deleteMany({ where: { id, organizationId: org.id } }),
+  ]);
   revalidatePath("/jobs");
+  revalidatePath("/messages", "layout");
   revalidatePath("/schedule");
   redirect("/jobs");
 }

@@ -59,10 +59,12 @@ function preview(row: InboxRow) {
   const last = row.lastMessage;
   if (!last) return "No messages yet";
 
-  const body = last.body.replace(/\s+/g, " ");
+  const photos =
+    last.photoCount === 1 ? "Sent a photo" : `Sent ${last.photoCount} photos`;
+  const body = last.body.replace(/\s+/g, " ") || (last.photoCount > 0 ? photos : "");
   if (last.mine) return `You: ${body}`;
   // In a direct thread the name on the row already says who wrote it.
-  if (row.kind === "GROUP") {
+  if (row.kind !== "DIRECT") {
     const first = last.authorName?.split(/\s+/)[0] ?? "Former teammate";
     return `${first}: ${body}`;
   }

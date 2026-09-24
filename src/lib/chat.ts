@@ -11,6 +11,8 @@ export const MESSAGE_MAX_LENGTH = 4000;
 export const GROUP_TITLE_MAX_LENGTH = 80;
 /** How many messages a thread opens on, and how many "earlier" loads at once. */
 export const THREAD_PAGE_SIZE = 50;
+/** Photos in one message: a walk-round of a job, not the whole camera roll. */
+export const MAX_PHOTOS_PER_MESSAGE = 6;
 
 /**
  * Raised on `window` when the sidebar's poll finds the unread count has moved,
@@ -20,10 +22,13 @@ export const UNREAD_CHANGED_EVENT = "matlock:unread-messages";
 
 export type MessageView = {
   id: string;
+  /** Empty when the message is only photos. */
   body: string;
   /** ISO string, because this crosses into client components and JSON alike. */
   createdAt: string;
   author: { id: string; name: string; avatarUrl: string | null } | null;
+  /** Job photos this message carried, served by /api/files/[id]. */
+  photos: { id: string; name: string }[];
 };
 
 /** Oldest first, and by id when two land in the same millisecond. */

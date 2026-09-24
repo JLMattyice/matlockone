@@ -36,15 +36,27 @@ export async function GET(
   }
   const beforeId = search.get("before");
 
-  const scope = { organizationId: ctx.org.id, userId: ctx.user.id, conversationId: id };
-  const thread = await threadMessages({ ...scope, after, beforeId });
+  const thread = await threadMessages({
+    organizationId: ctx.org.id,
+    viewer: ctx.user,
+    conversationId: id,
+    after,
+    beforeId,
+  });
   if (!thread) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   let markedRead = false;
   if (!beforeId) {
     const newest = thread.messages.at(-1)?.createdAt;
     const upTo = newest ? new Date(newest) : after;
-    if (upTo) markedRead = await markConversationRead({ ...scope, upTo });
+    if (upTo) {
+      markedRead = await markConversationRead({
+        organizationId: ctx.org.id,
+        userId: ctx.user.id,
+        conversationId: id,
+        upTo,
+      });
+    }
   }
 
   return NextResponse.json(

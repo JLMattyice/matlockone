@@ -14,7 +14,7 @@ export default async function MessagesLayout({
   children: React.ReactNode;
 }) {
   const { user, org } = await requirePermission("messages:use");
-  const rows = await listConversations(org.id, user.id);
+  const rows = await listConversations(org.id, user);
 
   return (
     <MessagesShell list={<ConversationList rows={rows} timeZone={org.timeZone} />}>
