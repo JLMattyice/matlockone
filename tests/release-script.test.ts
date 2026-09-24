@@ -268,15 +268,19 @@ describe("npm run release", { timeout: 60_000 }, () => {
     expect(git(work, "status", "--porcelain")).toBe("");
   });
 
-  it("refuses uncommitted changes, and names them", () => {
+  it("refuses uncommitted changes, and names them as git does", () => {
     const { work } = sandbox();
+    fs.writeFileSync(path.join(work, "tasks.txt"), "changed\n");
     fs.writeFileSync(path.join(work, "half-done.ts"), "export {}\n");
 
     const result = release(work, "patch", "\n0.3.1\n");
 
     expect(result.code).toBe(1);
     expect(result.err).toContain("uncommitted changes");
-    expect(result.err).toContain("half-done.ts");
+    // Four spaces of indent, then git's own " M": changed, not staged. With
+    // that space trimmed away the first line reads "M ", which is staged.
+    expect(result.err).toMatch(/^ {4} M tasks\.txt$/m);
+    expect(result.err).toMatch(/^ {4}\?\? half-done\.ts$/m);
   });
 
   it("refuses a version that already exists on GitHub", () => {

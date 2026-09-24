@@ -46,11 +46,15 @@ function fail(message, detail = []) {
   process.exit(1);
 }
 
-function git(args, { allowFailure = false } = {}) {
+function git(args, { allowFailure = false, keepIndent = false } = {}) {
   const result = spawnSync("git", args, { encoding: "utf8" });
   if (result.error) fail(`could not run git: ${result.error.message}`);
 
-  const out = (result.stdout ?? "").trim();
+  // keepIndent for output whose leading spaces mean something: in
+  // `status --porcelain`, " M" is changed-but-not-staged and "M " is staged,
+  // so trimming the first line would misreport it.
+  const raw = result.stdout ?? "";
+  const out = keepIndent ? raw.replace(/\s+$/, "") : raw.trim();
   const err = (result.stderr ?? "").trim();
 
   if (result.status !== 0 && !allowFailure) {
@@ -109,7 +113,7 @@ if (branch !== BRANCH) {
 // Refused rather than ignored. The release is built from commits, but the
 // checks below run against the working tree — so with uncommitted changes they
 // would pass or fail on files that are not going out.
-const dirty = git(["status", "--porcelain"]).out;
+const dirty = git(["status", "--porcelain"], { keepIndent: true }).out;
 if (dirty) {
   const files = dirty.split("\n");
   fail("there are uncommitted changes. Commit or stash them first:", [
