@@ -33,10 +33,13 @@ export type AutomationRow = {
 export function AutomationsForm({
   automations,
   raised,
+  automatic,
   readOnly,
 }: {
   automations: AutomationRow[];
   raised: number;
+  /** Whether this deployment runs the date-based check every morning itself. */
+  automatic: boolean;
   readOnly: boolean;
 }) {
   const [sweepState, runSweep] = useActionState<ActionState, FormData>(
@@ -66,7 +69,14 @@ export function AutomationsForm({
         <Card>
           <CardHeader
             title="Check now"
-            description="Two of these wait for a date to pass rather than for something to happen. Nothing in Matlock One wakes up on its own, so this is where that check runs."
+            description={
+              // Says which is true here. On the hosted app the check runs each
+              // morning; on a desktop install nothing wakes up by itself, and
+              // claiming otherwise would leave overdue invoices unchased.
+              automatic
+                ? "Two of these wait for a date to pass rather than for something to happen. They are checked every morning by themselves; this runs the same check now."
+                : "Two of these wait for a date to pass rather than for something to happen. Nothing in Matlock One wakes up on its own, so this is where that check runs."
+            }
           />
 
           <CardBody>

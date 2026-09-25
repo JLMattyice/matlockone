@@ -289,6 +289,44 @@ async function sweepIdleClients(
   return created;
 }
 
+/**
+ * The sweep for every business that has something to sweep for — what the
+ * morning schedule runs.
+ *
+ * Businesses are taken one at a time and each is its own attempt. One whose
+ * sweep fails is named in the result and logged, and the rest still get
+ * theirs: a single bad record in one business must not mean nobody's overdue
+ * invoices are chased that day.
+ */
+export async function sweepEveryBusiness(): Promise<{
+  businesses: number;
+  created: number;
+  failed: string[];
+}> {
+  const scheduled = WORKFLOW_TEMPLATES.filter(isScheduled).map((template) => template.id);
+
+  const rows = await prisma.workflow.findMany({
+    where: { isActive: true, templateId: { in: scheduled } },
+    select: { organizationId: true },
+    distinct: ["organizationId"],
+  });
+
+  let created = 0;
+  const failed: string[] = [];
+
+  for (const { organizationId } of rows) {
+    try {
+      const outcomes = await sweep(organizationId);
+      created += outcomes.reduce((total, outcome) => total + outcome.created.length, 0);
+    } catch (error) {
+      failed.push(organizationId);
+      console.error(`[automations] the sweep failed for organization ${organizationId}`, error);
+    }
+  }
+
+  return { businesses: rows.length, created, failed };
+}
+
 // ------------------------------------------------------------------ screen ---
 
 /** Every automation with whether this business has turned it on. */

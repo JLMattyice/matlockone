@@ -77,6 +77,10 @@ APP_URL="https://app.example.com"
 # redeploy; everyone else is added under Team.
 ALLOW_SIGNUP="false"
 
+# Lets Vercel's morning call run the automations — see Automations below.
+# Generate the same way as SESSION_SECRET.
+CRON_SECRET="..."
+
 # File storage — Supabase Storage over the S3 protocol.
 STORAGE_PROVIDER="s3"
 S3_BUCKET="..."
@@ -193,6 +197,30 @@ walkthroughs.
 
 Without this, the deployment has no users at all, and `isFirstRun()` sends
 every route to `/signup` — including the `/login` the landing page points at.
+
+## Automations
+
+Two of the automations wait for a date rather than an event: chasing an
+invoice some days past due, and checking in on a customer who has gone quiet.
+Nothing in a serverless deployment wakes up on its own, so `vercel.json`
+schedules a call to `/api/cron/automations` at 11:00 UTC every day — early
+morning across the US — which sweeps every business that has one of them on.
+
+It needs `CRON_SECRET`. Vercel sends it with the call as a bearer token and the
+route refuses anything without it, because an address anybody can hit that
+makes the database walk every business is a way to slow it down for everyone.
+Without the variable the route answers 503, the boot log carries a warning,
+and the Automations screen goes on telling people to press Check now — which
+still works, and which is how a desktop install runs them every time.
+
+Repeat calls are harmless. Each automation fires once per invoice or customer
+however often it runs, so a retried or doubled call raises nothing new. Each
+business is swept separately, and one that fails is logged and skipped rather
+than stopping the run for the rest.
+
+Vercel's Hobby plan runs a daily job once a day, somewhere within the hour it
+is scheduled for. The screen's "Last checked" line on each automation is the
+record that it ran.
 
 ## Abuse limits
 

@@ -114,6 +114,23 @@ export function dataStaysOnThisMachine(env: ConfigEnv = process.env): boolean {
   }
 }
 
+/** Vercel's own guidance for the secret it sends with a scheduled call. */
+export const MIN_CRON_SECRET = 16;
+
+/**
+ * Whether the automations that wait for a date run by themselves here.
+ *
+ * Only on Vercel, which calls /api/cron/automations every morning as vercel.json
+ * asks, and only with CRON_SECRET set: Vercel sends it with that call, and the
+ * route refuses anything without it. Everywhere else — every desktop install
+ * included — those automations run when somebody presses Check now.
+ */
+export function sweepsAutomatically(env: ConfigEnv = process.env): boolean {
+  return (
+    Boolean(env.VERCEL) && (env.CRON_SECRET?.trim().length ?? 0) >= MIN_CRON_SECRET
+  );
+}
+
 /**
  * Everything wrong with this deployment's configuration.
  *
@@ -186,6 +203,21 @@ export function configProblems(env: ConfigEnv = process.env): ConfigProblem[] {
         "Storage is local disk, but this is Vercel, whose filesystem is read-only\n" +
         "  and per-invocation. Uploads would appear to succeed and be lost.\n" +
         "  Set STORAGE_PROVIDER=s3 or vercel-blob.",
+    });
+  }
+
+  // The morning run is the only way two of the automations happen by
+  // themselves. Without the secret the route turns Vercel's own call away, and
+  // nothing a person looks at would say so: the screen just keeps waiting for
+  // somebody to press Check now.
+  if (env.VERCEL && !sweepsAutomatically(env)) {
+    problems.push({
+      level: "warning",
+      setting: "CRON_SECRET",
+      message:
+        `CRON_SECRET is not set, or is shorter than ${MIN_CRON_SECRET} characters. The morning\n` +
+        "  automation run is refused, so overdue invoices and quiet customers only\n" +
+        "  raise their tasks when somebody presses Check now.",
     });
   }
 

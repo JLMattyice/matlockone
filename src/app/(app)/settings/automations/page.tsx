@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { AutomationsForm } from "./automations-form";
 import { requirePermission } from "@/lib/auth";
+import { sweepsAutomatically } from "@/lib/config";
 import { can } from "@/lib/permissions";
 import { workflowRunCount, workflowSettings } from "@/lib/workflows/run";
 
@@ -27,6 +28,7 @@ export default async function AutomationsPage() {
         lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
       }))}
       raised={raised}
+      automatic={sweepsAutomatically()}
       readOnly={!can(user, "settings:write")}
     />
   );
