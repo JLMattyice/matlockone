@@ -126,6 +126,83 @@ export async function record(input: ActivityInput): Promise<void> {
   }
 }
 
+// ------------------------------------------------------ what gets recorded ---
+
+/**
+ * Notes and files hang off the same kinds of record, which their own modules
+ * name in lower case. Five of those have a timeline. An expense has none, so
+ * a note or a receipt on one is not news anywhere.
+ */
+const TIMELINE_FOR: Record<string, ActivityEntity> = {
+  client: "CLIENT",
+  lead: "LEAD",
+  job: "JOB",
+  estimate: "ESTIMATE",
+  invoice: "INVOICE",
+};
+
+/** The timeline a note or an upload on this kind of record belongs on. */
+export function timelineFor(recordKind: string): ActivityEntity | null {
+  return TIMELINE_FOR[recordKind] ?? null;
+}
+
+/**
+ * The start of a note, as its timeline line quotes it.
+ *
+ * Long enough to tell which note it was, short enough that the timeline stays
+ * a list of what happened rather than a second copy of the notes. Cut at a
+ * word when there is one close to the limit.
+ */
+export function noteExcerpt(body: string, max = 80): string {
+  const flat = body.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+
+  const cut = flat.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * The line for one batch of uploads.
+ *
+ * One line per batch, not per file: ten photos from one visit are one thing
+ * that happened. Counted and captioned rather than named, because a phone
+ * calls its photos IMG_4032.jpg and the caption is what a person wrote. A
+ * "document" upload says "file", since an image sent that way is filed as a
+ * photo.
+ */
+export function uploadSummary(
+  count: number,
+  kind: string,
+  caption?: string | null,
+): string {
+  const noun = kind === "PHOTO" ? "photo" : kind === "CONTRACT" ? "contract" : "file";
+  const what = count === 1 ? `a ${noun}` : `${count} ${noun}s`;
+  const said = caption?.trim();
+  return `Added ${what}${said ? ` — ${said}` : ""}`;
+}
+
+/**
+ * Takes a deleted note's line off the timeline.
+ *
+ * The one place the timeline is allowed to change behind you, and on purpose.
+ * Its line quotes the note, and a note deleted because it should never have
+ * been written must not live on as a quotation of itself.
+ */
+export async function forgetNote(organizationId: string, noteId: string): Promise<void> {
+  try {
+    await prisma.auditLog.deleteMany({
+      where: {
+        organizationId,
+        action: "note.added",
+        metadata: { contains: `"noteId":"${noteId}"` },
+      },
+    });
+  } catch {
+    // As with record(): the note is gone, which is what was asked for.
+  }
+}
+
 export type ActivityEvent = {
   id: string;
   action: string;
@@ -210,6 +287,35 @@ export function hiddenActions(actor: Actor): ActivityAction[] {
   return hidden;
 }
 
+/**
+ * Whole kinds of record a person may not see events about.
+ *
+ * hiddenActions() hides the events that are about money by name. A note or an
+ * upload is neither — but a note on an invoice is the invoice's business, so
+ * whatever is filed against a record is hidden along with it.
+ */
+export function hiddenEntities(actor: Actor): ActivityEntity[] {
+  const hidden: ActivityEntity[] = [];
+
+  if (!can(actor, "estimates:read")) hidden.push("ESTIMATE");
+  if (!can(actor, "invoices:read")) hidden.push("INVOICE");
+  if (!can(actor, "payments:read")) hidden.push("PAYMENT");
+  if (!can(actor, "leads:read")) hidden.push("LEAD");
+
+  return hidden;
+}
+
+/** Both filters, as the part of a query that applies them. */
+function visibleTo(viewer: Actor) {
+  const actions = hiddenActions(viewer);
+  const entities = hiddenEntities(viewer);
+
+  return {
+    ...(actions.length ? { action: { notIn: actions } } : {}),
+    ...(entities.length ? { entityType: { notIn: entities } } : {}),
+  };
+}
+
 type EntityRef = { entityType: ActivityEntity; entityId: string };
 
 async function eventsFor(
@@ -220,8 +326,6 @@ async function eventsFor(
 ): Promise<ActivityEvent[]> {
   if (refs.length === 0) return [];
 
-  const hidden = hiddenActions(viewer);
-
   const rows = await prisma.auditLog.findMany({
     where: {
       organizationId,
@@ -229,7 +333,7 @@ async function eventsFor(
         entityType: ref.entityType,
         entityId: ref.entityId,
       })),
-      ...(hidden.length ? { action: { notIn: hidden } } : {}),
+      ...visibleTo(viewer),
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -298,19 +402,42 @@ export async function clientTimeline(
   return eventsFor(organizationId, refs, limit, viewer);
 }
 
-/** Everything that has happened to one job. */
+/**
+ * Everything that has happened to one job.
+ *
+ * For somebody who may see the business's money, that includes the estimate
+ * the job was won from and the invoices raised against it: a job's story does
+ * not stop at its own row, any more than a client's does. For the crew it is
+ * the job itself — what was booked, what changed, what was noted, photographed
+ * and finished — which is everything the job page already shows them.
+ */
 export async function jobTimeline(
   organizationId: string,
   jobId: string,
   viewer: Actor,
   limit = 30,
 ): Promise<ActivityEvent[]> {
-  return eventsFor(
-    organizationId,
-    [{ entityType: "JOB", entityId: jobId }],
-    limit,
-    viewer,
-  );
+  const refs: EntityRef[] = [{ entityType: "JOB", entityId: jobId }];
+
+  if (canSeeBusinessActivity(viewer)) {
+    const [estimates, invoices] = await Promise.all([
+      prisma.estimate.findMany({
+        where: { organizationId, convertedJobId: jobId },
+        select: { id: true },
+      }),
+      prisma.invoice.findMany({
+        where: { organizationId, jobId },
+        select: { id: true },
+      }),
+    ]);
+
+    refs.push(
+      ...estimates.map((e) => ({ entityType: "ESTIMATE" as const, entityId: e.id })),
+      ...invoices.map((i) => ({ entityType: "INVOICE" as const, entityId: i.id })),
+    );
+  }
+
+  return eventsFor(organizationId, refs, limit, viewer);
 }
 
 /** The whole workspace, newest first — what the business did this week. */
@@ -319,12 +446,10 @@ export async function recentActivity(
   viewer: Actor,
   limit = 20,
 ): Promise<ActivityEvent[]> {
-  const hidden = hiddenActions(viewer);
-
   const rows = await prisma.auditLog.findMany({
     where: {
       organizationId,
-      ...(hidden.length ? { action: { notIn: hidden } } : {}),
+      ...visibleTo(viewer),
     },
     orderBy: { createdAt: "desc" },
     take: limit,

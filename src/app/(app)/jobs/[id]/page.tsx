@@ -31,6 +31,7 @@ import { createInvoiceFromJob } from "../../invoices/actions";
 import { activeCrew, getJob, jobCostTotals, jobExpenses } from "../queries";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { NotesPanel } from "@/components/notes/notes-panel";
+import { JobActivity } from "@/components/activity/job-activity";
 import { TaskList } from "@/components/tasks/task-list";
 import { tasksFor } from "@/app/(app)/tasks/queries";
 import { Badge } from "@/components/ui/badge";
@@ -559,6 +560,14 @@ export default async function JobDetailPage({
               placeholder="What happened, and what still needs doing?"
             />
           </Card>
+
+          {/* -------------------------------------------------- activity --- */}
+          <JobActivity
+            organizationId={org.id}
+            jobId={job.id}
+            viewer={user}
+            jobLabel={org.labelJobSingular}
+          />
         </div>
 
         {/* ------------------------------------------------------ sidebar --- */}

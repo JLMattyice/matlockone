@@ -7,10 +7,14 @@ import {
   canSeeBusinessActivity,
   clientTimeline,
   hiddenActions,
+  hiddenEntities,
   groupByDay,
   jobTimeline,
+  noteExcerpt,
   record,
   recentActivity,
+  timelineFor,
+  uploadSummary,
   type ActivityEvent,
 } from "@/lib/activity";
 import { prisma } from "@/lib/db";
@@ -378,5 +382,116 @@ describe("who may read the timeline", () => {
     // The same filter on the business-wide feed.
     const recentForTech = await recentActivity(organizationId, TECH, 10);
     expect(recentForTech.some((e) => e.action === "payment.recorded")).toBe(false);
+  });
+});
+
+describe("what the new events say", () => {
+  it("quotes a short note whole, on one line", () => {
+    expect(noteExcerpt("  Gate code\n\n4417  ")).toBe("Gate code 4417");
+  });
+
+  it("cuts a long note at a word, and a note with no words to cut at anyway", () => {
+    const long = "word ".repeat(30);
+    expect(noteExcerpt(long)).toMatch(/^(word ){15}word…$/);
+    expect(noteExcerpt("x".repeat(120))).toBe(`${"x".repeat(80)}…`);
+  });
+
+  it("counts a batch of uploads and uses its caption", () => {
+    expect(uploadSummary(1, "PHOTO", null)).toBe("Added a photo");
+    expect(uploadSummary(4, "PHOTO", " After ")).toBe("Added 4 photos — After");
+    expect(uploadSummary(1, "CONTRACT")).toBe("Added a contract");
+    // Sent as a document, an image is filed as a photo, so "document" could
+    // be wrong. "File" never is.
+    expect(uploadSummary(2, "DOCUMENT")).toBe("Added 2 files");
+  });
+
+  it("files notes and uploads on the timeline of the record they are on", () => {
+    expect(timelineFor("job")).toBe("JOB");
+    expect(timelineFor("invoice")).toBe("INVOICE");
+    // An expense has no timeline anywhere, so nothing is recorded for it.
+    expect(timelineFor("expense")).toBeNull();
+  });
+});
+
+describe("what is filed against a record the viewer cannot open", () => {
+  it("is hidden by the record's kind, not only by the event's name", () => {
+    expect(hiddenEntities(OWNER)).toEqual([]);
+    expect(hiddenEntities(TECH)).toEqual(
+      expect.arrayContaining(["ESTIMATE", "INVOICE", "PAYMENT", "LEAD"]),
+    );
+  });
+
+  it("keeps a note on an invoice from a technician, even through a query that asks", async () => {
+    // recentActivity is gated to managers on screen. This is the query itself
+    // refusing, for the day a caller forgets that gate.
+    await record({
+      organizationId,
+      userId,
+      action: "note.added",
+      entityType: "INVOICE",
+      entityId: randomUUID(),
+      summary: "Note — Agreed a 10% discount if paid this week",
+    });
+    await record({
+      organizationId,
+      userId,
+      action: "note.added",
+      entityType: "CLIENT",
+      entityId: clientId,
+      summary: "Note — Prefers texts to calls",
+    });
+
+    const asTech = (await recentActivity(organizationId, TECH)).map((e) => e.summary);
+    expect(asTech).toContain("Note — Prefers texts to calls");
+    expect(asTech).not.toContain("Note — Agreed a 10% discount if paid this week");
+
+    const asOwner = (await recentActivity(organizationId, OWNER)).map((e) => e.summary);
+    expect(asOwner).toContain("Note — Agreed a 10% discount if paid this week");
+  });
+});
+
+describe("a job's timeline, by who is reading", () => {
+  it("includes the estimate it was won from, for somebody who may see it", async () => {
+    const job = await prisma.job.create({
+      data: { organizationId, clientId, number: "JOB-9", title: "Boiler service" },
+    });
+    const estimate = await prisma.estimate.create({
+      data: {
+        organizationId,
+        clientId,
+        number: "EST-9",
+        status: "ACCEPTED",
+        issueDate: new Date(),
+        subtotalCents: 40_000,
+        totalCents: 40_000,
+        convertedJobId: job.id,
+      },
+    });
+
+    await record({
+      organizationId,
+      userId,
+      action: "estimate.accepted",
+      entityType: "ESTIMATE",
+      entityId: estimate.id,
+      summary: "Estimate EST-9 accepted",
+    });
+    await record({
+      organizationId,
+      userId,
+      action: "job.created",
+      entityType: "JOB",
+      entityId: job.id,
+      summary: "Job created — Boiler service",
+    });
+
+    // Sorted: two lines written in the same millisecond may come back either way.
+    expect((await jobTimeline(organizationId, job.id, OWNER)).map((e) => e.summary).sort()).toEqual([
+      "Estimate EST-9 accepted",
+      "Job created — Boiler service",
+    ]);
+    expect((await jobTimeline(organizationId, job.id, TECH)).map((e) => e.summary)).toEqual([
+      "Job created — Boiler service",
+    ]);
   });
 });

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { failed, invalid, saved, type ActionState } from "@/lib/action-state";
+import { forgetNote, noteExcerpt, record, timelineFor } from "@/lib/activity";
 import { requireContext } from "@/lib/auth";
 import { NOTE_VISIBILITIES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
@@ -86,7 +87,7 @@ export async function addNote(
     return failed("That record no longer exists.");
   }
 
-  await prisma.note.create({
+  const note = await prisma.note.create({
     data: {
       organizationId: org.id,
       body,
@@ -95,6 +96,20 @@ export async function addNote(
       [NOTE_ENTITIES[entityType].column]: entityId,
     },
   });
+
+  // The note's id rides along so deleting the note can take this line too.
+  const timeline = timelineFor(entityType);
+  if (timeline) {
+    await record({
+      organizationId: org.id,
+      userId: user.id,
+      action: "note.added",
+      entityType: timeline,
+      entityId,
+      summary: `Note — ${noteExcerpt(body)}`,
+      metadata: { noteId: note.id },
+    });
+  }
 
   revalidatePath(NOTE_ENTITIES[entityType].path(entityId));
   return saved("Note added.");
@@ -120,6 +135,7 @@ export async function deleteNote(formData: FormData) {
   if (!isAuthor && !can(user, "clients:write")) return;
 
   await prisma.note.deleteMany({ where: { id, organizationId: org.id } });
+  await forgetNote(org.id, id);
   revalidatePath(NOTE_ENTITIES[entityType].path(entityId));
 }
 

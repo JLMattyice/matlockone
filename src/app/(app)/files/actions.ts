@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { failed, saved, text, type ActionState } from "@/lib/action-state";
+import { record, timelineFor, uploadSummary } from "@/lib/activity";
 import {
   ATTACHMENT_ENTITIES,
   isAttachmentEntityType,
@@ -97,6 +98,8 @@ export async function uploadAttachment(
 
   revalidatePath(ATTACHMENT_ENTITIES[entityType].path(entityId));
   revalidatePath("/files");
+
+  await recordUploads(org.id, user.id, entityType, entityId, stored, kind, caption);
 
   if (stored === 0) {
     return failed(problems[0] ?? "Nothing was uploaded.");
@@ -233,6 +236,10 @@ export async function confirmUploads(
   }
   revalidatePath("/files");
 
+  if (entityType) {
+    await recordUploads(org.id, user.id, entityType, entityId, stored, kind, caption);
+  }
+
   if (stored === 0) return failed(problems[0] ?? "Nothing was uploaded.");
 
   return saved(
@@ -311,4 +318,31 @@ export async function updateAttachment(formData: FormData) {
     revalidatePath(ATTACHMENT_ENTITIES[entityType].path(entityId));
   }
   revalidatePath("/files");
+}
+
+/**
+ * One timeline line for a batch that stored anything, on the record it went
+ * to — both upload paths end here, so the two cannot describe the same upload
+ * differently.
+ */
+async function recordUploads(
+  organizationId: string,
+  userId: string,
+  entityType: AttachmentEntityType,
+  entityId: string,
+  stored: number,
+  kind: AttachmentKind,
+  caption: string | null,
+) {
+  const timeline = timelineFor(entityType);
+  if (!timeline || stored === 0) return;
+
+  await record({
+    organizationId,
+    userId,
+    action: "file.uploaded",
+    entityType: timeline,
+    entityId,
+    summary: uploadSummary(stored, kind, caption),
+  });
 }

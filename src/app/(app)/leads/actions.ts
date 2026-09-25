@@ -5,8 +5,15 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
+import { record } from "@/lib/activity";
 import { requirePermission } from "@/lib/auth";
-import { LEAD_SOURCES, LEAD_STATUSES, type LeadStatus } from "@/lib/constants";
+import {
+  LEAD_SOURCE_LABELS,
+  LEAD_SOURCES,
+  LEAD_STATUSES,
+  type LeadSource,
+  type LeadStatus,
+} from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { parseMoneyToCents } from "@/lib/money";
 
@@ -245,6 +252,21 @@ export async function convertLeadToClient(formData: FormData) {
     });
 
     return created;
+  });
+
+  // Filed on the new client, whose timeline starts here. A separate "client
+  // added" line would say the same thing twice.
+  const source = LEAD_SOURCES.includes(lead.source as LeadSource)
+    ? LEAD_SOURCE_LABELS[lead.source as LeadSource]
+    : null;
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "lead.converted",
+    entityType: "CLIENT",
+    entityId: client.id,
+    summary: `Won from a ${org.labelLeadSingular.toLowerCase()}${source ? ` (${source})` : ""}`,
+    metadata: { leadId: lead.id },
   });
 
   revalidatePath("/leads");
