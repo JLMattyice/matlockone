@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
+import { shareAllowed, shareMissed } from "@/lib/share-guard";
 
 /**
  * The public invoice link is read-only: a client can look at it and print it,
@@ -12,11 +13,18 @@ import { prisma } from "@/lib/db";
 export async function markInvoiceViewed(token: string) {
   if (!token) return;
 
+  // A server action is callable with any token, not only from the page, so it
+  // carries the same limit as the page does.
+  if (!(await shareAllowed()).ok) return;
+
   const invoice = await prisma.invoice.findUnique({
     where: { publicToken: token },
     select: { id: true, status: true, viewedAt: true },
   });
-  if (!invoice) return;
+  if (!invoice) {
+    await shareMissed();
+    return;
+  }
 
   // Only the first open, and only for an invoice that has actually been sent.
   if (invoice.viewedAt || invoice.status !== "SENT") return;

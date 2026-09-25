@@ -5,6 +5,7 @@ import { createCheckoutSession } from "@/lib/payments/clover";
 import { canTakePayment } from "@/lib/payments/link";
 import { hit, PAY_REDIRECT_PER_INVOICE } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
+import { shareAllowed, shareMissed } from "@/lib/share-guard";
 
 /**
  * Sends a client on to a payment page that has to be made at the last moment.
@@ -50,6 +51,10 @@ export async function GET(
   // Matlock One hammer somebody's merchant account. Keyed on the token rather
   // than the caller: the caller is unauthenticated and can come from anywhere,
   // while the thing being abused is the one invoice.
+  // The address first: one that has tried too many links that do not exist
+  // is turned away before this token costs a row of its own.
+  if (!(await shareAllowed()).ok) return back(origin, token, "too-many");
+
   const allowed = await hit(`pay:invoice:${token}`, PAY_REDIRECT_PER_INVOICE);
   if (!allowed.ok) return back(origin, token, "too-many");
 
@@ -68,7 +73,10 @@ export async function GET(
 
   // The same silence as the page above: an unknown token says nothing about
   // whether an invoice exists.
-  if (!invoice) return back(origin, token, "unavailable");
+  if (!invoice) {
+    await shareMissed();
+    return back(origin, token, "unavailable");
+  }
 
   // A draft was never issued, a cancelled invoice is not owed, and a settled
   // one must not take a second payment.

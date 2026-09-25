@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
+import { retryAfterPhrase } from "@/lib/rate-limit";
+import { shareAllowed, shareMissed } from "@/lib/share-guard";
 
 /**
  * Actions on the public estimate link.
@@ -17,11 +19,18 @@ import { effectiveEstimateStatus } from "@/lib/documents";
 export async function markEstimateViewed(token: string) {
   if (!token) return;
 
+  // A server action is callable with any token, not only from the page, so it
+  // carries the same limit as the page does.
+  if (!(await shareAllowed()).ok) return;
+
   const estimate = await prisma.estimate.findUnique({
     where: { publicToken: token },
     select: { id: true, status: true, viewedAt: true, expiresAt: true },
   });
-  if (!estimate) return;
+  if (!estimate) {
+    await shareMissed();
+    return;
+  }
 
   // Only the first open counts, and only for an estimate that is actually out
   // for a decision — reopening an accepted quote must not reset its status.
@@ -46,11 +55,22 @@ export async function respondToEstimate(
 ): Promise<RespondResult> {
   if (!token) return { ok: false, error: "This link is no longer valid." };
 
+  const allowed = await shareAllowed();
+  if (!allowed.ok) {
+    return {
+      ok: false,
+      error: `Too many links that don’t exist have been tried from your network. Try again ${retryAfterPhrase(allowed.retryAfterSeconds)}.`,
+    };
+  }
+
   const estimate = await prisma.estimate.findUnique({
     where: { publicToken: token },
     select: { id: true, status: true, expiresAt: true },
   });
-  if (!estimate) return { ok: false, error: "This link is no longer valid." };
+  if (!estimate) {
+    await shareMissed();
+    return { ok: false, error: "This link is no longer valid." };
+  }
 
   const status = effectiveEstimateStatus(estimate);
 

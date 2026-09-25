@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { AlertTriangle, Ban, Check, Clock } from "lucide-react";
 
 import { MarkViewed } from "./mark-viewed";
+import { ShareRefused } from "../../refused";
 import { getInvoiceByToken } from "@/app/(app)/invoices/queries";
 import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/constants";
 import { effectiveInvoiceStatus } from "@/lib/documents";
 import { formatMoney } from "@/lib/money";
+import { shareAllowed, shareMissed } from "@/lib/share-guard";
 import { hexToRgbChannels } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -31,9 +33,17 @@ export default async function PublicInvoicePage({
 }) {
   const { token } = await params;
   const { pay } = await searchParams;
+  // Before the lookup, so an address that has tried too many links that do
+  // not exist gets no answer about this one either.
+  const allowed = await shareAllowed();
+  if (!allowed.ok) return <ShareRefused retryAfterSeconds={allowed.retryAfterSeconds} />;
+
   const invoice = await getInvoiceByToken(token);
 
-  if (!invoice) notFound();
+  if (!invoice) {
+    await shareMissed();
+    notFound();
+  }
 
   const org = invoice.organization;
   const status = effectiveInvoiceStatus(invoice);

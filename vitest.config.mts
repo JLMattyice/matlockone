@@ -5,6 +5,10 @@ import { defineConfig } from "vitest/config";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  // tsconfig says "preserve", because Next compiles the JSX itself. The test
+  // runner has no Next in front of it, so it is told to compile JSX the way
+  // React 19 does — which is what lets a test render a page or a component.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       "@": path.resolve(root, "src"),

@@ -77,6 +77,31 @@ export const SIGNUP_PER_IP: RateLimitRule = { limit: 5, windowSeconds: HOUR };
 export const PAY_REDIRECT_PER_INVOICE: RateLimitRule = { limit: 20, windowSeconds: HOUR };
 
 /**
+ * Checking the current password before a password change, per account.
+ *
+ * The one place a signed-in session can test a password. Somebody holding a
+ * stolen session could otherwise try the real password as fast as the form
+ * posts, and a right guess lets them set a new one and lock the owner out of
+ * their own account. Five in fifteen minutes is more mistyping than anybody
+ * does.
+ */
+export const PASSWORD_CHECK_PER_USER: RateLimitRule = { limit: 5, windowSeconds: 15 * MINUTE };
+
+/**
+ * Share links that do not exist, per source address.
+ *
+ * A share link is the only credential its page has, and nothing slowed
+ * somebody working through guesses at one. A client opens a real link, so only
+ * misses are counted: a genuine link can be opened as often as anybody likes.
+ * An address past the limit is refused every link, genuine ones included, so a
+ * guesser cannot tell a hit from a miss by whether they were let in.
+ *
+ * Thirty is far more mistyped links than a person produces in an hour, and far
+ * fewer guesses than a search needs.
+ */
+export const SHARE_MISSES_PER_IP: RateLimitRule = { limit: 30, windowSeconds: HOUR };
+
+/**
  * Counts one attempt against a key.
  *
  * Returns whether it is allowed *after* counting: the attempt that trips the
@@ -127,6 +152,32 @@ export async function hit(
   }
 
   return { ok: true, remaining: rule.limit - count, retryAfterSeconds: 0 };
+}
+
+/**
+ * Whether a key has used up its window, without counting this as an attempt.
+ *
+ * For the limits that count only failures. A share link counts a miss, but an
+ * address that has already missed too often must be turned away before the
+ * link is even looked up — otherwise its next guess is still a real check.
+ */
+export async function peek(key: string, rule: RateLimitRule): Promise<RateLimitVerdict> {
+  const existing = await prisma.rateLimit.findUnique({ where: { key } });
+  const now = Date.now();
+
+  if (!existing || existing.windowEnd.getTime() <= now) {
+    return { ok: true, remaining: rule.limit, retryAfterSeconds: 0 };
+  }
+
+  if (existing.count < rule.limit) {
+    return { ok: true, remaining: rule.limit - existing.count, retryAfterSeconds: 0 };
+  }
+
+  return {
+    ok: false,
+    remaining: 0,
+    retryAfterSeconds: Math.max(1, Math.ceil((existing.windowEnd.getTime() - now) / 1000)),
+  };
 }
 
 /**

@@ -4,10 +4,12 @@ import { format } from "date-fns";
 import { Check, Clock, X } from "lucide-react";
 
 import { MarkViewed, RespondPanel } from "./respond";
+import { ShareRefused } from "../../refused";
 import { getEstimateByToken } from "@/app/(app)/estimates/queries";
 import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
 import { effectiveEstimateStatus, isEstimateOpen } from "@/lib/documents";
+import { shareAllowed, shareMissed } from "@/lib/share-guard";
 import { hexToRgbChannels } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -22,9 +24,17 @@ export default async function PublicEstimatePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+  // Before the lookup, so an address that has tried too many links that do
+  // not exist gets no answer about this one either.
+  const allowed = await shareAllowed();
+  if (!allowed.ok) return <ShareRefused retryAfterSeconds={allowed.retryAfterSeconds} />;
+
   const estimate = await getEstimateByToken(token);
 
-  if (!estimate) notFound();
+  if (!estimate) {
+    await shareMissed();
+    notFound();
+  }
 
   const org = estimate.organization;
   const status = effectiveEstimateStatus(estimate);

@@ -234,6 +234,8 @@ table, keyed by what is being limited, in fixed windows:
 | Sign in | 50 | 15 minutes | The caller's address |
 | Sign up | 5 | 1 hour | The caller's address |
 | Pay redirect | 20 | 1 hour | The invoice token |
+| Changing your password | 5 | 15 minutes | The account |
+| Share links that do not exist | 30 | 1 hour | The caller's address |
 
 Sign-in counts every attempt and a correct password clears the count, so a
 forgetful evening costs nothing. While a window is shut the right password is
@@ -241,15 +243,30 @@ refused too — the count is what is being answered, not the credentials — and
 the message is identical whether or not the account exists, because a
 different one would answer "does this person bank here".
 
-**Sign-up limiting is skipped on a desktop install**, decided by
-`dataStaysOnThisMachine()` rather than a flag: the first screen of a fresh
-install is that form, and on an office network every machine shares one
-address.
+**Changing your password** checks the current one first, which makes it the
+one place a signed-in session can test passwords — so somebody holding a
+stolen session could otherwise guess their way to a new password and lock the
+owner out. It works like sign-in: counted before the check, cleared by the
+right answer, and the right answer refused while the window is shut.
+
+**Share links** are the only credential their pages have, and their tokens are
+cuids with a short random part, so what is limited is guessing. Only lookups
+that find nothing count, per address; a real link can be opened as often as
+anybody likes. An address past the limit is refused every link, real ones
+included, with the same page either way, so a guesser cannot tell whether a
+token was real by whether they were let in. It covers the estimate and invoice
+pages, the actions on them and the pay redirect.
+
+**Sign-up and share-link limiting are skipped on a desktop install**, decided
+by `dataStaysOnThisMachine()` rather than a flag: the first screen of a fresh
+install is the sign-up form, share links only resolve on the office network,
+and on that network every machine shares one address.
 
 **To unlock somebody early**, delete their row:
 
 ```sql
 DELETE FROM "RateLimit" WHERE key = 'login:email:someone@example.com';
+DELETE FROM "RateLimit" WHERE key = 'share:miss:203.0.113.7';
 ```
 
 What this does not stop is a distributed attacker — a thousand addresses

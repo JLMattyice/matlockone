@@ -16,7 +16,13 @@ import { DEFAULT_BUSINESS_TYPE, isBusinessType } from "@/lib/business-types";
 import { prisma } from "@/lib/db";
 import { parseRateToBp } from "@/lib/money";
 import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
-import { destroyAllSessionsFor } from "@/lib/session";
+import {
+  forget,
+  hit,
+  PASSWORD_CHECK_PER_USER,
+  retryAfterPhrase,
+} from "@/lib/rate-limit";
+import { destroyOtherSessionsFor } from "@/lib/session";
 import { hexToRgbChannels } from "@/lib/utils";
 
 const hexColor = z
@@ -260,17 +266,32 @@ export async function changeOwnPassword(
   });
   if (!record) return failed("Account not found.");
 
+  // Counted before the check, as sign-in is: a session past the limit costs a
+  // row, not a password hash, and gets no answer about whether it guessed right.
+  // Only attempts that reach this point count — a mismatched confirmation or a
+  // weak new password tests nothing.
+  const limitKey = `password:user:${user.id}`;
+  const allowed = await hit(limitKey, PASSWORD_CHECK_PER_USER);
+  if (!allowed.ok) {
+    return failed(
+      `Too many attempts at your current password. Try again ${retryAfterPhrase(allowed.retryAfterSeconds)}.`,
+    );
+  }
+
   if (!(await verifyPassword(current, record.passwordHash))) {
     return { ok: false, fieldErrors: { currentPassword: "That is not your current password." } };
   }
+
+  await forget(limitKey);
 
   await prisma.user.update({
     where: { id: user.id },
     data: { passwordHash: await hashPassword(next) },
   });
 
-  // Every other device is signed out; this one keeps its session.
-  await destroyAllSessionsFor(user.id);
+  // Every other device is signed out; this one keeps its session. It used to
+  // sign this one out too, contradicting the message below.
+  await destroyOtherSessionsFor(user.id);
 
   return saved("Password changed. Other devices have been signed out.");
 }

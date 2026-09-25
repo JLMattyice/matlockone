@@ -184,9 +184,31 @@ export async function destroySession() {
   store.delete(SESSION_COOKIE);
 }
 
-/** Signs every device out — used after a password change. */
+/**
+ * Signs every device out — for when somebody else acts on the account: an
+ * admin resetting a member's password, or deactivating them.
+ */
 export async function destroyAllSessionsFor(userId: string) {
   await prisma.session.deleteMany({ where: { userId } });
+}
+
+/**
+ * Signs every other device out, keeping the one making the request.
+ *
+ * What changing your own password wants. Whoever knew the old password is
+ * signed out everywhere; the person who has just proved they know the new one
+ * is not sent to a sign-in screen for doing it. With no session cookie on the
+ * request there is nothing to keep, and every device goes.
+ */
+export async function destroyOtherSessionsFor(userId: string) {
+  const token = await readSessionToken();
+
+  await prisma.session.deleteMany({
+    where: {
+      userId,
+      ...(token ? { token: { not: fingerprint(token) } } : {}),
+    },
+  });
 }
 
 export function constantTimeEqual(a: string, b: string) {
