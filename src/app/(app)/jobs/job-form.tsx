@@ -15,6 +15,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui/form";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import {
@@ -99,6 +100,10 @@ export function JobForm({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const [kind, setKind] = useState<JobKind>(values.kind);
   const [clientId, setClientId] = useState(values.clientId);
   const [addressId, setAddressId] = useState(values.addressId);
@@ -164,7 +169,7 @@ export function JobForm({
     : [...DURATIONS, values.durationMinutes].sort((a, b) => a - b);
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form ref={keep} action={formAction} className="space-y-6">
       {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
       <input type="hidden" name="kind" value={kind} />
       {assignees.map((id) => (

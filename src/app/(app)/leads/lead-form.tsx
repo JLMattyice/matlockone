@@ -7,6 +7,7 @@ import { createLead, updateLead } from "./actions";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, FormError, Input, Select, Textarea } from "@/components/ui/form";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import {
@@ -48,11 +49,15 @@ export function LeadForm({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const [status, setStatus] = useState<LeadStatus>(values.status);
   const err = (key: string) => state.fieldErrors?.[key];
 
   return (
-    <form action={formAction}>
+    <form ref={keep} action={formAction}>
       {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
       <Card>

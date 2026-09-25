@@ -7,6 +7,7 @@ import { createExpense, updateExpense } from "./actions";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, FormError, Input, Select } from "@/components/ui/form";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import {
@@ -64,6 +65,10 @@ export function ExpenseForm({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const [jobId, setJobId] = useState(values.jobId);
   const [reimbursable, setReimbursable] = useState(values.reimbursable);
 
@@ -73,7 +78,7 @@ export function ExpenseForm({
   const err = (key: string) => state.fieldErrors?.[key];
 
   return (
-    <form action={formAction}>
+    <form ref={keep} action={formAction}>
       {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
       <Card>

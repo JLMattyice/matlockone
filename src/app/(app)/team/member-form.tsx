@@ -8,6 +8,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, FormError, Input, Select } from "@/components/ui/form";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { ROLE_META, type Role } from "@/lib/constants";
@@ -42,6 +43,10 @@ export function MemberForm({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const err = (key: string) => state.fieldErrors?.[key];
 
   // Their current role stays selectable even if the actor could not grant it,
@@ -51,7 +56,7 @@ export function MemberForm({
     : [values.role, ...assignableRoles];
 
   return (
-    <form action={formAction}>
+    <form ref={keep} action={formAction}>
       {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
       {lockRole ? <input type="hidden" name="role" value={values.role} /> : null}
 
