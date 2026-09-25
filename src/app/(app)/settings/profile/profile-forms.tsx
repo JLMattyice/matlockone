@@ -8,6 +8,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { ROLE_META, type Role } from "@/lib/constants";
 
@@ -27,11 +28,15 @@ export function ProfileForm({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const err = (key: string) => state.fieldErrors?.[key];
   const meta = ROLE_META[values.role];
 
   return (
-    <form action={formAction}>
+    <form ref={keep} action={formAction}>
       <Card>
         <CardHeader
           title="Your profile"

@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 
 import { recordPayment, sendInvoice } from "../actions";
 import { buttonClasses } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@/lib/constants";
 
@@ -25,6 +26,19 @@ export function PaymentForm({
     IDLE,
   );
   const formRef = useRef<HTMLFormElement>(null);
+
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+  // One ref for both: formRef clears the form after a payment is recorded,
+  // keep puts it back after a refusal.
+  const attach = useCallback(
+    (element: HTMLFormElement | null) => {
+      formRef.current = element;
+      return keep(element);
+    },
+    [keep],
+  );
   const [amount, setAmount] = useState((balanceCents / 100).toFixed(2));
 
   useEffect(() => {
@@ -32,7 +46,7 @@ export function PaymentForm({
   }, [state]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3">
+    <form ref={attach} action={formAction} className="space-y-3">
       <input type="hidden" name="invoiceId" value={invoiceId} />
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -118,6 +132,10 @@ export function SendInvoice({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   if (state.ok) {
     return <span className="text-sm text-success">{state.message}</span>;
   }
@@ -135,7 +153,7 @@ export function SendInvoice({
   }
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-2">
+    <form ref={keep} action={formAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="id" value={invoiceId} />
 
       <Field label="Send to" htmlFor="email" error={state.fieldErrors?.email}>

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import {
   EMAIL_PROVIDER_META,
@@ -47,6 +48,10 @@ export function EmailForm({ values }: { values: EmailAccountValues }) {
     saveEmailAccount,
     IDLE,
   );
+
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
 
   const [provider, setProvider] = useState<EmailProviderId>(values.provider);
   const [host, setHost] = useState(values.host);
@@ -101,7 +106,7 @@ export function EmailForm({ values }: { values: EmailAccountValues }) {
     <div className="space-y-6">
       <StatusBanner values={values} />
 
-      <form action={formAction} className="space-y-6">
+      <form ref={keep} action={formAction} className="space-y-6">
         <Card>
           <CardHeader
             title="Sending account"
@@ -311,6 +316,10 @@ function TestCard({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   return (
     <Card>
       <CardHeader
@@ -318,7 +327,7 @@ function TestCard({
         description="Confirm the connection works before an estimate depends on it."
       />
 
-      <form action={formAction}>
+      <form ref={keep} action={formAction}>
         <CardBody>
           <Field label="Send to" htmlFor="to" error={state.fieldErrors?.to}>
             <Input

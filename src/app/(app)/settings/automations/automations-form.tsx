@@ -10,6 +10,7 @@ import {
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import type { WorkflowConfig, WorkflowTemplate } from "@/lib/workflows/templates";
 import { cn } from "@/lib/utils";
@@ -112,6 +113,10 @@ function Automation({ row, readOnly }: { row: AutomationRow; readOnly: boolean }
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const { template } = row;
 
   return (
@@ -167,7 +172,7 @@ function Automation({ row, readOnly }: { row: AutomationRow; readOnly: boolean }
 
       {/* The numbers only matter once it is running. */}
       {row.isActive && !readOnly ? (
-        <form action={save} className="mt-4 flex flex-wrap items-end gap-3">
+        <form ref={keep} action={save} className="mt-4 flex flex-wrap items-end gap-3">
           <input type="hidden" name="templateId" value={template.id} />
 
           {template.settings.map((setting) => (

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { BUSINESS_TYPES, vocabularyColumns } from "@/lib/business-types";
 import { hexToRgbChannels, initials } from "@/lib/utils";
@@ -55,6 +56,10 @@ export function BrandingForm({ values }: { values: BrandingValues }) {
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const [primary, setPrimary] = useState(values.primaryColor);
 
   // Every label is controlled, because choosing a business type rewrites all
@@ -90,7 +95,7 @@ export function BrandingForm({ values }: { values: BrandingValues }) {
   const previewBrand = hexToRgbChannels(primary) ? primary : values.primaryColor;
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form ref={keep} action={formAction} className="space-y-6">
       <Card>
         <CardHeader
           title="Brand"

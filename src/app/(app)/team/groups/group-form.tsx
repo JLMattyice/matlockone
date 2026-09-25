@@ -9,6 +9,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, FormError, Input, Select, Textarea } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,10 @@ export function GroupForm({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   const [members, setMembers] = useState<string[]>(values.memberIds);
   const [leadId, setLeadId] = useState(values.leadId);
 
@@ -63,7 +68,7 @@ export function GroupForm({
   const leadOptions = people.filter((person) => members.includes(person.id));
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form ref={keep} action={formAction} className="space-y-6">
       {values.id ? (
         <input type="hidden" name="groupId" value={values.id} />
       ) : null}

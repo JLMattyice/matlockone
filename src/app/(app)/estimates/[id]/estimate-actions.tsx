@@ -7,6 +7,7 @@ import { convertEstimateToJob, sendEstimate } from "../actions";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 
 /** Send, with a chance to correct the address before it goes out. */
@@ -24,6 +25,10 @@ export function SendEstimate({
     sendEstimate,
     IDLE,
   );
+
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
 
   if (!open && !state.ok) {
     return (
@@ -48,7 +53,7 @@ export function SendEstimate({
   }
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-2">
+    <form ref={keep} action={formAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="id" value={estimateId} />
 
       <Field label="Send to" htmlFor="email" error={state.fieldErrors?.email}>

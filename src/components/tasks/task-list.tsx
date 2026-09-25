@@ -8,6 +8,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { EmptyState } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit";
+import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { cn } from "@/lib/utils";
 
@@ -60,10 +61,15 @@ export function TaskList({
     IDLE,
   );
 
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
   return (
     <div>
       {canWrite ? (
         <form
+          ref={keep}
           action={formAction}
           className="flex flex-wrap items-end gap-2 border-b border-line px-5 py-4"
         >
