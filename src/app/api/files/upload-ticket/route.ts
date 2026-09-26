@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { entitlement } from "@/lib/billing/entitlement";
 
 import { attachmentTargetExists } from "@/lib/attachment-targets";
 import { isAttachmentEntityType } from "@/lib/attachment-entities";
@@ -36,6 +37,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "This is a demo, so nothing is saved. Create your account to keep your files." },
       { status: 403 },
+    );
+  }
+
+  // A route, so the paywall in requireContext never sees it either.
+  if (!entitlement(ctx.org).ok) {
+    return NextResponse.json(
+      { error: "This business doesn’t have an active plan. Choose one under Billing." },
+      { status: 402 },
     );
   }
 

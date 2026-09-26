@@ -5,10 +5,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
+import { canAddPerson, entitlement } from "@/lib/billing/entitlement";
 import { requirePermission } from "@/lib/auth";
 import { ROLES, type Role } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { canAddActiveUser, licenseState } from "@/lib/license/status";
 import { parseMoneyToCents } from "@/lib/money";
 import { hashPassword, passwordProblem } from "@/lib/password";
 import { assignableRoles, canManageRole } from "@/lib/permissions";
@@ -72,8 +72,8 @@ export async function createTeamMember(
   // Seats are checked here rather than only in the UI: this is the point where
   // the count actually grows, and it is reachable by any caller who can post
   // this form.
-  const seats = canAddActiveUser(
-    licenseState(org.licenseKey),
+  const seats = canAddPerson(
+    entitlement(org),
     await prisma.user.count({
       where: { organizationId: org.id, isActive: true },
     }),
@@ -213,13 +213,13 @@ export async function setTeamMemberActive(formData: FormData) {
   // does nothing reads as broken software, and the page it lands on is where
   // the problem gets solved anyway.
   if (active && !target.isActive) {
-    const seats = canAddActiveUser(
-      licenseState(org.licenseKey),
+    const seats = canAddPerson(
+      entitlement(org),
       await prisma.user.count({
         where: { organizationId: org.id, isActive: true },
       }),
     );
-    if (!seats.ok) redirect("/settings/license?seats=full");
+    if (!seats.ok) redirect("/billing?seats=full");
   }
 
   await prisma.user.update({

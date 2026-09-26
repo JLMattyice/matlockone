@@ -86,6 +86,20 @@ model Organization {
   // so no real business can end up read-only by sharing a name with it.
   isDemo Boolean @default(false)
 
+  // Runs without paying, and is never locked: the operator's own business, and
+  // any other they decide to give it to. Set by hand, never by sign-up.
+  billingExempt Boolean @default(false)
+
+  // The PayPal subscription this business pays through, as PayPal last
+  // reported it. Kept current by the webhook and by the return from checkout;
+  // src/lib/billing/entitlement.ts reads paidThrough to decide whether the
+  // business is open. Null on a desktop install, which pays by licence key.
+  subscriptionId       String?   @unique
+  subscriptionStatus   String? // APPROVAL_PENDING | APPROVED | ACTIVE | SUSPENDED | CANCELLED | EXPIRED
+  subscriptionPlan     String? // starter | business | pro
+  subscriptionInterval String? // monthly | annual
+  paidThrough          DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

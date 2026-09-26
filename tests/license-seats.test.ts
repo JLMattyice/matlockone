@@ -3,7 +3,6 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import {
   DEMO_SEATS,
-  canAddActiveUser,
   daysRemaining,
   licenseState,
   licenseSummary,
@@ -13,10 +12,9 @@ import { issueLicense, type LicensePlan } from "../src/lib/license/token";
 /**
  * Seat limits, and the states a workspace can be in.
  *
- * The rule worth protecting: an unlicensed or lapsed workspace is limited, not
- * locked, and nobody is ever deactivated by a licence change. Getting that
- * backwards would lock a paying customer out of their own business over an
- * expiry date.
+ * What a key is worth: its plan and seats, or why it is not valid. Whether the
+ * business is open is decided by entitlement, which billing-entitlement.test.ts
+ * covers, seat checks included.
  */
 
 const keys = generateKeyPairSync("ed25519");
@@ -125,60 +123,6 @@ describe("resolving a workspace's licence", () => {
   });
 });
 
-describe("adding a person", () => {
-  const demo = licenseState(null, now);
-  const business = licenseState(key({ seats: 10 }), now);
-  const pro = licenseState(key({ plan: "pro", seats: null }), now);
-
-  it("allows one below the limit", () => {
-    expect(canAddActiveUser(business, 9).ok).toBe(true);
-  });
-
-  it("refuses one at the limit", () => {
-    expect(canAddActiveUser(business, 10).ok).toBe(false);
-  });
-
-  it("refuses when already past the limit", () => {
-    expect(canAddActiveUser(business, 14).ok).toBe(false);
-  });
-
-  it("never refuses on an unlimited licence", () => {
-    expect(canAddActiveUser(pro, 5000).ok).toBe(true);
-  });
-
-  it("applies the demo cap when unlicensed", () => {
-    expect(canAddActiveUser(demo, DEMO_SEATS - 1).ok).toBe(true);
-    expect(canAddActiveUser(demo, DEMO_SEATS).ok).toBe(false);
-  });
-
-  it("explains the refusal in terms the person can act on", () => {
-    const refused = canAddActiveUser(business, 10);
-    expect(refused.ok).toBe(false);
-    if (refused.ok) return;
-
-    expect(refused.limit).toBe(10);
-    expect(refused.active).toBe(10);
-    expect(refused.message).toContain("business");
-    expect(refused.message).toContain("deactivate");
-  });
-
-  it("points an unlicensed workspace at a licence, not at a bigger plan", () => {
-    const refused = canAddActiveUser(demo, DEMO_SEATS);
-    expect(refused.ok).toBe(false);
-    if (refused.ok) return;
-    expect(refused.message).toContain("licence key");
-  });
-
-  it("is a check on the transition, so an over-limit workspace still reads", () => {
-    // Nothing here deactivates anyone; a downgraded licence stops the next
-    // addition and leaves the existing team alone.
-    const state = licenseState(key({ seats: 1 }), now);
-    expect(state.kind).toBe("licensed");
-    expect(canAddActiveUser(state, 8).ok).toBe(false);
-    expect(state.kind === "licensed" && state.seats).toBe(1);
-  });
-});
-
 describe("what the screen says", () => {
   it("summarises a paid licence with its plan and seats", () => {
     expect(licenseSummary(licenseState(key({ seats: 10 }), now))).toBe(
@@ -199,7 +143,7 @@ describe("what the screen says", () => {
   });
 
   it("distinguishes never-licensed from expired", () => {
-    expect(licenseSummary(licenseState(null, now))).toBe("Demo mode");
+    expect(licenseSummary(licenseState(null, now))).toBe("No licence");
     expect(licenseSummary(licenseState(key({ exp: seconds - DAY }), now))).toBe(
       "Licence expired",
     );

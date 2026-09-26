@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 
 import { deliverLicense } from "@/lib/checkout/deliver";
 import { fulfilPurchase } from "@/lib/checkout/fulfil";
+import { syncSubscription } from "@/lib/billing/subscription";
 import {
   getSubscription,
   parseEvent,
   paypalConfig,
   planForPayPalId,
+  subscriptionIdOf,
   verifyWebhook,
   webhookHeaders,
 } from "@/lib/checkout/paypal";
@@ -59,6 +61,26 @@ export async function POST(request: Request) {
     event = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Malformed" }, { status: 400 });
+  }
+
+  // A subscription started from inside the app pays for a business directly:
+  // bring that business up to date with PayPal and stop. Every kind of change
+  // lands here — a renewal, a failed payment, a cancellation — and the answer
+  // is always the subscription as PayPal has it now.
+  const subscriptionId = subscriptionIdOf(event);
+  if (subscriptionId) {
+    const synced = await syncSubscription(subscriptionId, { config });
+
+    if (synced.linked) {
+      return NextResponse.json({ ok: true, organization: synced.organizationId });
+    }
+    // Not a 200: PayPal retries a failed delivery, which is what should happen
+    // while it cannot be asked about its own subscription.
+    if (synced.reason === "unreachable") {
+      return NextResponse.json({ error: "Could not load the subscription" }, { status: 503 });
+    }
+    // Otherwise it is not a business's subscription — the anonymous purchase
+    // below, which emails a licence key for a desktop install.
   }
 
   const parsed = parseEvent(event);

@@ -257,7 +257,8 @@ export async function signupAction(
 
   await rememberEmail(email);
   await createSession(user.id);
-  redirect("/dashboard");
+  // No free tier: a new business chooses its plan before anything else.
+  redirect("/billing?welcome=1");
 }
 
 async function uniqueSlug(businessName: string) {

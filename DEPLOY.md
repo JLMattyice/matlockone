@@ -89,6 +89,19 @@ S3_REGION="<project region>"
 S3_ACCESS_KEY_ID="..."
 S3_SECRET_ACCESS_KEY="..."
 S3_FORCE_PATH_STYLE="true"
+
+# Selling Matlock One — see Billing below. `npm run paypal:setup` prints every
+# one of these except the client id and secret, which come from the PayPal app.
+PAYPAL_CLIENT_ID="..."
+PAYPAL_CLIENT_SECRET="..."
+PAYPAL_ENV="live"
+PAYPAL_WEBHOOK_ID="..."
+PAYPAL_PLAN_STARTER_MONTHLY="P-..."
+PAYPAL_PLAN_STARTER_ANNUAL="P-..."
+PAYPAL_PLAN_BUSINESS_MONTHLY="P-..."
+PAYPAL_PLAN_BUSINESS_ANNUAL="P-..."
+PAYPAL_PLAN_PRO_MONTHLY="P-..."
+PAYPAL_PLAN_PRO_ANNUAL="P-..."
 ```
 
 > **`ENCRYPTION_KEY` can never change.** Every stored mail password and payment
@@ -209,6 +222,57 @@ walkthroughs.
 Without this, the deployment has no users at all, and `isFirstRun()` sends
 every route to `/signup` — including the `/login` the landing page points at.
 
+## Billing
+
+There is no free tier. A business pays through a PayPal subscription before it
+can open anything: sign-up lands on `/billing`, and until a plan is active that
+is the only screen it can reach. `requireContext()` decides, from
+`entitlement()` in `src/lib/billing/entitlement.ts`, so no page or action can
+be the one that forgot. Uploads and the morning automation run check the same
+rule. The demo and exempt businesses never lock.
+
+### Setting PayPal up, once
+
+```
+npm run paypal:setup
+```
+
+It asks for the PayPal app's Client ID and Secret (developer.paypal.com → Apps
+& Credentials, with the Live switch on) and whether to use live or sandbox.
+Then it shows what the account already has and what it would create — the
+"Matlock One" product, a monthly and a yearly billing plan for each of the
+three plans at the catalog's prices, and a webhook to
+`https://www.matlockone.com/api/checkout/paypal/webhook` — and changes nothing
+until you type `yes`. It prints the settings above; put them and the client id
+and secret in Vercel and redeploy.
+
+Running it again is safe: whatever is already there under the same names is
+reused. A plan that exists at a different price stops it before anything is
+changed, since selling at the wrong price is worse than not starting. A
+hosted deployment without these settings logs a boot warning, and its billing
+screen says payments are not set up.
+
+### How a payment opens a business
+
+The subscription is started with the business's id as PayPal's `custom_id`.
+When the owner comes back from approving it, `/billing/return` asks PayPal
+where the subscription stands, and the webhook does the same for every later
+change — renewals, failed payments, cancellations. Neither trusts what it was
+handed; both call `syncSubscription()`, which asks PayPal. A business is open
+until `paidThrough`, the end of the period PayPal says was paid for, plus
+three days' grace while PayPal retries a failed card. A cancelled plan runs to
+the end of what it paid for. Changing plan revises the one subscription rather
+than starting a second, which would bill twice. Seats come from the plan.
+
+### Businesses that are never billed
+
+Your own business, and anything else that should never be charged, is marked
+exempt in the Supabase SQL editor:
+
+```sql
+UPDATE "Organization" SET "billingExempt" = true WHERE "slug" = '<its slug>';
+```
+
 ## Automations
 
 Two of the automations wait for a date rather than an event: chasing an
@@ -291,8 +355,9 @@ business's login actually sees.
 
 - **Fatal** — no `DATABASE_URL`, no or too-short `SESSION_SECRET`, local disk
   storage on Vercel. The server refuses to start.
-- **Warning, logged loudly** — no `ENCRYPTION_KEY`, or client links that would
-  resolve to localhost.
+- **Warning, logged loudly** — no `ENCRYPTION_KEY`, client links that would
+  resolve to localhost, no `CRON_SECRET`, or PayPal not fully configured (new
+  businesses could sign up but never choose a plan).
 
 The split is deliberate: a deployment missing the fatal settings serves a broken
 product convincingly, which is worse than one that did not come up. A missing
@@ -307,6 +372,7 @@ it say so.
 | Files | folder in the user's AppData | object store |
 | Uploads | straight to the server | presigned, browser to store |
 | Secrets | generated on first run | set by hand, once |
+| Paid for by | a licence key | a PayPal subscription |
 | Reachable from | the office network | anywhere |
 
 Both run the same application code. The schema is authored once

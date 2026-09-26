@@ -4,6 +4,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 
+import { BILLING_PATH, entitlement } from "./billing/entitlement";
 import { prisma } from "./db";
 import { asStatus, ROLES, type Role } from "./constants";
 import { verifyPassword } from "./password";
@@ -62,7 +63,16 @@ export const getContext = cache(async (): Promise<AppContext | null> => {
  * cookie may still be present for a session that no longer resolves, and only
  * a route handler can clear it. Going direct would loop against middleware.
  */
-export async function requireContext(): Promise<AppContext> {
+export type ContextOptions = {
+  /**
+   * "allow" for the few places a business that has not paid must still reach:
+   * the billing screen and the actions on it, which are how it pays. Every
+   * other page and action leaves this out, and is closed to it.
+   */
+  unpaid?: "allow";
+};
+
+export async function requireContext(options: ContextOptions = {}): Promise<AppContext> {
   const ctx = await getContext();
   if (!ctx) redirect("/session-expired");
 
@@ -73,6 +83,11 @@ export async function requireContext(): Promise<AppContext> {
   if (ctx.org.isDemo && (await isSubmission())) {
     redirect(`${DEMO_REFUSED_PATH}${await backPath()}`);
   }
+
+  // No free tier: a business that has not paid, or whose payment has run out,
+  // sees the billing screen and nothing else. Here for the same reason as the
+  // demo check — one place, so no page or action can be the one that forgot.
+  if (options.unpaid !== "allow" && !entitlement(ctx.org).ok) redirect(BILLING_PATH);
 
   return ctx;
 }
@@ -147,8 +162,9 @@ async function backPath(): Promise<string> {
  */
 export async function requirePermission(
   permission: Permission,
+  options: ContextOptions = {},
 ): Promise<AppContext> {
-  const ctx = await requireContext();
+  const ctx = await requireContext(options);
   if (!can(ctx.user, permission)) redirect("/no-access");
   return ctx;
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { CheckCircle2, TriangleAlert } from "lucide-react";
 
 import { clearLicense } from "./actions";
@@ -6,9 +7,10 @@ import { LicenseForm, RemoveLicenseButton } from "./license-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { requirePermission } from "@/lib/auth";
+import { BILLING_PATH } from "@/lib/billing/entitlement";
+import { dataStaysOnThisMachine } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import {
-  DEMO_SEATS,
   daysRemaining,
   licenseState,
   licenseSummary,
@@ -25,6 +27,11 @@ export default async function LicenseSettingsPage({
   // Read to look, write to change — the same split the business settings use.
   // A manager who cannot buy anything can still see why they were stopped.
   const { user, org } = await requirePermission("settings:read");
+
+  // Licence keys are how a desktop install that keeps its own data pays. A
+  // hosted business pays by subscription, and that lives under Billing.
+  if (!dataStaysOnThisMachine()) redirect(BILLING_PATH);
+
   const canWrite = can(user, "settings:write");
   const { seats } = await searchParams;
 
@@ -35,7 +42,9 @@ export default async function LicenseSettingsPage({
     where: { organizationId: org.id, isActive: true },
   });
 
-  const limit = state.seats;
+  // An install without a valid key is open only because it is exempt, and
+  // then nothing caps it.
+  const limit = state.kind === "licensed" ? state.seats : null;
   const overLimit = limit !== null && activeUsers > limit;
 
   return (
@@ -73,7 +82,7 @@ export default async function LicenseSettingsPage({
               </Badge>
             ) : (
               <Badge tone={state.reason ? "warning" : "neutral"} dot>
-                {state.reason === "expired" ? "Expired" : "Demo"}
+                {state.reason === "expired" ? "Expired" : "None"}
               </Badge>
             )
           }
@@ -122,10 +131,9 @@ export default async function LicenseSettingsPage({
             <p className="text-sm text-ink-muted">
               {state.message
                 ? `${state.message} `
-                : "This workspace is running in demo mode. "}
-              Everything works; you can have up to {DEMO_SEATS} active people
-              until a licence is entered. Nothing you have entered is at risk,
-              and none of it is deleted when you activate.
+                : "This install has no licence key. "}
+              Nothing you have entered is at risk, and none of it is deleted
+              when you activate.
             </p>
           ) : null}
 

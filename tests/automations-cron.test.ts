@@ -26,10 +26,16 @@ const daysAgo = (days: number) => {
   return date;
 };
 
-/** A business with a customer who owes on an invoice two weeks past due. */
-async function businessWithOverdueInvoice(name: string) {
+/** A paying business with a customer who owes on an invoice two weeks past due. */
+async function businessWithOverdueInvoice(name: string, paidThrough = daysAgo(-20)) {
   const org = await prisma.organization.create({
-    data: { slug: `cron-${randomUUID()}`, name },
+    data: {
+      slug: `cron-${randomUUID()}`,
+      name,
+      subscriptionPlan: "business",
+      subscriptionStatus: "ACTIVE",
+      paidThrough,
+    },
   });
   const client = await prisma.client.create({
     data: { organizationId: org.id, displayName: `${name} Customer`, type: "PERSON", status: "ACTIVE" },
@@ -95,6 +101,28 @@ describe("sweepEveryBusiness", () => {
     await sweepEveryBusiness();
 
     expect(await tasksFor(off)).toHaveLength(0);
+  });
+
+  it("leaves alone a business whose plan has ended", async () => {
+    // Nobody there can open the tasks it would raise, and the run is not a
+    // reason to keep writing into a closed account.
+    const lapsed = await businessWithOverdueInvoice("Lapsed Co", daysAgo(10));
+    await turnOn(lapsed, "overdue.chase");
+
+    const result = await sweepEveryBusiness();
+
+    expect(result.failed).toEqual([]);
+    expect(await tasksFor(lapsed)).toHaveLength(0);
+    expect(await tasksFor(chasing)).toHaveLength(1);
+  });
+
+  it("still sweeps a business in its grace days", async () => {
+    const late = await businessWithOverdueInvoice("Late Payer Co", daysAgo(1));
+    await turnOn(late, "overdue.chase");
+
+    await sweepEveryBusiness();
+
+    expect(await tasksFor(late)).toHaveLength(1);
   });
 
   it("leaves alone a business with only event automations", async () => {

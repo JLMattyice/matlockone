@@ -1,5 +1,6 @@
 import "server-only";
 
+import { entitlement } from "../billing/entitlement";
 import { prisma } from "../db";
 import {
   isScheduled,
@@ -313,10 +314,22 @@ export async function sweepEveryBusiness(): Promise<{
     distinct: ["organizationId"],
   });
 
+  // Only businesses that are open. A locked one cannot read the tasks this
+  // would raise, and a run is not a reason to keep writing into it.
+  const open = new Set(
+    (
+      await prisma.organization.findMany({
+        where: { id: { in: rows.map((row) => row.organizationId) } },
+      })
+    )
+      .filter((org) => entitlement(org).ok)
+      .map((org) => org.id),
+  );
+
   let created = 0;
   const failed: string[] = [];
 
-  for (const { organizationId } of rows) {
+  for (const { organizationId } of rows.filter((row) => open.has(row.organizationId))) {
     try {
       const outcomes = await sweep(organizationId);
       created += outcomes.reduce((total, outcome) => total + outcome.created.length, 0);

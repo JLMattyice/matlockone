@@ -1,4 +1,5 @@
 import { SettingsNav, type SettingsTab } from "./settings-nav";
+import { dataStaysOnThisMachine } from "@/lib/config";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireContext } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -20,7 +21,10 @@ export default async function SettingsLayout({
       { href: "/settings/email", label: "Email" },
       { href: "/settings/payments", label: "Payments" },
       { href: "/settings/automations", label: "Automations" },
-      { href: "/settings/license", label: "Licence" },
+      // The hosted app is paid by subscription, a desktop install by key.
+      dataStaysOnThisMachine()
+        ? { href: "/settings/license", label: "Licence" }
+        : { href: "/billing", label: "Billing" },
     );
   }
 

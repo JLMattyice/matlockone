@@ -12,11 +12,10 @@ import {
  * forgotten in another. Everything here is derived from the licence; nothing
  * calls out to a server.
  *
- * The important design choice: an unlicensed workspace is *limited*, never
- * locked. Someone who installs this and finds a dead screen has learnt nothing
- * about the software and has no reason to come back. Someone who finds a
- * working workspace that stops at three people knows exactly what they would be
- * buying.
+ * This only says what a key is worth. Whether the business is open at all is
+ * decided in src/lib/billing/entitlement.ts, where a valid licence is one of
+ * the ways to be — and "demo" here means only "no valid key", not a free
+ * tier. There is no free tier.
  */
 
 /** Active users allowed with no valid licence. */
@@ -80,54 +79,12 @@ export function licenseState(
   };
 }
 
-/** Active users this workspace may have, or null for unlimited. */
-export function seatLimit(state: LicenseState): number | null {
-  return state.kind === "licensed" ? state.seats : state.seats;
-}
-
-export type SeatCheck =
-  | { ok: true }
-  | { ok: false; limit: number; active: number; message: string };
-
-/**
- * Whether one more active person may be added.
- *
- * Deliberately a check on the *transition*, never on the current state. A
- * workspace can legitimately sit above its limit — a licence downgrade, or a
- * demo of a business that already had five people — and the right response is
- * to stop the next addition, not to throw four employees out of the software
- * they were using this morning. Nothing here ever deactivates anyone.
- */
-export function canAddActiveUser(
-  state: LicenseState,
-  activeCount: number,
-): SeatCheck {
-  const limit = seatLimit(state);
-  if (limit === null || activeCount < limit) return { ok: true };
-
-  const plan =
-    state.kind === "licensed"
-      ? `Your ${state.license.plan} licence covers ${limit} ${limit === 1 ? "person" : "people"}.`
-      : `Demo mode covers ${limit} people.`;
-
-  return {
-    ok: false,
-    limit,
-    active: activeCount,
-    message:
-      `${plan} You have ${activeCount} active. ` +
-      (state.kind === "licensed"
-        ? "Move to a larger plan, or deactivate someone first."
-        : "Enter a licence key, or deactivate someone first."),
-  };
-}
-
 /** Short label for the banner and the activation screen. */
 export function licenseSummary(state: LicenseState): string {
   if (state.kind === "demo") {
     if (state.reason === "expired") return "Licence expired";
     if (state.reason) return "Licence not valid";
-    return "Demo mode";
+    return "No licence";
   }
 
   const seats =

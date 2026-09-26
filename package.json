@@ -21,6 +21,7 @@
     "license:issue": "tsx scripts/license-issue.ts",
     "license:verify": "tsx scripts/license-verify.ts",
     "sale": "tsx scripts/sale-record.ts",
+    "paypal:setup": "tsx --conditions=react-server scripts/paypal-setup.ts",
     "schema:sync": "node scripts/sync-sqlite-schema.mjs",
     "schema:check": "node scripts/sync-sqlite-schema.mjs --check",
     "prisma:generate": "npm run schema:sync && prisma generate --schema prisma/schema.prisma && prisma generate --schema prisma/schema.sqlite.prisma",

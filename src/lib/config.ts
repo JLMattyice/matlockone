@@ -221,8 +221,38 @@ export function configProblems(env: ConfigEnv = process.env): ConfigProblem[] {
     });
   }
 
+  // There is no free tier, so a hosted deployment that cannot take a payment
+  // lets people sign up to a screen they can never get past. A warning, not a
+  // refusal: businesses already paying, and exempt ones, carry on regardless.
+  if (production && !dataStaysOnThisMachine(env)) {
+    const missing = PAYPAL_SETTINGS.filter((setting) => !env[setting]?.trim());
+    if (missing.length) {
+      problems.push({
+        level: "warning",
+        setting: "PAYPAL",
+        message:
+          `Not set: ${missing.join(", ")}.\n` +
+          "  New businesses cannot choose a plan, so they cannot open their account.\n" +
+          "  npm run paypal:setup prints every one of these.",
+      });
+    }
+  }
+
   return problems;
 }
+
+/** What a hosted deployment needs to sell a plan. Mirrors paypalConfig(). */
+const PAYPAL_SETTINGS = [
+  "PAYPAL_CLIENT_ID",
+  "PAYPAL_CLIENT_SECRET",
+  "PAYPAL_WEBHOOK_ID",
+  "PAYPAL_PLAN_STARTER_MONTHLY",
+  "PAYPAL_PLAN_STARTER_ANNUAL",
+  "PAYPAL_PLAN_BUSINESS_MONTHLY",
+  "PAYPAL_PLAN_BUSINESS_ANNUAL",
+  "PAYPAL_PLAN_PRO_MONTHLY",
+  "PAYPAL_PLAN_PRO_ANNUAL",
+];
 
 /** Formats problems for a log a person has to read, possibly over the phone. */
 export function formatProblems(problems: ConfigProblem[]) {

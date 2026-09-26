@@ -20,7 +20,9 @@ export async function activateLicense(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { org } = await requirePermission("settings:write");
+  // Reachable unpaid: a desktop install with no licence is closed until it has
+  // one, and this is how it gets one — from the billing screen.
+  const { org } = await requirePermission("settings:write", { unpaid: "allow" });
 
   const key = String(formData.get("licenseKey") ?? "")
     .trim()
@@ -55,7 +57,8 @@ export async function activateLicense(
 }
 
 /**
- * Removes the stored licence, returning the workspace to demo limits.
+ * Removes the stored licence. The install then closes until a key is entered
+ * again, unless it is exempt from billing.
  *
  * Here so a business moving an installation to another machine can take its
  * licence off the old one. Nothing is deleted but the key itself.
@@ -68,7 +71,8 @@ export async function clearLicense(): Promise<void> {
     data: { licenseKey: null },
   });
 
-  // No return value: this is a plain form action, and the page re-renders into
-  // its demo state, which says what happened more plainly than a toast would.
+  // No return value: this is a plain form action, and the next screen — the
+  // key form on the billing page — says what happened more plainly than a
+  // toast would.
   revalidatePath("/", "layout");
 }

@@ -6,20 +6,24 @@ import {
   HeroDashboard,
   ProductShowcase,
 } from "@/components/marketing/product-ui";
-import { SubscribeButton } from "@/components/marketing/subscribe-button";
 import { buttonClasses } from "@/components/ui/button";
+import { GRACE_DAYS } from "@/lib/billing/entitlement";
 import {
   ANNUAL_DISCOUNT_BP,
   formatPrice,
   planList,
 } from "@/lib/checkout/plans";
-import { canSellOnline } from "@/lib/checkout/providers";
 import { demoAvailable } from "@/lib/demo";
-// The page's "up to N people" claim is the application's own constant, so the
-// two can never drift into a promise the software does not keep.
-import { DEMO_SEATS } from "@/lib/license/status";
 import { latestInstaller, type InstallerLookup } from "@/lib/releases";
 import { cn } from "@/lib/utils";
+
+// Plans come from the checkout catalog, so the price on this page is the price
+// that gets charged and the seats advertised are the seats the plan carries.
+// A number retyped into marketing copy is a number that eventually lies.
+const PLANS = planList();
+
+/** The cheapest plan's monthly price: what "plans from" means on this page. */
+const FROM_PRICE = formatPrice(Math.min(...PLANS.map((plan) => plan.monthlyCents)));
 
 export const metadata: Metadata = {
   title: { absolute: "Matlock One — your business, all in one place" },
@@ -77,7 +81,7 @@ function Hero() {
 
         <div className="mt-9 flex flex-wrap items-center gap-3">
           <Link href="/signup" className={buttonClasses("primary", "lg")}>
-            Create your free account
+            Create your account
             <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />
           </Link>
           <a href="#download" className={buttonClasses("outline", "lg")}>
@@ -86,8 +90,8 @@ function Hero() {
         </div>
 
         <p className="mt-4 text-sm text-ink-subtle">
-          Runs free for up to {DEMO_SEATS} people, with no time limit and no
-          card. A licence key lifts the limit when you need it.
+          Plans from {FROM_PRICE} a month, paid through PayPal. Every plan has
+          every part of it, and you can cancel whenever you like.
         </p>
 
         {/* Cropped by the fold on purpose: it reads as continuing, not ending. */}
@@ -170,7 +174,7 @@ const REAL = [
   {
     // No count. It was "265" for long enough to be wrong by hundreds, and a
     // marketing number kept by hand is one that eventually lies — the same
-    // reason the seat limit on this page is imported rather than typed.
+    // reason the prices on this page are imported rather than typed.
     title: "A test suite aimed at the money, checked by mutation",
     body: "Aimed where a bug costs money: cent arithmetic, discount apportionment, invoice balances against a real database, payment reconciliation. The suite was proved by breaking things on purpose.",
   },
@@ -197,7 +201,7 @@ function Real({ demo }: { demo: boolean }) {
               <p className="mt-5 text-ink-muted">
                 Everything above is the running application. You can sign in to
                 it right now with a demo account and a year of seeded work —
-                quote something, schedule it, invoice it, take a payment.
+                open the jobs, the schedule, the invoices and the reports.
               </p>
               <p className="mt-4 text-ink-muted">
                 Sign in as the technician account to watch the permissions work:
@@ -211,18 +215,18 @@ function Real({ demo }: { demo: boolean }) {
             <>
               <p className="mt-5 text-ink-muted">
                 Everything above is the running application, not a mock-up of
-                one. Create an account and it is yours to try — quote
+                one. Create an account, choose a plan, and it is yours — quote
                 something, schedule it, invoice it, take a payment.
               </p>
               <p className="mt-4 text-ink-muted">
-                It is free for up to {DEMO_SEATS} people with no card and no
-                time limit, so trying it costs nothing.
+                Plans start at {FROM_PRICE} a month, and you can cancel from
+                PayPal whenever you like.
               </p>
               <Link
                 href="/signup"
                 className={buttonClasses("primary", "md", "mt-8")}
               >
-                Create your free account
+                Create your account
               </Link>
             </>
           )}
@@ -233,9 +237,9 @@ function Real({ demo }: { demo: boolean }) {
               Try it on the demo workspace
             </p>
             <p className="mt-2 text-sm text-ink-muted">
-              A shared workspace with a year of seeded work in it. Everyone who
-              visits signs into the same one, so treat anything you type there
-              as public — and never put a real customer in it.
+              A sample business with a year of work in it. Look at anything you
+              like — nothing you change there is saved. To use Matlock One for
+              your own business, create your account.
             </p>
 
             <Link
@@ -362,16 +366,7 @@ const INCLUDED = [
   "Your own mailbox and payment accounts",
 ];
 
-// Plans come from the checkout catalog, so the price on this page is the price
-// that gets charged and the seats advertised are the seats the licence carries.
-// A number retyped into marketing copy is a number that eventually lies.
-const PLANS = planList();
-
 function Pricing() {
-  // Whether this deployment can actually take money right now. Without it the
-  // cards point at free sign-up instead of a button that would fail.
-  const sellable = canSellOnline();
-
   return (
     <Section id="pricing" className="scroll-mt-24 pt-28 lg:pt-36">
       <h2 className="display max-w-2xl text-3xl text-ink sm:text-4xl lg:text-5xl">
@@ -435,24 +430,18 @@ function Pricing() {
               </ul>
             ) : null}
 
-            {sellable ? (
-              <SubscribeButton
-                plan={plan.id}
-                featured={plan.featured}
-                label={`Subscribe to ${plan.name}`}
-              />
-            ) : (
-              <Link
-                href="/signup"
-                className={buttonClasses(
-                  plan.featured ? "primary" : "outline",
-                  "md",
-                  "mt-8 justify-center",
-                )}
-              >
-                Start with the free version
-              </Link>
-            )}
+            {/* A plan is chosen after sign-up, on the billing screen, so it
+                belongs to the business that pays for it. */}
+            <Link
+              href="/signup"
+              className={buttonClasses(
+                plan.featured ? "primary" : "outline",
+                "md",
+                "mt-8 justify-center",
+              )}
+            >
+              Start with {plan.name}
+            </Link>
           </div>
         ))}
       </div>
@@ -483,33 +472,32 @@ function Pricing() {
           <h3 className="text-sm font-medium text-ink">How buying works</h3>
           <ol className="mt-3 space-y-2 text-sm text-ink-muted">
             <li>
-              1. Create your account and use it free for up to {DEMO_SEATS}{" "}
-              people. No time limit, no card, and it is the whole product, not
-              a cut-down one.
+              1. Create your account: your business&rsquo;s name, your email
+              and a password.
             </li>
             <li>
-              2. When you need more people, subscribe and a licence key arrives
-              by email.
+              2. Choose a plan, monthly or yearly, and approve it with PayPal.
+              Your account opens as soon as PayPal confirms.
             </li>
             <li>
-              3. Paste it into Settings → Licence. Everything you already
-              entered stays exactly where it is.
+              3. Move to a bigger plan from Billing when you need more people,
+              or cancel in PayPal whenever you like.
             </li>
           </ol>
         </div>
 
         <div>
           <h3 className="text-sm font-medium text-ink">
-            What the licence does
+            If a payment or a plan ends
           </h3>
           <p className="mt-3 text-sm text-ink-muted">
-            It is checked against a key built into the software, never by
-            calling out to a licensing service, so a licence server having a
-            bad day cannot lock you out of your own business.
+            If PayPal can&rsquo;t take a payment, it tries again and your
+            account stays open for {GRACE_DAYS} more days while it does. A
+            cancelled plan stays open until the end of the time you paid for.
           </p>
           <p className="mt-3 text-sm text-ink-muted">
-            If a licence lapses, the workspace returns to the free limits.
-            Nobody is deactivated and no record is deleted.
+            When a plan does end, the account closes but nothing is deleted.
+            Choose a plan again and everything is where you left it.
           </p>
         </div>
       </div>
@@ -519,17 +507,6 @@ function Pricing() {
           Save {ANNUAL_DISCOUNT_BP / 100}% with annual billing.
         </span>
       </p>
-
-      {sellable ? null : (
-        <div className="mt-3 max-w-xl">
-          <Placeholder>
-            PayPal is not configured on this deployment, so these plans cannot
-            be bought from the site yet. Set PAYPAL_CLIENT_ID,
-            PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID and a billing plan id per
-            plan, and these become real subscribe buttons.
-          </Placeholder>
-        </div>
-      )}
     </Section>
   );
 }
@@ -633,10 +610,9 @@ async function DownloadSection() {
             app needs an internet connection.
           </p>
           <p className="mt-4 text-ink-muted">
-            No card to sign up or to download. It runs free for up to{" "}
-            {DEMO_SEATS} active people, for as long as you like — every module,
-            no expiry, no watermark. Add a licence key when your crew outgrows
-            that.
+            The download itself costs nothing. The app opens your account, so
+            it runs on whichever plan your business has chosen — every module,
+            on every computer you sign in from.
           </p>
           <p className="mt-4 text-sm text-gold">
             Included in every plan, Starter upward.
@@ -648,11 +624,11 @@ async function DownloadSection() {
           <div className="rounded-xl border border-line bg-surface-2 p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <p className="text-sm font-medium text-ink">1. Your account</p>
-              <p className="text-xs text-ink-subtle">Free, no card</p>
+              <p className="text-xs text-ink-subtle">Plans from {FROM_PRICE}/month</p>
             </div>
             <div className="mt-4">
               <Link href="/signup" className={buttonClasses("primary", "md")}>
-                Create your free account
+                Create your account
               </Link>
             </div>
           </div>
@@ -713,7 +689,7 @@ function FinalCta({ demo }: { demo: boolean }) {
 
         <div className="mt-10 flex flex-wrap justify-center gap-3">
           <Link href="/signup" className={buttonClasses("primary", "lg")}>
-            Create your free account
+            Create your account
             <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />
           </Link>
           {demo ? (

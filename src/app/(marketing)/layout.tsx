@@ -39,7 +39,7 @@ Hairline rules, no illustration, no gradient text.
 
 STORY: An owner running six disconnected apps sees one workspace where the
 customer, the job and the money are the same record. Believes it is real
-software, because they are looking at it. Starts free.
+software, because they are looking at it. Starts on a plan.
 
 FIRST VIEWPORT: Headline left and large in Playfair; sub and two actions
 beneath; the real dashboard entering from below the fold on a forest glow,

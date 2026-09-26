@@ -26,6 +26,15 @@ const GOOD = {
   S3_BUCKET: "files",
   S3_ACCESS_KEY_ID: "key",
   S3_SECRET_ACCESS_KEY: "secret",
+  PAYPAL_CLIENT_ID: "client",
+  PAYPAL_CLIENT_SECRET: "secret",
+  PAYPAL_WEBHOOK_ID: "WH-1",
+  PAYPAL_PLAN_STARTER_MONTHLY: "P-1",
+  PAYPAL_PLAN_STARTER_ANNUAL: "P-2",
+  PAYPAL_PLAN_BUSINESS_MONTHLY: "P-3",
+  PAYPAL_PLAN_BUSINESS_ANNUAL: "P-4",
+  PAYPAL_PLAN_PRO_MONTHLY: "P-5",
+  PAYPAL_PLAN_PRO_ANNUAL: "P-6",
 };
 
 const problemsFor = (env: Record<string, string | undefined>) =>
@@ -208,6 +217,31 @@ describe("configProblems", () => {
     // finds out the day they try to send an invoice, which is why it is loud.
     expect(warningSettings({ ENCRYPTION_KEY: undefined })).toContain("ENCRYPTION_KEY");
     expect(fatalSettings({ ENCRYPTION_KEY: undefined })).not.toContain("ENCRYPTION_KEY");
+  });
+
+  it("warns when a hosted deployment cannot take a payment", () => {
+    // No free tier: without PayPal a new business signs up and is stuck.
+    expect(warningSettings({ PAYPAL_WEBHOOK_ID: undefined })).toContain("PAYPAL");
+    expect(warningSettings({ PAYPAL_PLAN_PRO_ANNUAL: " " })).toContain("PAYPAL");
+    expect(fatalSettings({ PAYPAL_CLIENT_ID: undefined })).not.toContain("PAYPAL");
+    const message = problemsFor({ PAYPAL_CLIENT_SECRET: undefined }).find(
+      (p) => p.setting === "PAYPAL",
+    )?.message;
+    expect(message).toContain("PAYPAL_CLIENT_SECRET");
+    expect(message).not.toContain("PAYPAL_CLIENT_ID,");
+  });
+
+  it("does not ask a desktop install for PayPal", () => {
+    // A desktop install pays by licence key and has none of these, rightly.
+    const desktop = {
+      NODE_ENV: "production",
+      DATABASE_URL: "file:./matlock.db",
+      SESSION_SECRET: "a".repeat(32),
+      ENCRYPTION_KEY: "b".repeat(32),
+      APP_URL: "http://127.0.0.1:3100",
+      STORAGE_PROVIDER: "local",
+    };
+    expect(configProblems(desktop).map((p) => p.setting)).not.toContain("PAYPAL");
   });
 
   it("warns when client-facing links would point at localhost", () => {

@@ -12,10 +12,10 @@ import type { LicensePlan } from "@/lib/license/token";
  * lifecycle, and webhooks are usable here because the hosted site has an
  * address PayPal can reach, which a desktop install never does.
  *
- * Billing plans are created once in the PayPal dashboard and their ids put in
- * the environment. Creating them from code would mean this deployment could
- * silently invent a second "Business, monthly" plan at a different price, and
- * reconciling that afterwards is not a job anyone wants.
+ * Billing plans are created once, by a person running `npm run paypal:setup`,
+ * and their ids put in the environment. The deployment never creates one
+ * itself: it could silently invent a second "Business, monthly" plan at a
+ * different price, and reconciling that afterwards is not a job anyone wants.
  */
 
 export type PayPalInterval = "monthly" | "annual";
@@ -175,6 +175,13 @@ export async function startSubscription(
     returnUrl: string;
     cancelUrl: string;
     email?: string | null;
+    /**
+     * The business this subscription pays for. PayPal hands it back on the
+     * subscription and its events, which is how a payment finds the account
+     * it opens without anybody typing a licence key. Absent for the
+     * anonymous purchase that emails a key for a desktop install.
+     */
+    customId?: string | null;
   },
 ): Promise<StartResult> {
   const planId = planIdFor(config, input.plan, input.interval);
@@ -196,6 +203,7 @@ export async function startSubscription(
       },
       body: JSON.stringify({
         plan_id: planId,
+        ...(input.customId ? { custom_id: input.customId } : {}),
         ...(input.email ? { subscriber: { email_address: input.email } } : {}),
         application_context: {
           brand_name: "Matlock One",
@@ -236,6 +244,89 @@ export async function startSubscription(
           : "Could not reach PayPal.",
     };
   }
+}
+
+/**
+ * Moves an existing subscription to another plan.
+ *
+ * Revised rather than replaced: a second subscription alongside the first
+ * would bill the business twice until somebody noticed. PayPal may want the
+ * buyer to approve the new price, in which case it returns a link for them;
+ * without one, the change is already made and the return page will find it.
+ */
+export async function revisePlan(
+  config: PayPalConfig,
+  input: {
+    subscriptionId: string;
+    plan: LicensePlan;
+    interval: PayPalInterval;
+    returnUrl: string;
+    cancelUrl: string;
+  },
+): Promise<StartResult> {
+  const planId = planIdFor(config, input.plan, input.interval);
+  if (!planId) {
+    return {
+      ok: false,
+      error: `No PayPal billing plan is configured for ${input.plan} ${input.interval}.`,
+    };
+  }
+
+  try {
+    const token = await accessToken(config);
+
+    const response = await fetch(
+      `${apiBase(config)}/v1/billing/subscriptions/${encodeURIComponent(input.subscriptionId)}/revise`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan_id: planId,
+          application_context: {
+            brand_name: "Matlock One",
+            shipping_preference: "NO_SHIPPING",
+            return_url: input.returnUrl,
+            cancel_url: input.cancelUrl,
+          },
+        }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+
+    const body = (await response.json().catch(() => ({}))) as {
+      links?: { rel: string; href: string }[];
+      message?: string;
+    };
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: body.message ?? `PayPal would not change the plan (${response.status}).`,
+      };
+    }
+
+    const approve = body.links?.find((link) => link.rel === "approve")?.href;
+    return {
+      ok: true,
+      approveUrl: approve ?? input.returnUrl,
+      subscriptionId: input.subscriptionId,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? `Could not reach PayPal: ${error.message}`
+          : "Could not reach PayPal.",
+    };
+  }
+}
+
+/** Where a subscriber manages or cancels their payments on PayPal itself. */
+export function manageSubscriptionUrl(config: PayPalConfig | null): string {
+  return config && !config.live
+    ? "https://www.sandbox.paypal.com/myaccount/autopay/"
+    : "https://www.paypal.com/myaccount/autopay/";
 }
 
 // --------------------------------------------------------------- webhooks ---
@@ -422,11 +513,72 @@ export function parseEvent(event: unknown): FulfillableEvent | null {
   };
 }
 
-/** Fetches a subscription, to learn the plan and subscriber a renewal omits. */
+export type SubscriptionDetails = {
+  id: string;
+  planId: string;
+  email: string | null;
+  /** APPROVAL_PENDING, APPROVED, ACTIVE, SUSPENDED, CANCELLED or EXPIRED. */
+  status: string | null;
+  /** The business it was started for, when it was started from inside the app. */
+  customId: string | null;
+  /** When PayPal will next charge, which is the end of the period paid for. */
+  nextBillingTime: Date | null;
+  lastPaymentTime: Date | null;
+};
+
+const dateOrNull = (value: unknown): Date | null => {
+  if (typeof value !== "string") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+/**
+ * Events that change what a subscription is worth: it started, it was paid
+ * again, it stopped being paid, it came back. Configure the webhook for all
+ * of them — scripts/paypal-setup.ts does.
+ */
+export const SUBSCRIPTION_EVENTS = [
+  "BILLING.SUBSCRIPTION.ACTIVATED",
+  "BILLING.SUBSCRIPTION.UPDATED",
+  "BILLING.SUBSCRIPTION.RE-ACTIVATED",
+  "BILLING.SUBSCRIPTION.SUSPENDED",
+  "BILLING.SUBSCRIPTION.CANCELLED",
+  "BILLING.SUBSCRIPTION.EXPIRED",
+  "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+  "PAYMENT.SALE.COMPLETED",
+] as const;
+
+/**
+ * The subscription an event is about, or null if it is not about one.
+ *
+ * Only the id is taken from the body. What the subscription is now — its
+ * status, its plan, who it is for — is asked of PayPal, so a forged or stale
+ * event can at worst make us look something up.
+ */
+export function subscriptionIdOf(event: unknown): string | null {
+  if (typeof event !== "object" || event === null) return null;
+
+  const { event_type: type, resource } = event as PayPalEvent;
+  if (!type || !resource) return null;
+  if (!(SUBSCRIPTION_EVENTS as readonly string[]).includes(type)) return null;
+
+  // A sale carries its subscription as billing_agreement_id; the subscription
+  // events are the subscription.
+  const id = type === "PAYMENT.SALE.COMPLETED" ? resource.billing_agreement_id : resource.id;
+  return typeof id === "string" && id ? id : null;
+}
+
+/**
+ * Fetches a subscription as PayPal has it now.
+ *
+ * Asked rather than read out of a webhook body, for the status as much as the
+ * plan: events arrive out of order and are retried, and the subscription
+ * itself is the one account of where things stand that cannot be stale.
+ */
 export async function getSubscription(
   config: PayPalConfig,
   subscriptionId: string,
-): Promise<{ planId: string; email: string | null } | null> {
+): Promise<SubscriptionDetails | null> {
   try {
     const token = await accessToken(config);
 
@@ -441,15 +593,27 @@ export async function getSubscription(
     if (!response.ok) return null;
 
     const body = (await response.json()) as {
+      id?: string;
       plan_id?: string;
+      status?: string;
+      custom_id?: string;
       subscriber?: { email_address?: string };
+      billing_info?: {
+        next_billing_time?: string;
+        last_payment?: { time?: string };
+      };
     };
 
     if (!body.plan_id) return null;
 
     return {
+      id: body.id ?? subscriptionId,
       planId: body.plan_id,
       email: body.subscriber?.email_address ?? null,
+      status: body.status ?? null,
+      customId: body.custom_id ?? null,
+      nextBillingTime: dateOrNull(body.billing_info?.next_billing_time),
+      lastPaymentTime: dateOrNull(body.billing_info?.last_payment?.time),
     };
   } catch {
     return null;

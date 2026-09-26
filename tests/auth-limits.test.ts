@@ -199,7 +199,7 @@ describe("signing up", () => {
     // office network every machine shares one address bucket anyway.
     for (let n = 0; n < 7; n++) {
       await expect(newWorkspace(`Desk Co ${n}`)).rejects.toThrow(
-        "REDIRECT:/dashboard",
+        "REDIRECT:/billing?welcome=1",
       );
     }
   });
@@ -210,7 +210,7 @@ describe("signing up", () => {
     // Five are allowed, and each creates a workspace, so each redirects.
     for (let n = 0; n < 5; n++) {
       await expect(newWorkspace(`Bulk Co ${n}`)).rejects.toThrow(
-        "REDIRECT:/dashboard",
+        "REDIRECT:/billing?welcome=1",
       );
     }
 
@@ -225,7 +225,7 @@ describe("signing up", () => {
 
     for (let n = 0; n < 5; n++) {
       await expect(newWorkspace("Northlight Studio", "AGENCY")).rejects.toThrow(
-        "REDIRECT:/dashboard",
+        "REDIRECT:/billing?welcome=1",
       );
     }
 

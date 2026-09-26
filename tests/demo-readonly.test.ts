@@ -60,8 +60,20 @@ let demo: { orgId: string; clientId: string; session: string };
 let real: { orgId: string; session: string };
 
 async function business(name: string, isDemo: boolean) {
+  // The real one pays, so what is tested here is the demo rule alone.
   const org = await prisma.organization.create({
-    data: { slug: `demo-test-${randomUUID()}`, name, isDemo },
+    data: {
+      slug: `demo-test-${randomUUID()}`,
+      name,
+      isDemo,
+      ...(isDemo
+        ? {}
+        : {
+            subscriptionPlan: "business",
+            subscriptionStatus: "ACTIVE",
+            paidThrough: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
+          }),
+    },
   });
   const owner = await prisma.user.create({
     data: {
