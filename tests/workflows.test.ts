@@ -264,11 +264,13 @@ describe("the sweep", () => {
 
     await sweep(organizationId);
 
+    // Compared as calendar days. The task is due at the end of the day three
+    // days out, so rounding the hours between now and then gave 4 whenever
+    // this ran before noon.
     const [task] = await tasks();
-    const days = Math.round(
-      (task.dueAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
-    );
-    expect(days).toBe(3);
+    const expected = new Date();
+    expected.setDate(expected.getDate() + 3);
+    expect(task.dueAt!.toDateString()).toBe(expected.toDateString());
   });
 
   it("notices a customer who has gone quiet", async () => {
