@@ -87,6 +87,12 @@ model Organization {
   // something you can look at and decide about.
   licenseKey String?
 
+  // The shared sample business visitors can look around. Anyone signed in to it
+  // can read everything and save nothing: requireContext() turns every save
+  // away, before an action runs. Set only by prisma/seed.ts, never by sign-up,
+  // so no real business can end up read-only by sharing a name with it.
+  isDemo Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -19,12 +19,15 @@ export async function markInvoiceViewed(token: string) {
 
   const invoice = await prisma.invoice.findUnique({
     where: { publicToken: token },
-    select: { id: true, status: true, viewedAt: true },
+    select: { id: true, status: true, viewedAt: true, organization: { select: { isDemo: true } } },
   });
   if (!invoice) {
     await shareMissed();
     return;
   }
+
+  // Opening a demo invoice's link records nothing; the demo stays as seeded.
+  if (invoice.organization.isDemo) return;
 
   // Only the first open, and only for an invoice that has actually been sent.
   if (invoice.viewedAt || invoice.status !== "SENT") return;

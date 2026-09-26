@@ -21,6 +21,7 @@ import "../scripts/load-env";
 
 import { vocabularyColumns } from "../src/lib/business-types";
 import { createPrismaClient } from "../src/lib/db";
+import { providerFor } from "../src/lib/db-provider";
 import { computeTotals } from "../src/lib/money";
 import { hashPassword } from "../src/lib/password";
 
@@ -170,6 +171,11 @@ async function main() {
   const org = await prisma.organization.create({
     data: {
       slug: "northside-home-services",
+      // Read-only when this is the public demo on the hosted database, so
+      // visitors can look and not change it: see requireContext(). Writable
+      // when seeded into a local SQLite file, because that copy is the
+      // developer's own workspace for trying changes out.
+      isDemo: providerFor(process.env.DATABASE_URL) === "postgresql",
       name: "Northside Home Services",
       legalName: "Northside Home Services LLC",
       email: "office@northsidehome.test",

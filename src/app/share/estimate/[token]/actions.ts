@@ -25,12 +25,21 @@ export async function markEstimateViewed(token: string) {
 
   const estimate = await prisma.estimate.findUnique({
     where: { publicToken: token },
-    select: { id: true, status: true, viewedAt: true, expiresAt: true },
+    select: {
+      id: true,
+      status: true,
+      viewedAt: true,
+      expiresAt: true,
+      organization: { select: { isDemo: true } },
+    },
   });
   if (!estimate) {
     await shareMissed();
     return;
   }
+
+  // Opening a demo estimate's link records nothing; the demo stays as seeded.
+  if (estimate.organization.isDemo) return;
 
   // Only the first open counts, and only for an estimate that is actually out
   // for a decision — reopening an accepted quote must not reset its status.
@@ -65,11 +74,18 @@ export async function respondToEstimate(
 
   const estimate = await prisma.estimate.findUnique({
     where: { publicToken: token },
-    select: { id: true, status: true, expiresAt: true },
+    select: { id: true, status: true, expiresAt: true, organization: { select: { isDemo: true } } },
   });
   if (!estimate) {
     await shareMissed();
     return { ok: false, error: "This link is no longer valid." };
+  }
+
+  if (estimate.organization.isDemo) {
+    return {
+      ok: false,
+      error: "This is a demo estimate, so your answer isn’t recorded. Create your account to send estimates of your own.",
+    };
   }
 
   const status = effectiveEstimateStatus(estimate);

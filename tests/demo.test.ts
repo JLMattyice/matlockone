@@ -17,7 +17,9 @@ afterEach(async () => {
 
 async function seedDemoOwner(isActive = true) {
   const org = await prisma.organization.create({
-    data: { slug: `demo-${randomUUID()}`, name: "Northside Home Services" },
+    // Flagged, as the hosted seed makes it: only a demo that is locked
+    // read-only is offered to the public. See tests/demo-readonly.test.ts.
+    data: { slug: `demo-${randomUUID()}`, name: "Northside Home Services", isDemo: true },
   });
   await prisma.user.create({
     data: {
@@ -36,7 +38,7 @@ describe("demoAvailable", () => {
     expect(await demoAvailable()).toBe(false);
   });
 
-  it("says yes once the demo owner exists", async () => {
+  it("says yes once the locked demo and its owner exist", async () => {
     await seedDemoOwner();
     expect(await demoAvailable()).toBe(true);
   });

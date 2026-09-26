@@ -67,7 +67,7 @@ export async function GET(
       balanceCents: true,
       organizationId: true,
       client: { select: { displayName: true, email: true } },
-      organization: { select: { name: true } },
+      organization: { select: { name: true, isDemo: true } },
     },
   });
 
@@ -81,6 +81,9 @@ export async function GET(
   // A draft was never issued, a cancelled invoice is not owed, and a settled
   // one must not take a second payment.
   if (!canTakePayment(invoice)) return back(origin, token, "not-payable");
+
+  // A demo invoice is for looking at. Nobody should be sent to pay it.
+  if (invoice.organization.isDemo) return back(origin, token, "not-payable");
 
   const processor = await resolveProcessor(invoice.organizationId);
   if (!processor) return back(origin, token, "unavailable");

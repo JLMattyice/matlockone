@@ -306,7 +306,9 @@ export async function sweepEveryBusiness(): Promise<{
   const scheduled = WORKFLOW_TEMPLATES.filter(isScheduled).map((template) => template.id);
 
   const rows = await prisma.workflow.findMany({
-    where: { isActive: true, templateId: { in: scheduled } },
+    // Not the demo: a morning of chase tasks would pile up in a business that
+    // is meant to look the same to every visitor.
+    where: { isActive: true, templateId: { in: scheduled }, organization: { isDemo: false } },
     select: { organizationId: true },
     distinct: ["organizationId"],
   });

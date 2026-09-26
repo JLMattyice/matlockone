@@ -30,6 +30,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
+  // A route, so requireContext's demo check never sees it. A file would be the
+  // one thing a visitor could leave in real storage.
+  if (ctx.org.isDemo) {
+    return NextResponse.json(
+      { error: "This is a demo, so nothing is saved. Create your account to keep your files." },
+      { status: 403 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

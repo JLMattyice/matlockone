@@ -43,7 +43,12 @@ function firstRunBlurb(local: boolean) {
     : "Set up your business to get started. You will be its owner, and can invite your team once you are in.";
 }
 
-export default async function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string }>;
+}) {
+  const { from } = await searchParams;
   const first = await isFirstRun();
   const local = dataStaysOnThisMachine();
 
@@ -86,6 +91,14 @@ export default async function SignupPage() {
               : "Sets up your organization and makes you its owner."}
           </p>
         </div>
+
+        {from === "demo" ? (
+          // Said before they start, so nobody goes looking for the demo's
+          // records in their new workspace.
+          <p className="rounded-lg bg-surface-2 px-3 py-2.5 text-sm text-ink-muted">
+            Your workspace starts empty. Nothing from the demo comes with it.
+          </p>
+        ) : null}
 
         <SignupForm offerSignIn={!first} />
       </CardBody>

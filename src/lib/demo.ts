@@ -24,8 +24,14 @@ export const DEMO_OWNER_EMAIL = "owner@demo.test";
 
 export const demoAvailable = cache(async (): Promise<boolean> => {
   try {
+    // Only a flagged demo. An older seed without the flag is a demo nobody
+    // guards, and inviting the public into it would let them change it.
     const owner = await prisma.user.findFirst({
-      where: { email: DEMO_OWNER_EMAIL, isActive: true },
+      where: {
+        email: DEMO_OWNER_EMAIL,
+        isActive: true,
+        organization: { isDemo: true },
+      },
       select: { id: true },
     });
     return owner !== null;

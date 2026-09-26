@@ -174,9 +174,20 @@ the desktop build uses.
 
 ### The demo workspace
 
-The landing page invites visitors to sign in and try a workspace with a year of
-work already in it. That workspace comes from `prisma/seed.ts`, and it has to
-be put there deliberately:
+The landing page invites visitors to sign in and look around a workspace with
+a year of work already in it. **On the hosted database it is read-only**:
+every page and form opens, and every save — a new job, a note, a changed
+setting, an upload — is turned away before it runs, landing on a page that
+says nothing was kept and offers sign-up. That is `requireContext()`, checking
+`Organization.isDemo`; uploads, the public share links and the morning
+automation run check the same flag. The banner along the top says so before
+anybody types.
+
+The flag comes from the seed, set only when it is seeding a Postgres database.
+Seeded into a local SQLite file, the same workspace stays writable, because
+there it is the developer's own place to try changes. Apply migrations first
+(`npm run db:deploy`), since the seed writes the flag column. That workspace
+comes from `prisma/seed.ts`, and it has to be put there deliberately:
 
 ```
 DATABASE_URL="<the hosted connection string>" npm run db:seed

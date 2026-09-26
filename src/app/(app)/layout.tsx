@@ -2,6 +2,7 @@ import { LicenseBanner } from "@/components/app-shell/license-banner";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { Topbar } from "@/components/app-shell/topbar";
 import { requireContext } from "@/lib/auth";
+import { DemoBanner } from "@/components/app-shell/demo-banner";
 import { unreadMessageCount } from "@/lib/conversations";
 import { licenseState } from "@/lib/license/status";
 import { NAVIGATION, orgLabels, resolveNavigation } from "@/lib/navigation";
@@ -69,10 +70,16 @@ export default async function AppLayout({
           searchPlaceholder={`Search ${org.labelClientPlural.toLowerCase()}, ${org.labelJobPlural.toLowerCase()}, invoices…`}
         />
 
-        <LicenseBanner
-          state={licenseState(org.licenseKey)}
-          canActivate={can(user, "settings:write")}
-        />
+        {/* In the demo, what matters is that nothing is kept; its licence
+            state is nobody's business. */}
+        {org.isDemo ? (
+          <DemoBanner />
+        ) : (
+          <LicenseBanner
+            state={licenseState(org.licenseKey)}
+            canActivate={can(user, "settings:write")}
+          />
+        )}
 
         <main className="mx-auto w-full max-w-7xl px-4 py-6 lg:px-6 lg:py-8">
           {children}
