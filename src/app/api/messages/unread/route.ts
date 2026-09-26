@@ -18,6 +18,6 @@ export async function GET() {
     return NextResponse.json({ unread: 0 }, { status: 401 });
   }
 
-  const unread = await unreadMessageCount(ctx.org.id, ctx.user.id);
+  const unread = await unreadMessageCount(ctx.org.id, ctx.user);
   return NextResponse.json({ unread }, { headers: { "Cache-Control": "no-store" } });
 }

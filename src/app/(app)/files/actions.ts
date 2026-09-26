@@ -17,9 +17,8 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { attachmentTargetExists } from "@/lib/attachment-targets";
-import { isImageMime, putFile, removeFile, statFile } from "@/lib/storage";
-import { verifyUploadTicket } from "@/lib/storage/ticket";
-import { MAX_UPLOAD_BYTES } from "@/lib/storage-limits";
+import { isImageMime, putFile, removeFile } from "@/lib/storage";
+import { acceptUploadTicket } from "@/lib/storage/accept";
 
 export async function uploadAttachment(
   _prev: ActionState,
@@ -115,19 +114,10 @@ export async function uploadAttachment(
 /**
  * Records files the browser uploaded directly to the store.
  *
- * The counterpart to /api/files/upload-ticket. By the time this runs the bytes
- * are already in the store and the server never saw them, so everything here is
- * about not taking the client's word for what happened:
- *
- *   - the ticket's signature proves the server chose this key, for this
- *     organization, against this record;
- *   - the organization on the ticket must still be the caller's, so a ticket
- *     cannot be replayed by a different session;
- *   - the object is re-read from the store, so the recorded size is the size on
- *     disk rather than the size that was promised.
- *
- * A ticket that fails any of these is skipped rather than fatal: one bad file in
- * a batch of ten should not discard the nine that were fine.
+ * The counterpart to /api/files/upload-ticket. What makes a ticket believable
+ * is in storage/accept.ts, shared with photos sent in a job thread. A ticket
+ * that fails is skipped rather than fatal: one bad file in a batch of ten
+ * should not discard the nine that were fine.
  */
 export async function confirmUploads(
   _prev: ActionState,
@@ -167,67 +157,34 @@ export async function confirmUploads(
   let entityId = "";
 
   for (const raw of tickets) {
-    const ticket = typeof raw === "string" ? verifyUploadTicket(raw) : null;
-    if (!ticket) {
-      problems.push("An upload could not be verified.");
+    const accepted = await acceptUploadTicket(raw, org.id);
+    if (!accepted.ok) {
+      problems.push(accepted.problem);
       continue;
     }
-
-    // A valid signature from another tenant is still not this caller's to file.
-    if (ticket.organizationId !== org.id) {
-      problems.push("An upload could not be verified.");
-      continue;
-    }
-
-    if (!(await attachmentTargetExists(ticket.entityType, ticket.entityId, org.id))) {
-      problems.push("That record no longer exists.");
-      continue;
-    }
-
-    // The object itself is the authority on what was uploaded.
-    const object = await statFile(ticket.key);
-    if (!object) {
-      problems.push(`${ticket.originalName}: the upload did not finish.`);
-      continue;
-    }
-    if (object.sizeBytes === 0) {
-      problems.push(`${ticket.originalName}: that file is empty.`);
-      await removeFile(ticket.key);
-      continue;
-    }
-    if (object.sizeBytes > MAX_UPLOAD_BYTES) {
-      // The presigned URL was issued with a size limit, but a store that does
-      // not enforce one must not become a way past the application's.
-      problems.push(
-        `${ticket.originalName}: files must be under ${Math.round(
-          MAX_UPLOAD_BYTES / 1024 / 1024,
-        )} MB.`,
-      );
-      await removeFile(ticket.key);
-      continue;
-    }
+    const upload = accepted.upload;
 
     const resolvedKind: AttachmentKind =
-      kind === "DOCUMENT" && isImageMime(ticket.mimeType) ? "PHOTO" : kind;
+      kind === "DOCUMENT" && isImageMime(upload.mimeType) ? "PHOTO" : kind;
 
     await prisma.attachment.create({
       data: {
         organizationId: org.id,
         kind: resolvedKind,
         photoStage: resolvedKind === "PHOTO" ? photoStage : null,
-        fileName: ticket.key.split("/").pop()!,
-        originalName: ticket.originalName,
-        mimeType: ticket.mimeType,
-        sizeBytes: object.sizeBytes,
-        storagePath: ticket.key,
+        fileName: upload.key.split("/").pop()!,
+        originalName: upload.originalName,
+        mimeType: upload.mimeType,
+        sizeBytes: upload.sizeBytes,
+        storagePath: upload.key,
         caption,
         uploadedById: user.id,
-        [ATTACHMENT_ENTITIES[ticket.entityType].column]: ticket.entityId,
+        [ATTACHMENT_ENTITIES[upload.entityType].column]: upload.entityId,
       },
     });
 
-    entityType = ticket.entityType;
-    entityId = ticket.entityId;
+    entityType = upload.entityType;
+    entityId = upload.entityId;
     stored++;
   }
 

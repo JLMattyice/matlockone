@@ -29,7 +29,7 @@ export default async function AppLayout({
   // that has not had the messages tables added yet, say — every screen still
   // renders, just without the number.
   const unreadMessages = can(user, "messages:use")
-    ? await unreadMessageCount(org.id, user.id).catch((error: unknown) => {
+    ? await unreadMessageCount(org.id, user).catch((error: unknown) => {
         console.error("Could not count unread messages", error);
         return 0;
       })

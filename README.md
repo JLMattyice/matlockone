@@ -334,11 +334,18 @@ history.
 **Messages** — the office and the crew talking inside the app instead of across
 personal phones. One thread per pair of people however it is started, named
 group threads, web links that open, and an unread count on the sidebar that
-keeps itself current while the app is open. A thread is readable by the people
-in it and nobody else — the owner included — and it never leaves the business:
-mail to clients is a different system. Updates arrive by polling every few
-seconds while a thread is on screen, because neither deployment can hold a
-connection open.
+keeps itself current while the app is open. A direct or group thread is
+readable by the people in it and nobody else — the owner included — and none of
+it leaves the business: mail to clients is a different system. Updates arrive
+by polling every few seconds while a thread is on screen, because neither
+deployment can hold a connection open.
+
+Every job can have a conversation of its own, started from the job page. It
+belongs to the job rather than to whoever was in it: the office and the crew
+assigned can read it, a technician put on the job later gets the history, and
+one taken off loses it with the job. Photos sent there — shrunk on the phone
+first, for bad signal — are saved to the job's Photos & documents with the
+message as their caption, so what the crew sees on site ends up on the record.
 
 **Reports** — money in against money out over time, receivables ageing, spend by
 category and vendor, top services and clients, labor by person, lead-source

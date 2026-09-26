@@ -24,16 +24,18 @@ import {
   threadMessages,
   unreadByConversation,
   unreadMessageCount,
+  type Viewer,
 } from "@/lib/conversations";
-import { ROLES } from "@/lib/constants";
+import { ROLES, type Role } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 
 /**
  * Team messaging.
  *
- * What carries the feature: a thread is readable by the people in it and by
- * nobody else, the owner included; there is one direct thread per pair however
+ * What carries the feature: a direct or group thread is readable by the
+ * people in it and by nobody else, the owner included (job threads follow the
+ * job instead — see job-threads.test.ts); there is one direct thread per pair however
  * it is reached; and "unread" means somebody else's message you have not been
  * shown, which is what the badge in the sidebar counts.
  */
@@ -52,7 +54,13 @@ async function seedOrg(name: string) {
   return org.id;
 }
 
-async function addUser(orgId: string, role: string, name: string, isActive = true) {
+/** Every user's role, so a bare id can be turned back into a viewer. */
+const roles = new Map<string, Role>();
+
+/** Whoever is asking, as the functions under test want them. */
+const as = (id: string): Viewer => ({ id, role: roles.get(id) ?? "EMPLOYEE" });
+
+async function addUser(orgId: string, role: Role, name: string, isActive = true) {
   const user = await prisma.user.create({
     data: {
       organizationId: orgId,
@@ -63,11 +71,12 @@ async function addUser(orgId: string, role: string, name: string, isActive = tru
       isActive,
     },
   });
+  roles.set(user.id, role);
   return user.id;
 }
 
 async function say(conversationId: string, authorId: string, body: string) {
-  const message = await postMessage({ organizationId, conversationId, authorId, body });
+  const message = await postMessage({ organizationId, conversationId, author: as(authorId), body });
   if (!message) throw new Error(`Could not post "${body}"`);
   return message;
 }
@@ -186,19 +195,19 @@ describe("privacy", () => {
     }))!;
     await say(id, tech, "Can you move my 3 o'clock?");
 
-    expect(await getConversation(organizationId, owner, id)).toBeNull();
-    expect(await threadMessages({ organizationId, userId: owner, conversationId: id })).toBeNull();
+    expect(await getConversation(organizationId, as(owner), id)).toBeNull();
+    expect(await threadMessages({ organizationId, viewer: as(owner), conversationId: id })).toBeNull();
     expect(
-      await postMessage({ organizationId, conversationId: id, authorId: owner, body: "Hi" }),
+      await postMessage({ organizationId, conversationId: id, author: as(owner), body: "Hi" }),
     ).toBeNull();
-    expect(await listConversations(organizationId, owner)).toEqual([]);
+    expect(await listConversations(organizationId, as(owner))).toEqual([]);
   });
 
   it("does not reach a thread through another business's id", async () => {
     const id = (await openDirectConversation({ organizationId, userId: owner, otherUserId: tech }))!;
 
     expect(
-      await threadMessages({ organizationId: otherOrganizationId, userId: owner, conversationId: id }),
+      await threadMessages({ organizationId: otherOrganizationId, viewer: as(owner), conversationId: id }),
     ).toBeNull();
   });
 });
@@ -211,7 +220,7 @@ describe("posting", () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     await say(busy, tech, "Later");
 
-    const inbox = await listConversations(organizationId, owner);
+    const inbox = await listConversations(organizationId, as(owner));
     expect(inbox.map((row) => row.id)).toEqual([busy, quiet]);
     expect(inbox[0].lastMessage).toMatchObject({ body: "Later", authorName: "Priya Raghavan", mine: false });
     expect(inbox[0].title).toBe("Priya Raghavan");
@@ -220,18 +229,18 @@ describe("posting", () => {
   it("keeps a thread nobody has written in out of everybody's inbox but its opener's", async () => {
     const id = (await openDirectConversation({ organizationId, userId: owner, otherUserId: tech }))!;
 
-    expect((await listConversations(organizationId, owner)).map((row) => row.id)).toEqual([id]);
-    expect(await listConversations(organizationId, tech)).toEqual([]);
+    expect((await listConversations(organizationId, as(owner))).map((row) => row.id)).toEqual([id]);
+    expect(await listConversations(organizationId, as(tech))).toEqual([]);
 
     await say(id, owner, "Are you free at 3?");
-    expect((await listConversations(organizationId, tech)).map((row) => row.id)).toEqual([id]);
+    expect((await listConversations(organizationId, as(tech))).map((row) => row.id)).toEqual([id]);
   });
 
   it("refuses an empty message and an overlong one", async () => {
     const id = (await openDirectConversation({ organizationId, userId: owner, otherUserId: tech }))!;
 
     for (const body of ["", "   \n  ", "x".repeat(MESSAGE_MAX_LENGTH + 1)]) {
-      expect(await postMessage({ organizationId, conversationId: id, authorId: owner, body })).toBeNull();
+      expect(await postMessage({ organizationId, conversationId: id, author: as(owner), body })).toBeNull();
     }
     expect(await prisma.message.count({ where: { conversationId: id } })).toBe(0);
   });
@@ -242,7 +251,7 @@ describe("posting", () => {
 
     await prisma.user.delete({ where: { id: tech } });
 
-    const thread = await threadMessages({ organizationId, userId: owner, conversationId: id });
+    const thread = await threadMessages({ organizationId, viewer: as(owner), conversationId: id });
     expect(thread?.messages).toHaveLength(1);
     expect(thread?.messages[0].author).toBeNull();
   });
@@ -262,7 +271,7 @@ describe("reading a thread", () => {
       })),
     });
 
-    const latest = (await threadMessages({ organizationId, userId: owner, conversationId: id }))!;
+    const latest = (await threadMessages({ organizationId, viewer: as(owner), conversationId: id }))!;
     expect(latest.messages).toHaveLength(50);
     expect(latest.messages[0].body).toBe("Message 10");
     expect(latest.messages.at(-1)?.body).toBe("Message 59");
@@ -270,7 +279,7 @@ describe("reading a thread", () => {
 
     const earlier = (await threadMessages({
       organizationId,
-      userId: owner,
+      viewer: as(owner),
       conversationId: id,
       beforeId: latest.messages[0].id,
     }))!;
@@ -290,7 +299,7 @@ describe("reading a thread", () => {
       ],
     });
 
-    const poll = (await threadMessages({ organizationId, userId: owner, conversationId: id, after: at }))!;
+    const poll = (await threadMessages({ organizationId, viewer: as(owner), conversationId: id, after: at }))!;
     expect(poll.messages.map((m) => m.body).sort()).toEqual(["Same moment", "Seen"]);
   });
 });
@@ -302,8 +311,8 @@ describe("unread", () => {
     await say(id, tech, "Ten minutes out.");
     await say(id, tech, "Traffic on 401.");
 
-    expect(await unreadMessageCount(organizationId, owner)).toBe(2);
-    expect(await unreadMessageCount(organizationId, tech)).toBe(1);
+    expect(await unreadMessageCount(organizationId, as(owner))).toBe(2);
+    expect(await unreadMessageCount(organizationId, as(tech))).toBe(1);
   });
 
   it("clears when read, and counts only what came after", async () => {
@@ -313,11 +322,11 @@ describe("unread", () => {
     expect(
       await markConversationRead({ organizationId, userId: owner, conversationId: id, upTo: new Date(first.createdAt) }),
     ).toBe(true);
-    expect(await unreadMessageCount(organizationId, owner)).toBe(0);
+    expect(await unreadMessageCount(organizationId, as(owner))).toBe(0);
 
     await new Promise((resolve) => setTimeout(resolve, 5));
     await say(id, tech, "Two");
-    expect(await unreadMessageCount(organizationId, owner)).toBe(1);
+    expect(await unreadMessageCount(organizationId, as(owner))).toBe(1);
   });
 
   it("never moves a read position backwards, and says when nothing moved", async () => {
@@ -337,7 +346,7 @@ describe("unread", () => {
     expect(
       await markConversationRead({ organizationId, userId: owner, conversationId: id, upTo: at }),
     ).toBe(false);
-    expect(await unreadMessageCount(organizationId, owner)).toBe(0);
+    expect(await unreadMessageCount(organizationId, as(owner))).toBe(0);
   });
 
   it("will not mark the future as read", async () => {
@@ -351,7 +360,7 @@ describe("unread", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 5));
     await say(id, tech, "Posted after the read");
-    expect(await unreadMessageCount(organizationId, owner)).toBe(1);
+    expect(await unreadMessageCount(organizationId, as(owner))).toBe(1);
   });
 
   it("splits the count by thread for the inbox", async () => {
@@ -365,11 +374,11 @@ describe("unread", () => {
     await say(group, office, "Two");
     await say(group, apprentice, "Three");
 
-    const counts = await unreadByConversation(organizationId, owner);
+    const counts = await unreadByConversation(organizationId, as(owner));
     expect(counts.get(withTech)).toBe(1);
     expect(counts.get(group)).toBe(2);
 
-    const inbox = await listConversations(organizationId, owner);
+    const inbox = await listConversations(organizationId, as(owner));
     expect(inbox.find((row) => row.id === group)?.unread).toBe(2);
   });
 
@@ -378,7 +387,7 @@ describe("unread", () => {
     await say(id, tech, "Handing in my keys.");
     await prisma.user.delete({ where: { id: tech } });
 
-    expect(await unreadMessageCount(organizationId, owner)).toBe(1);
+    expect(await unreadMessageCount(organizationId, as(owner))).toBe(1);
   });
 
   it("does not count another business's messages", async () => {
@@ -392,12 +401,12 @@ describe("unread", () => {
     await postMessage({
       organizationId: otherOrganizationId,
       conversationId: theirs,
-      authorId: theirTech,
+      author: as(theirTech),
       body: "Theirs",
     });
 
-    expect(await unreadMessageCount(organizationId, owner)).toBe(0);
-    expect(await unreadMessageCount(otherOrganizationId, theirOwner)).toBe(1);
+    expect(await unreadMessageCount(organizationId, as(owner))).toBe(0);
+    expect(await unreadMessageCount(otherOrganizationId, as(theirOwner))).toBe(1);
   });
 });
 
@@ -483,6 +492,7 @@ describe("merging a poll into what is on screen", () => {
     body: id,
     createdAt,
     author: null,
+    photos: [],
   });
 
   it("drops repeats and keeps time order", () => {

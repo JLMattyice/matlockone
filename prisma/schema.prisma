@@ -412,6 +412,7 @@ model Job {
   @@index([organizationId, status])
   @@index([organizationId, scheduledStart])
   tasks Task[]
+  conversation Conversation?
 }
 
 model JobAssignment {
@@ -764,6 +765,10 @@ model Attachment {
 
   uploadedById String?
   uploadedBy   User?   @relation("AttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  /// Set when the photo was sent in a job thread. A relation only: the link
+  /// lives on MessageAttachment.
+  messageLink MessageAttachment?
 
   createdAt DateTime @default(now())
 
@@ -1132,29 +1137,46 @@ model WorkflowRun {
 
 /**
  * A thread between teammates.
+ *
  * Internal only. Mail and texts to clients are OutboxMessage; nothing written
  * here ever leaves the business.
+ *
  * DIRECT is two people and exactly one thread per pair. `directKey` is their
  * two ids sorted and joined, unique per organization, so "message Priya"
  * reopens the thread you already have rather than starting a second one next
  * to it. That is enforced by the index, not by a lookup: two taps at once
  * would both find nothing and both create. GROUP leaves the key null, and a
  * business can have as many as it likes.
- * Readable by its members and nobody else, the owner included. A technician
- * who has to wonder whether the boss reads their messages to a colleague will
- * go back to texting that colleague instead.
+ *
+ * DIRECT and GROUP threads are readable by their members and nobody else, the
+ * owner included. A technician who has to wonder whether the boss reads their
+ * messages to a colleague will go back to texting that colleague instead.
+ *
+ * JOB is different on purpose: the conversation about a piece of work belongs
+ * to the work, so it is readable by whoever can see the job — the office, and
+ * the crew assigned to it — and a technician taken off the job loses it along
+ * with the job. Membership there only says whose inbox it sits in.
  */
 model Conversation {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  /// DIRECT | GROUP. Not an enum: the schema stays provider-neutral.
+  /// DIRECT | GROUP | JOB. Not an enum: the schema stays provider-neutral.
   kind      String  @default("GROUP")
   /// A group's name. Null on direct threads, and on groups nobody named —
-  /// both read as the names of the people in them.
+  /// both read as the names of the people in them. Null on job threads too,
+  /// which go by the job's number and title as they stand today.
   title     String?
   directKey String?
+
+  /// The job a JOB thread is about. One thread per job, by the index; and
+  /// Cascade, because a conversation about a deleted job has nothing left to
+  /// point at — its photos go with the job for the same reason. A desktop
+  /// install upgraded from 0.4.0 gets the column without the key behind it,
+  /// so deleteJob removes the thread itself rather than relying on this.
+  jobId String? @unique
+  job   Job?    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   createdById String?
   createdBy   User?   @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1174,6 +1196,7 @@ model Conversation {
 
 /**
  * One person in one conversation, and how far they have read.
+ *
  * Unread is "posted by somebody else after lastReadAt", worked out when asked
  * rather than kept as a counter: a counter has to be incremented for every
  * member on every post and drifts the first time one of those writes fails.
@@ -1195,6 +1218,7 @@ model ConversationMember {
 
 /**
  * Something one teammate said to others.
+ *
  * The author is SetNull rather than Cascade: a thread with the departed
  * person's half cut out of it reads as nonsense to everybody still in it.
  */
@@ -1207,9 +1231,36 @@ model Message {
   authorId       String?
   author         User?        @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 
+  /// Empty when the message is only photos.
   body String
 
   createdAt DateTime @default(now())
 
+  photos MessageAttachment[]
+
   @@index([conversationId, createdAt])
+}
+
+/**
+ * A photo sent in a job thread.
+ *
+ * The photo itself is an ordinary Attachment on the job, so it lands in the
+ * job's Photos & documents with everything else from site; this row only says
+ * which message carried it. A table of its own rather than a column on
+ * Attachment: a desktop install that already has a table gains a new column
+ * on upgrade but not the foreign key behind it, since SQLite cannot add one,
+ * and Attachment is on every install there is. A new table arrives whole.
+ *
+ * Cascade from both sides: deleting the photo from the job takes it out of the
+ * message, and deleting the message takes the link while the job keeps the
+ * photo.
+ */
+model MessageAttachment {
+  id           String     @id @default(cuid())
+  messageId    String
+  message      Message    @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  attachmentId String     @unique
+  attachment   Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
 }

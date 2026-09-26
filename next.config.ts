@@ -51,6 +51,19 @@ const nextConfig: NextConfig = {
   ],
   typedRoutes: false,
 
+  // How big a request a server action will read. Next's default is 1MB, and a
+  // photo off a phone is three to eight: on the desktop build, and anywhere
+  // else files are stored on the server's own disk, every upload goes through
+  // a server action, so the default refused almost every photo anybody took.
+  // Sized to the most the app ever sends in one go — ten files of 15MB from
+  // the upload form (tests/server-action-limit.test.ts keeps the two in step).
+  // A hosted deployment never gets near it: its uploads go straight to the
+  // file store, and Vercel refuses request bodies over 4.5MB before this
+  // limit is read.
+  experimental: {
+    serverActions: { bodySizeLimit: 152 * 1024 * 1024 },
+  },
+
   // Emits .next/standalone: a self-contained server plus only the node_modules
   // it actually traced. That directory is what the desktop build ships, so the
   // installer does not carry the whole dev dependency tree.
