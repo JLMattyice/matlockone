@@ -34,7 +34,13 @@ import { databaseProvider } from "./db-provider";
  * second time in the test suite to drift from this one.
  */
 export function createPrismaClient(): PrismaClient {
-  const url = process.env.DATABASE_URL as string;
+  // Trimmed. A value pasted into a hosting dashboard easily carries a trailing
+  // space or line break, and Postgres reads it as part of the database name:
+  // "postgres" plus a newline does not exist, so every page that touches the
+  // database fails. Prisma's CLI trims the same variable, so `migrate status`
+  // connects with the very value the site cannot — which makes it a hard
+  // fault to see from the outside.
+  const url = process.env.DATABASE_URL?.trim() as string;
   const provider = databaseProvider(url);
 
   const log =
