@@ -186,6 +186,13 @@ export type LoginResult =
  * The same message is returned for an unknown email and a wrong password, and a
  * hash is verified either way, so the response does not reveal which accounts
  * exist or leak timing differences.
+ *
+ * An email belongs to one account — every place that saves one checks
+ * emailInUse() — but that was not always so: adding a team member once
+ * checked only that business's own team. So an email held by more than one
+ * account is still handled, by trying the password against each, active and
+ * most recently used first. Taking whichever row came back first would lock
+ * the person out of all but one of them.
  */
 export async function login(
   emailRaw: string,
@@ -197,19 +204,28 @@ export async function login(
 
   if (!email || !password) return { ok: false, error: GENERIC };
 
-  const user = await prisma.user.findFirst({
+  const candidates = await prisma.user.findMany({
     where: { email },
-    include: { organization: true },
+    orderBy: [{ isActive: "desc" }, { lastLoginAt: { sort: "desc", nulls: "last" } }],
   });
 
+  let user: (typeof candidates)[number] | null = null;
+  for (const candidate of candidates) {
+    if (await verifyPassword(password, candidate.passwordHash)) {
+      user = candidate;
+      break;
+    }
+  }
+
   // Dummy hash keeps the unknown-email path as slow as the wrong-password path.
-  const storedHash =
-    user?.passwordHash ??
-    "scrypt$16384$8$1$00000000000000000000000000000000$" + "0".repeat(128);
+  if (candidates.length === 0) {
+    await verifyPassword(
+      password,
+      "scrypt$16384$8$1$00000000000000000000000000000000$" + "0".repeat(128),
+    );
+  }
 
-  const passwordOk = await verifyPassword(password, storedHash);
-
-  if (!user || !passwordOk) return { ok: false, error: GENERIC };
+  if (!user) return { ok: false, error: GENERIC };
   if (!user.isActive) {
     return {
       ok: false,
@@ -247,6 +263,57 @@ export async function login(
 
 export async function logout() {
   await destroySession();
+}
+
+/**
+ * Whether an email already signs somebody in, other than `exceptUserId`.
+ *
+ * Sign-in looks an email up across every business, so it can belong to one
+ * account only. Checked wherever an email is saved — sign-up, adding or
+ * editing a team member, changing your own — and answered as "team" or
+ * "elsewhere" so the message can say which.
+ */
+export async function emailInUse(
+  email: string,
+  organizationId: string | null,
+  exceptUserId?: string,
+): Promise<"team" | "elsewhere" | null> {
+  const holder = await prisma.user.findFirst({
+    where: { email, ...(exceptUserId ? { id: { not: exceptUserId } } : {}) },
+    select: { organizationId: true },
+  });
+  if (!holder) return null;
+  return holder.organizationId === organizationId ? "team" : "elsewhere";
+}
+
+export const EMAIL_IN_USE = {
+  team: "Someone on your team already uses that email.",
+  elsewhere: "That email already signs in to another Matlock One account. Use a different one.",
+} as const;
+
+/**
+ * Where to send somebody after they sign in: a path on this site, or the
+ * dashboard.
+ *
+ * The path arrives in the address (?next=), so anybody can write one. A
+ * leading "/" is not enough: "//evil.example" is another site, and so is
+ * "/\evil.example", because browsers read a backslash in an address as a
+ * slash. So the path is resolved against a stand-in origin and kept only if
+ * it stays there.
+ */
+export function safeNextPath(next: string | null | undefined, fallback = "/dashboard"): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return fallback;
+  // eslint-disable-next-line no-control-regex
+  if (/[\\\u0000-\u001f\u007f]/.test(next)) return fallback;
+
+  try {
+    const base = "https://matlockone.invalid";
+    const url = new URL(next, base);
+    if (url.origin !== base) return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
 }
 
 export { PermissionError };

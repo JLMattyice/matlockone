@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { login, logout } from "@/lib/auth";
+import { login, logout, safeNextPath } from "@/lib/auth";
 import {
   DEFAULT_BUSINESS_TYPE,
   isBusinessType,
@@ -53,7 +53,9 @@ function text(value: FormDataEntryValue | null): string {
 }
 
 const loginSchema = z.object({
-  email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),
+  // Lowercased here as well as in login(), so the attempt count for
+  // "Lane@…" and "lane@…" is one count, not two.
+  email: z.string().trim().toLowerCase().min(1, "Email is required.").email("Enter a valid email."),
   password: z.string().min(1, "Password is required."),
   // FormData.get() yields null for an absent field, and Zod's .optional()
   // accepts only undefined — .nullish() covers both.
@@ -128,13 +130,9 @@ export async function loginAction(
   if (remember) await rememberEmail(result.user.email);
   else await forgetRememberedEmail();
 
-  // Only accept same-origin relative paths, so ?next= cannot bounce a user
-  // to an attacker-controlled site after a successful sign-in.
-  const next = parsed.data.next;
-  const safeNext =
-    next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
-
-  redirect(safeNext);
+  // Only a path on this site, so ?next= cannot bounce somebody to a
+  // look-alike site the moment they have signed in.
+  redirect(safeNextPath(parsed.data.next));
 }
 
 export async function logoutAction() {

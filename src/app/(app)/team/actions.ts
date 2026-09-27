@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
 import { canAddPerson, entitlement } from "@/lib/billing/entitlement";
-import { requirePermission } from "@/lib/auth";
+import { EMAIL_IN_USE, emailInUse, requirePermission } from "@/lib/auth";
 import { ROLES, type Role } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { parseMoneyToCents } from "@/lib/money";
@@ -58,16 +58,8 @@ export async function createTeamMember(
   const weak = passwordProblem(password);
   if (weak) return { ok: false, fieldErrors: { password: weak } };
 
-  const clash = await prisma.user.findFirst({
-    where: { organizationId: org.id, email: input.email },
-    select: { id: true },
-  });
-  if (clash) {
-    return {
-      ok: false,
-      fieldErrors: { email: "Someone on your team already uses that email." },
-    };
-  }
+  const clash = await emailInUse(input.email, org.id);
+  if (clash) return { ok: false, fieldErrors: { email: EMAIL_IN_USE[clash] } };
 
   // Seats are checked here rather than only in the UI: this is the point where
   // the count actually grows, and it is reachable by any caller who can post
@@ -151,16 +143,8 @@ export async function updateTeamMember(
     }
   }
 
-  const clash = await prisma.user.findFirst({
-    where: { organizationId: org.id, email: input.email, id: { not: id } },
-    select: { id: true },
-  });
-  if (clash) {
-    return {
-      ok: false,
-      fieldErrors: { email: "Someone on your team already uses that email." },
-    };
-  }
+  const clash = await emailInUse(input.email, org.id, id);
+  if (clash) return { ok: false, fieldErrors: { email: EMAIL_IN_USE[clash] } };
 
   await prisma.user.update({
     where: { id },

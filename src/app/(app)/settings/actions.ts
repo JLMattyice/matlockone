@@ -11,7 +11,7 @@ import {
   text,
   type ActionState,
 } from "@/lib/action-state";
-import { requireContext, requirePermission } from "@/lib/auth";
+import { EMAIL_IN_USE, emailInUse, requireContext, requirePermission } from "@/lib/auth";
 import { DEFAULT_BUSINESS_TYPE, isBusinessType } from "@/lib/business-types";
 import { prisma } from "@/lib/db";
 import { parseRateToBp } from "@/lib/money";
@@ -224,18 +224,8 @@ export async function updateOwnProfile(
 
   if (!parsed.success) return invalid(parsed.error);
 
-  const clash = await prisma.user.findFirst({
-    where: {
-      organizationId: user.organizationId,
-      email: parsed.data.email,
-      id: { not: user.id },
-    },
-    select: { id: true },
-  });
-
-  if (clash) {
-    return { ok: false, fieldErrors: { email: "Someone on your team already uses that email." } };
-  }
+  const clash = await emailInUse(parsed.data.email, user.organizationId, user.id);
+  if (clash) return { ok: false, fieldErrors: { email: EMAIL_IN_USE[clash] } };
 
   await prisma.user.update({ where: { id: user.id }, data: parsed.data });
 
