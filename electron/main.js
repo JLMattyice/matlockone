@@ -225,7 +225,7 @@ async function startServer(carried) {
 
   fs.mkdirSync(store.storageDir, { recursive: true });
 
-  const { created, addedTables, addedColumns, needsMigration } = ensureDatabase({
+  const { created, addedTables, addedColumns, needsMigration, backfilled } = ensureDatabase({
     nodeBinary: resources.nodeBinary,
     initScript: resources.initScript,
     databaseFile: store.databaseFile,
@@ -260,6 +260,11 @@ async function startServer(carried) {
   }
   if (addedColumns && addedColumns.length > 0) {
     log.write(`[matlock-one] Upgraded database, added: ${addedColumns.join(", ")}
+`);
+  }
+  if (backfilled && backfilled.length > 0) {
+    const filled = backfilled.map((entry) => `${entry.column} on ${entry.rows} row(s)`);
+    log.write(`[matlock-one] Filled in on upgrade: ${filled.join(", ")}
 `);
   }
   if (needsMigration && needsMigration.length > 0) {

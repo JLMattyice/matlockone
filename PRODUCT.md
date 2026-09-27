@@ -116,22 +116,19 @@ partly paid, a payment recorded twice.
   only, and a signed, notarized Mac app cannot be produced from Windows. A Mac
   install must not be advertised until a real build exists — it needs a Mac or a
   CI runner, and it is unstarted work.
-- **Seat limits are enforced; taking money is not automated.** A signed licence
-  carries the plan, seats and expiry, and the application enforces seats on both
-  paths that can grow the count. Fulfilment exists and is idempotent: a sale is
-  recorded in `Purchase` under the processor's own id behind a unique index, and
-  a licence is signed once and kept, so a retry, a double-click or a customer
-  chasing a lost email all return the *same* key. `npm run sale` is the
-  fulfilment path today.
-- **PayPal Subscriptions is built but unconfigured and unproven.** The adapter,
-  the webhook route and the subscribe buttons exist; the network calls have
-  never run against PayPal, because that needs live credentials. Checkout is
-  offered only when `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` and
-  `PAYPAL_WEBHOOK_ID` are all set, so an unconfigured deployment shows the free
-  download rather than a button that fails after taking money. Stripe stays
-  `implemented: false` *here* — this is selling Matlock One itself, which is a
-  different system from how a customer's own clients pay them, where Stripe
-  does ship. A test asserts nothing unimplemented is offered.
+- **Hosted businesses pay by PayPal subscription; desktop installs by
+  licence key.** The plan sets the seats either way. A subscription carries
+  the business's id and opens it the moment PayPal confirms (`src/lib/billing`).
+  Licence keys are for installs that keep their own data: a sale is recorded in
+  `Purchase` under the processor's own id behind a unique index, and a licence
+  is signed once and kept, so a retry or a customer chasing a lost email gets
+  the *same* key. `npm run sale` issues one by hand.
+- **PayPal Subscriptions is live and proven** — a real Starter purchase,
+  cancellation and refund on 2026-09-26. `npm run paypal:setup` made the
+  product, plans and webhook. Stripe stays `implemented: false` *here*: selling
+  Matlock One itself is a different system from how a customer's own clients
+  pay them, where Stripe does ship. A test asserts nothing unimplemented is
+  offered.
 - **Renewals are keyed on the payment, never the subscription.** Each period
   arrives as its own `PAYMENT.SALE.COMPLETED` with its own id, so each earns its
   own licence with a fresh expiry. Keying on the subscription id would hand a
@@ -151,13 +148,13 @@ partly paid, a payment recorded twice.
   how the key is sent (HTML mail especially) has to be checked against that.
 - **Prices live in `src/lib/checkout/plans.ts`**, and the marketing page renders
   from it. The advertised price and the charged price cannot drift.
-- **The free tier is demo mode, and it is real.** No licence means the whole
-  product, capped at `DEMO_SEATS` active people, with no expiry and no
-  watermark. The marketing page imports that constant rather than restating the
-  number, so the claim cannot drift from the code.
-- **The site links `/signup` again.** Hosted sign-up is how a customer gets the
-  account the desktop app signs in to. A new workspace is free up to
-  `DEMO_SEATS` active people and a licence lifts that; setting
+- **There is no free tier.** Every hosted business pays before first use;
+  until it does, `/billing` is the only screen it can reach. The demo
+  workspace is look-only and never billed. `billingExempt` marks a business
+  that is never billed: the operator's own, and every business already on a
+  local desktop install when 0.5.0 arrived.
+- **The site leads with `/signup`.** Hosted sign-up is how a customer gets the
+  account the desktop app signs in to, and it lands on choosing a plan.
   `ALLOW_SIGNUP=false` closes sign-up if that ever needs to stop.
 - **There is no public download URL yet.** The installer builds locally into
   `dist-installer/`; nothing is hosted. Any download link is a placeholder until

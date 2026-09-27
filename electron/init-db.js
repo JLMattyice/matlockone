@@ -123,6 +123,22 @@ function canAddColumn(definition) {
   return true;
 }
 
+/**
+ * Values written once, at the moment a column first arrives on an existing
+ * install — the single exception to "nothing is back-filled" below.
+ *
+ * billingExempt arrived in 0.5.0 with the paywall. A business already on a
+ * desktop install that keeps its own data was working, unlocked, the day
+ * before that update, and the decision was to keep those open rather than
+ * lock them by updating. It reaches nothing else: an install made since 0.3.0
+ * opens the hosted account and holds no business of its own, a new database
+ * takes the column's default, and once the column exists this never runs
+ * again — so a business set back to billed stays billed.
+ */
+const BACKFILL_ON_ADD = {
+  "Organization.billingExempt": 'UPDATE "Organization" SET "billingExempt" = 1',
+};
+
 try {
   // Resolve from this script's own directory: in the packaged app that is
   // resources/server, where the server's node_modules already live.
@@ -148,6 +164,7 @@ try {
   const addedColumns = [];
   const addedIndexes = [];
   const needsMigration = [];
+  const backfilled = [];
 
   try {
     db.pragma("journal_mode = WAL");
@@ -158,7 +175,8 @@ try {
     } else {
       // An existing installation is missing whatever a newer version added.
       // Only additive changes are applied — new tables, new nullable columns,
-      // new indexes. Nothing is dropped, rewritten or back-filled, so a
+      // new indexes. Nothing is dropped or rewritten, and nothing is
+      // back-filled except the columns named in BACKFILL_ON_ADD, so a
       // database full of real work is never at risk from a version bump.
       //
       // Deliberately NOT a migration system: a column whose *type* or
@@ -208,6 +226,12 @@ try {
             if (canAddColumn(definition)) {
               db.exec(`ALTER TABLE "${table}" ADD COLUMN ${definition}`);
               addedColumns.push(`${table}.${column}`);
+
+              const backfill = BACKFILL_ON_ADD[`${table}.${column}`];
+              if (backfill) {
+                const { changes } = db.prepare(backfill).run();
+                backfilled.push({ column: `${table}.${column}`, rows: changes });
+              }
             } else {
               needsMigration.push(`${table}.${column}`);
             }
@@ -279,6 +303,7 @@ try {
         addedColumns,
         addedIndexes,
         needsMigration,
+        backfilled,
       }),
     );
   } finally {
