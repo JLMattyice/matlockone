@@ -7,9 +7,11 @@ import { clientAddress, hit, peek, SHARE_MISSES_PER_IP } from "./rate-limit";
  * The limit in front of every public share link: the estimate and invoice
  * pages, the actions on them, and the pay redirect.
  *
- * A share link is the whole credential. Its token is a cuid, whose random part
- * is short, so the thing worth stopping is somebody trying tokens until one
- * opens. Views of a real link are never counted — a client can open their
+ * A share link is the whole credential. Links made since 2026-09-26 carry 32
+ * characters from a cryptographic source, far past guessing; the ones before
+ * carry cuids, whose random part is short, and those were sent to clients and
+ * still work. So the thing worth stopping is still somebody trying tokens until
+ * one opens. Views of a real link are never counted — a client can open their
  * invoice as often as they like — but every lookup that finds nothing is, per
  * address, and an address past the limit is refused all links until its
  * window closes. See SHARE_MISSES_PER_IP.

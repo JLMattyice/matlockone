@@ -535,7 +535,10 @@ model Estimate {
 
   notes       String?
   terms       String?
-  publicToken String  @unique @default(cuid())
+  /// The whole credential for the public link, so it is 32 characters from a
+  /// cryptographic source (nanoid: 192 bits), never a cuid. Links made before
+  /// 2026-09-26 carry cuids and still work — they were sent to clients.
+  publicToken String  @unique @default(nanoid(32))
 
   convertedJobId String? @unique
   convertedJob   Job?    @relation("EstimateConvertedJob", fields: [convertedJobId], references: [id], onDelete: SetNull)
@@ -613,7 +616,10 @@ model Invoice {
 
   notes       String?
   terms       String?
-  publicToken String  @unique @default(cuid())
+  /// The whole credential for the public link, so it is 32 characters from a
+  /// cryptographic source (nanoid: 192 bits), never a cuid. Links made before
+  /// 2026-09-26 carry cuids and still work — they were sent to clients.
+  publicToken String  @unique @default(nanoid(32))
 
   /// A link to pay this invoice, hosted by the customer's own processor.
   ///
