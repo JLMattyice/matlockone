@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -12,6 +13,7 @@ import {
 import { dataStaysOnThisMachine, signupOpen } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { hashPassword, passwordProblem } from "@/lib/password";
+import { requestReset, userForResetToken } from "@/lib/password-reset";
 import { forgetRememberedEmail, rememberEmail } from "@/lib/remembered-email";
 import {
   clientAddress,
@@ -19,10 +21,12 @@ import {
   hit,
   LOGIN_PER_EMAIL,
   LOGIN_PER_IP,
+  RESET_REQUEST_PER_EMAIL,
+  RESET_REQUEST_PER_IP,
   retryAfterPhrase,
   SIGNUP_PER_IP,
 } from "@/lib/rate-limit";
-import { createSession } from "@/lib/session";
+import { createSession, destroyAllSessionsFor } from "@/lib/session";
 import { slugify } from "@/lib/utils";
 
 export type AuthFormState = {
@@ -42,6 +46,8 @@ export type AuthFormState = {
    * rather than round-tripping back through the page.
    */
   values?: Record<string, string>;
+  /** The request went through: the screen changes to what happens next. */
+  done?: boolean;
 };
 
 /**
@@ -270,3 +276,106 @@ async function uniqueSlug(businessName: string) {
 
   return candidate;
 }
+
+// ----------------------------------------------------------- forgot password ---
+
+const resetRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().min(1, "Enter your email.").email("Enter a valid email."),
+});
+
+/**
+ * "Email me a link." Answers the same whether or not the address has an
+ * account, so the form cannot be used to find out who does.
+ */
+export async function requestPasswordResetAction(
+  _prev: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const values = { email: text(formData.get("email")) };
+
+  const parsed = resetRequestSchema.safeParse({ email: formData.get("email") });
+  if (!parsed.success) {
+    return { fieldErrors: { email: parsed.error.issues[0]?.message ?? "Enter a valid email." }, values };
+  }
+  const { email } = parsed.data;
+
+  // Before anything is looked up, like sign-in: a limited request costs
+  // nothing, and says nothing about whether the address exists.
+  const address = await clientAddress();
+  const [perEmail, perAddress] = await Promise.all([
+    hit(`reset:email:${email}`, RESET_REQUEST_PER_EMAIL),
+    hit(`reset:ip:${address}`, RESET_REQUEST_PER_IP),
+  ]);
+  if (!perEmail.ok || !perAddress.ok) {
+    const wait = Math.max(perEmail.retryAfterSeconds, perAddress.retryAfterSeconds);
+    return { error: `Too many reset emails asked for. Try again ${retryAfterPhrase(wait)}.`, values };
+  }
+
+  const result = await requestReset(email);
+  if (!result.ok) {
+    console.error("[password-reset] No sending account: set SYSTEM_MAIL_* to send reset links.");
+    return {
+      error: "Password reset by email isn’t set up on this site yet. Ask the owner of your business to reset it from the Team page.",
+      values,
+    };
+  }
+
+  return { done: true, values };
+}
+
+const resetSchema = z.object({
+  token: z.string().min(1),
+  password: z.string(),
+  confirm: z.string(),
+});
+
+/**
+ * Choosing the new password from the emailed link.
+ *
+ * Saving it changes the hash, which is what retires the link. Every device
+ * signed in as this person is signed out — whoever else knew the old
+ * password is shut out with it — and this one is signed in.
+ */
+export async function resetPasswordAction(
+  _prev: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const parsed = resetSchema.safeParse({
+    token: formData.get("token"),
+    password: formData.get("password") ?? "",
+    confirm: formData.get("confirm") ?? "",
+  });
+  if (!parsed.success) return { error: "Something went wrong. Please try again." };
+
+  const user = await userForResetToken(parsed.data.token);
+  if (!user) {
+    return { error: "This link has expired or has already been used. Ask for a new one." };
+  }
+
+  const weak = passwordProblem(parsed.data.password);
+  if (weak) return { fieldErrors: { password: weak } };
+  if (parsed.data.password !== parsed.data.confirm) {
+    return { fieldErrors: { confirm: "The two passwords don’t match." } };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await hashPassword(parsed.data.password) },
+  });
+  await destroyAllSessionsFor(user.id);
+
+  // They proved they hold the mailbox; a lockout they collected while
+  // forgetting is not theirs to wait out.
+  await forget(`login:email:${user.email}`);
+
+  const headerList = await headers();
+  await createSession(user.id, {
+    remember: true,
+    userAgent: headerList.get("user-agent"),
+    ipAddress: headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+  });
+  await rememberEmail(user.email);
+
+  redirect("/dashboard");
+}
+

@@ -35,6 +35,8 @@ const GOOD = {
   PAYPAL_PLAN_BUSINESS_ANNUAL: "P-4",
   PAYPAL_PLAN_PRO_MONTHLY: "P-5",
   PAYPAL_PLAN_PRO_ANNUAL: "P-6",
+  SYSTEM_MAIL_FROM_EMAIL: "hello@matlockone.com",
+  SYSTEM_MAIL_RESEND_API_KEY: "re_test",
 };
 
 const problemsFor = (env: Record<string, string | undefined>) =>
@@ -231,6 +233,20 @@ describe("configProblems", () => {
     expect(message).not.toContain("PAYPAL_CLIENT_ID,");
   });
 
+  it("warns when a hosted deployment has no mailbox to send reset links from", () => {
+    expect(warningSettings({ SYSTEM_MAIL_FROM_EMAIL: undefined })).toContain("SYSTEM_MAIL");
+    expect(warningSettings({ SYSTEM_MAIL_RESEND_API_KEY: undefined })).toContain("SYSTEM_MAIL");
+    // SMTP instead of Resend is just as good.
+    expect(
+      warningSettings({
+        SYSTEM_MAIL_RESEND_API_KEY: undefined,
+        SYSTEM_MAIL_SMTP_HOST: "smtp.example.com",
+        SYSTEM_MAIL_SMTP_PASSWORD: "secret",
+      }),
+    ).not.toContain("SYSTEM_MAIL");
+    expect(fatalSettings({ SYSTEM_MAIL_FROM_EMAIL: undefined })).not.toContain("SYSTEM_MAIL");
+  });
+
   it("does not ask a desktop install for PayPal", () => {
     // A desktop install pays by licence key and has none of these, rightly.
     const desktop = {
@@ -242,6 +258,7 @@ describe("configProblems", () => {
       STORAGE_PROVIDER: "local",
     };
     expect(configProblems(desktop).map((p) => p.setting)).not.toContain("PAYPAL");
+    expect(configProblems(desktop).map((p) => p.setting)).not.toContain("SYSTEM_MAIL");
   });
 
   it("warns when client-facing links would point at localhost", () => {

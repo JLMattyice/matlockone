@@ -102,6 +102,12 @@ PAYPAL_PLAN_BUSINESS_MONTHLY="P-..."
 PAYPAL_PLAN_BUSINESS_ANNUAL="P-..."
 PAYPAL_PLAN_PRO_MONTHLY="P-..."
 PAYPAL_PLAN_PRO_ANNUAL="P-..."
+
+# Matlock One's own mailbox — see Forgot password below. A from address, and
+# either a Resend key or an SMTP login.
+SYSTEM_MAIL_FROM_EMAIL="hello@matlockone.com"
+SYSTEM_MAIL_FROM_NAME="Matlock One"
+SYSTEM_MAIL_RESEND_API_KEY="re_..."
 ```
 
 > **`ENCRYPTION_KEY` can never change.** Every stored mail password and payment
@@ -278,6 +284,30 @@ exempt in the Supabase SQL editor:
 UPDATE "Organization" SET "billingExempt" = true WHERE "slug" = '<its slug>';
 ```
 
+## Forgot password
+
+"Forgot password?" on the sign-in screen emails a link to choose a new
+password. It goes out from Matlock One's own mailbox, the `SYSTEM_MAIL_*`
+settings above — the same one licence keys use — because a business's own
+mail settings are behind the sign-in the person cannot get past. Without
+them the page says reset by email is not set up, and the boot log warns.
+
+The link is signed, not stored (`src/lib/password-reset.ts`), so there is no
+table for it. It works for an hour, and once: its signature covers the
+account's current password hash, so saving a new password retires every link
+sent before. Using it signs out every other device and signs this one in.
+Asking says the same thing whether or not the address has an account, and is
+limited to three emails an hour per address and ten per source address.
+
+The quickest mailbox is [Resend](https://resend.com): add and verify the
+sending domain there, create an API key, and set `SYSTEM_MAIL_FROM_EMAIL` to
+an address on that domain. Any SMTP login works instead
+(`SYSTEM_MAIL_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`).
+
+A desktop install that keeps its own data has no such mailbox; its forgot
+page points at **File → Reset a password…** in the launcher. Anyone on a team
+can also be reset by an owner or administrator from the Team page.
+
 ## Automations
 
 Two of the automations wait for a date rather than an event: chasing an
@@ -361,8 +391,9 @@ business's login actually sees.
 - **Fatal** — no `DATABASE_URL`, no or too-short `SESSION_SECRET`, local disk
   storage on Vercel. The server refuses to start.
 - **Warning, logged loudly** — no `ENCRYPTION_KEY`, client links that would
-  resolve to localhost, no `CRON_SECRET`, or PayPal not fully configured (new
-  businesses could sign up but never choose a plan).
+  resolve to localhost, no `CRON_SECRET`, PayPal not fully configured (new
+  businesses could sign up but never choose a plan), or no `SYSTEM_MAIL_*`
+  mailbox (nobody could reset a forgotten password).
 
 The split is deliberate: a deployment missing the fatal settings serves a broken
 product convincingly, which is worse than one that did not come up. A missing

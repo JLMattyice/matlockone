@@ -15,6 +15,8 @@ import { SESSION_COOKIE } from "@/lib/session-cookie";
 const PUBLIC_PREFIXES = [
   "/login",
   "/signup",
+  "/forgot-password",
+  "/reset-password",
   "/share",
   "/session-expired",
   "/download",

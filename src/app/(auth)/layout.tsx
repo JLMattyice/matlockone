@@ -11,7 +11,7 @@ export default function AuthLayout({
         <div className="w-full max-w-100">
           <Link href="/" className="mb-8 flex items-center justify-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-ink">
-              WS
+              MO
             </span>
             <span className="text-lg font-semibold tracking-tight text-ink">
               Matlock One
@@ -21,7 +21,7 @@ export default function AuthLayout({
         </div>
       </div>
       <footer className="pb-8 text-center text-xs text-ink-subtle">
-        Field service management for small teams
+        Your business, all in one place
       </footer>
     </div>
   );

@@ -85,6 +85,12 @@ export function LoginForm({
         />
       </Field>
 
+      <p className="-mt-2 text-right text-sm">
+        <Link href="/forgot-password" className="font-medium text-brand hover:underline">
+          Forgot password?
+        </Link>
+      </p>
+
       <label
         htmlFor="remember"
         className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted"

@@ -238,6 +238,25 @@ export function configProblems(env: ConfigEnv = process.env): ConfigProblem[] {
     }
   }
 
+  // Matlock's own mailbox: without it a forgotten password has no way back
+  // but somebody editing the database, and licence keys are never emailed.
+  // Mirrors systemMailer().
+  if (production && !dataStaysOnThisMachine(env)) {
+    const from = env.SYSTEM_MAIL_FROM_EMAIL?.trim();
+    const resend = env.SYSTEM_MAIL_RESEND_API_KEY?.trim();
+    const smtp = env.SYSTEM_MAIL_SMTP_HOST?.trim() && env.SYSTEM_MAIL_SMTP_PASSWORD;
+    if (!from || (!resend && !smtp)) {
+      problems.push({
+        level: "warning",
+        setting: "SYSTEM_MAIL",
+        message:
+          "No sending mailbox: set SYSTEM_MAIL_FROM_EMAIL and either\n" +
+          "  SYSTEM_MAIL_RESEND_API_KEY or SYSTEM_MAIL_SMTP_HOST + SYSTEM_MAIL_SMTP_PASSWORD.\n" +
+          "  Until then \"Forgot password?\" cannot send a link.",
+      });
+    }
+  }
+
   return problems;
 }
 

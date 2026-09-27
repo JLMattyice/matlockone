@@ -88,6 +88,21 @@ export const PAY_REDIRECT_PER_INVOICE: RateLimitRule = { limit: 20, windowSecond
 export const PASSWORD_CHECK_PER_USER: RateLimitRule = { limit: 5, windowSeconds: 15 * MINUTE };
 
 /**
+ * Reset emails for one address.
+ *
+ * Each request sends a real email, so without a limit the form is a way to
+ * bury somebody's inbox. Three an hour covers a person who asked, waited, and
+ * asked again.
+ */
+export const RESET_REQUEST_PER_EMAIL: RateLimitRule = { limit: 3, windowSeconds: HOUR };
+
+/**
+ * Reset emails from one source address, across every account — the same
+ * form pointed at a list of addresses.
+ */
+export const RESET_REQUEST_PER_IP: RateLimitRule = { limit: 10, windowSeconds: HOUR };
+
+/**
  * Share links that do not exist, per source address.
  *
  * A share link is the only credential its page has, and nothing slowed
