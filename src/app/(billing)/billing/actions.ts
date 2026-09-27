@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth";
 import { BILLING_PATH } from "@/lib/billing/entitlement";
-import { startCheckout } from "@/lib/billing/subscription";
+import { CANCELLABLE, restartDate, startCheckout } from "@/lib/billing/subscription";
 import { isPlan } from "@/lib/checkout/plans";
-import { paypalConfig, revisePlan } from "@/lib/checkout/paypal";
+import { cancelSubscription, paypalConfig, revisePlan } from "@/lib/checkout/paypal";
 import { resolveAppUrl } from "@/lib/config";
+import { prisma } from "@/lib/db";
 
 /**
  * Choosing a plan: off to PayPal to approve it, and back to the billing
@@ -40,7 +41,13 @@ export async function choosePlan(formData: FormData) {
           returnUrl: `${appUrl}${BILLING_PATH}/return?subscription_id=${encodeURIComponent(org.subscriptionId)}`,
           cancelUrl: `${appUrl}${BILLING_PATH}?cancelled=1`,
         })
-      : await startCheckout({ organizationId: org.id, email: user.email, plan, interval });
+      : await startCheckout({
+          organizationId: org.id,
+          email: user.email,
+          plan,
+          interval,
+          startAt: restartDate(org),
+        });
 
   // A code, not PayPal's words. The screen shows fixed text for each, so a
   // link cannot be made to put a message of somebody else's choosing in
@@ -51,4 +58,42 @@ export async function choosePlan(formData: FormData) {
   }
 
   redirect(result.approveUrl);
+}
+
+/**
+ * Cancelling the plan, from the billing page rather than PayPal's.
+ *
+ * Stops the payments and nothing else: the business stays open to the end of
+ * what it paid for, and everything in it is kept. Only whoever manages
+ * settings, like choosing a plan.
+ */
+export async function cancelPlan() {
+  const { org } = await requirePermission("settings:write", { unpaid: "allow" });
+
+  const config = paypalConfig();
+  if (!config || !org.subscriptionId || !CANCELLABLE.has(org.subscriptionStatus ?? "")) {
+    redirect(BILLING_PATH);
+  }
+
+  const result = await cancelSubscription(
+    config,
+    org.subscriptionId,
+    "Cancelled by the business from Matlock One's billing page.",
+  );
+
+  if (!result.ok) {
+    console.error(`[billing] Could not cancel ${org.subscriptionId} for ${org.id}: ${result.error}`);
+    redirect(`${BILLING_PATH}?error=cancel`);
+  }
+
+  // PayPal has it cancelled; say so here at once rather than waiting for the
+  // webhook, which will arrive and agree. paidThrough is left alone — that is
+  // the time already paid for. Matched on the subscription too, so a plan
+  // changed in the meantime is not the one marked.
+  await prisma.organization.updateMany({
+    where: { id: org.id, subscriptionId: org.subscriptionId },
+    data: { subscriptionStatus: "CANCELLED" },
+  });
+
+  redirect(`${BILLING_PATH}?plan_cancelled=1`);
 }

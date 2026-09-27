@@ -80,7 +80,12 @@ export async function syncSubscription(
   const details = await getSubscription(config, subscriptionId);
   if (!details) return { linked: false, reason: "unreachable" };
 
-  const select = { id: true, subscriptionId: true, paidThrough: true } as const;
+  const select = {
+    id: true,
+    subscriptionId: true,
+    subscriptionStatus: true,
+    paidThrough: true,
+  } as const;
   const org = details.customId
     ? await prisma.organization.findUnique({ where: { id: details.customId }, select })
     : await prisma.organization.findUnique({ where: { subscriptionId: details.id }, select });
@@ -100,18 +105,19 @@ export async function syncSubscription(
 
   // A business that has since moved to another subscription ignores news of
   // the old one — its cancellation must not close the plan that replaced it.
-  // A newly active subscription always takes over.
+  // A newly active subscription always takes over. So does one approved to
+  // start later, in place of a plan that is no longer active: that is a
+  // business coming back to a plan it cancelled, and until the new one's
+  // first payment it keeps the days it had already paid for.
   const replacing = org.subscriptionId !== null && org.subscriptionId !== details.id;
-  if (replacing && details.status !== "ACTIVE") {
+  const takesOver =
+    details.status === "ACTIVE" ||
+    (details.status === "APPROVED" && org.subscriptionStatus !== "ACTIVE");
+  if (replacing && !takesOver) {
     return { linked: true, organizationId: org.id, status: null, paidThrough: org.paidThrough };
   }
 
-  const paidThrough = paidThroughFor(
-    details,
-    matched.interval,
-    replacing ? null : org.paidThrough,
-    options.now,
-  );
+  const paidThrough = paidThroughFor(details, matched.interval, org.paidThrough, options.now);
 
   try {
     await prisma.organization.update({
@@ -145,6 +151,8 @@ export async function startCheckout(input: {
   email: string;
   plan: LicensePlan;
   interval: PayPalInterval;
+  /** Take the first payment then rather than now. */
+  startAt?: Date | null;
 }): Promise<StartResult> {
   const config = paypalConfig();
   if (!config) {
@@ -160,5 +168,25 @@ export async function startCheckout(input: {
     cancelUrl: `${appUrl}${BILLING_PATH}?cancelled=1`,
     email: input.email,
     customId: input.organizationId,
+    startTime: input.startAt ?? null,
   });
 }
+
+/**
+ * When a business choosing a plan should first be charged.
+ *
+ * Straight away, unless it still has paid-for time left on a plan that is no
+ * longer renewing — cancelled, most often. Then the new plan starts when that
+ * time runs out, so the same days are not paid for twice. An hour's margin,
+ * because PayPal refuses a start time that has passed by the time it reads it.
+ */
+export function restartDate(
+  org: { subscriptionStatus: string | null; paidThrough: Date | null },
+  now: Date = new Date(),
+): Date | null {
+  if (org.subscriptionStatus === "ACTIVE" || !org.paidThrough) return null;
+  return org.paidThrough.getTime() > now.getTime() + 60 * 60 * 1000 ? org.paidThrough : null;
+}
+
+/** Statuses a business can cancel from the billing page. */
+export const CANCELLABLE = new Set(["ACTIVE", "SUSPENDED", "APPROVED"]);

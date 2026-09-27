@@ -182,6 +182,12 @@ export async function startSubscription(
      * anonymous purchase that emails a key for a desktop install.
      */
     customId?: string | null;
+    /**
+     * When the first payment is taken, if not straight away: a business
+     * coming back to a plan it cancelled starts paying when the time it
+     * already paid for runs out, not on top of it.
+     */
+    startTime?: Date | null;
   },
 ): Promise<StartResult> {
   const planId = planIdFor(config, input.plan, input.interval);
@@ -204,6 +210,7 @@ export async function startSubscription(
       body: JSON.stringify({
         plan_id: planId,
         ...(input.customId ? { custom_id: input.customId } : {}),
+        ...(input.startTime ? { start_time: input.startTime.toISOString() } : {}),
         ...(input.email ? { subscriber: { email_address: input.email } } : {}),
         application_context: {
           brand_name: "Matlock One",
@@ -310,6 +317,64 @@ export async function revisePlan(
       ok: true,
       approveUrl: approve ?? input.returnUrl,
       subscriptionId: input.subscriptionId,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? `Could not reach PayPal: ${error.message}`
+          : "Could not reach PayPal.",
+    };
+  }
+}
+
+export type CancelResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Stops a subscription's payments.
+ *
+ * Nothing already paid is refunded or taken back: the business stays open to
+ * the end of the period it bought. A subscription PayPal already has as
+ * cancelled or expired answers 422 SUBSCRIPTION_STATUS_INVALID — the outcome
+ * that was asked for, so it counts as done rather than as a failure.
+ */
+export async function cancelSubscription(
+  config: PayPalConfig,
+  subscriptionId: string,
+  reason: string,
+): Promise<CancelResult> {
+  try {
+    const token = await accessToken(config);
+
+    const response = await fetch(
+      `${apiBase(config)}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        // PayPal caps the reason at 128 characters.
+        body: JSON.stringify({ reason: reason.slice(0, 128) }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+
+    if (response.ok) return { ok: true };
+
+    const body = (await response.json().catch(() => ({}))) as {
+      message?: string;
+      details?: { issue?: string }[];
+    };
+
+    if (
+      response.status === 422 &&
+      body.details?.some((detail) => detail.issue === "SUBSCRIPTION_STATUS_INVALID")
+    ) {
+      return { ok: true };
+    }
+
+    return {
+      ok: false,
+      error: body.message ?? `PayPal would not cancel the subscription (${response.status}).`,
     };
   } catch (error) {
     return {

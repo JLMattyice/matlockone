@@ -47,13 +47,13 @@ vi.mock("next/navigation", () => ({
 
 import { NextRequest } from "next/server";
 
-import { choosePlan } from "@/app/(billing)/billing/actions";
+import { cancelPlan, choosePlan } from "@/app/(billing)/billing/actions";
 import BillingPage from "@/app/(billing)/billing/page";
 import BillingReturnPage from "@/app/(billing)/billing/return/page";
 import { POST as webhook } from "@/app/api/checkout/paypal/webhook/route";
 import { POST as uploadTicket } from "@/app/api/files/upload-ticket/route";
 import { requireContext, requirePermission } from "@/lib/auth";
-import { paidThroughFor, syncSubscription } from "@/lib/billing/subscription";
+import { paidThroughFor, restartDate, syncSubscription } from "@/lib/billing/subscription";
 import { forgetAccessToken, type SubscriptionDetails } from "@/lib/checkout/paypal";
 import { prisma } from "@/lib/db";
 import { createSession, SESSION_COOKIE } from "@/lib/session";
@@ -116,6 +116,20 @@ function fakePayPal(input: RequestInfo | URL, init: RequestInit = {}): Promise<R
       plan_id: body?.plan_id,
       links: [{ rel: "approve", href: "https://www.sandbox.paypal.com/webapps/billing/revise?ba_token=BA-2" }],
     });
+  }
+
+  const cancel = url.pathname.match(/^\/v1\/billing\/subscriptions\/([^/]+)\/cancel$/);
+  if (cancel && method === "POST") {
+    const found = subscriptions.get(decodeURIComponent(cancel[1]));
+    if (!found) return json(404, { name: "RESOURCE_NOT_FOUND" });
+    if (found.status === "CANCELLED" || found.status === "EXPIRED") {
+      return json(422, {
+        name: "UNPROCESSABLE_ENTITY",
+        details: [{ issue: "SUBSCRIPTION_STATUS_INVALID" }],
+      });
+    }
+    found.status = "CANCELLED";
+    return Promise.resolve(new Response(null, { status: 204 }));
   }
 
   const one = url.pathname.match(/^\/v1\/billing\/subscriptions\/([^/]+)$/);
@@ -448,6 +462,9 @@ describe("choosing a plan", () => {
       "ba_token=BA-1",
     );
     expect(sent.some((r) => r.path.endsWith("/revise"))).toBe(false);
+    // Nothing left paid for, so the first payment is now.
+    const started = sent.find((r) => r.path === "/v1/billing/subscriptions");
+    expect(started?.body).not.toHaveProperty("start_time");
   });
 
   it("refuses a plan that is not one of ours, before PayPal hears of it", async () => {
@@ -758,5 +775,219 @@ describe("coming back from PayPal", () => {
     expect(html).toContain("We couldn’t confirm that plan");
     expect((await orgOf(other)).subscriptionId).toBeNull();
     await expect(requireContext()).rejects.toThrow("NEXT_REDIRECT /billing");
+  });
+});
+
+// -------------------------------------------------------------- cancelling ---
+
+describe("cancelling from the billing page", () => {
+  beforeEach(() => {
+    request.headers = { "next-action": "c4n5e1" };
+  });
+
+  const page = async (params: Record<string, string> = {}) =>
+    renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve(params) }));
+
+  it("offers the owner a way to cancel, folded away with what it means", async () => {
+    const until = inDays(12);
+    const b = await business({ ...PAYING, subscriptionId: "I-OFFER", paidThrough: until });
+    signInAs(b.owner);
+    request.headers = {};
+
+    const html = await page();
+
+    expect(html).toContain("<summary");
+    expect(html).toContain("Cancel subscription");
+    expect(html).toContain("No more payments will be taken");
+    expect(html).toContain("Cancel my plan");
+  });
+
+  it("offers nobody else a way to cancel", async () => {
+    const b = await business({ ...PAYING, subscriptionId: "I-NOT-YOURS", paidThrough: inDays(12) });
+    signInAs(b.employee);
+    request.headers = {};
+
+    expect(await page()).not.toContain("Cancel subscription");
+  });
+
+  it("cancels in PayPal and keeps the time already paid for", async () => {
+    const until = inDays(12);
+    const b = await business({ ...PAYING, subscriptionId: "I-STOP", paidThrough: until });
+    paypalHas("I-STOP", { customId: b.orgId });
+    signInAs(b.owner);
+
+    await expect(cancelPlan()).rejects.toThrow("NEXT_REDIRECT /billing?plan_cancelled=1");
+
+    const asked = sent.find((r) => r.path === "/v1/billing/subscriptions/I-STOP/cancel");
+    expect(asked?.method).toBe("POST");
+    expect(String(asked?.body?.reason)).toMatch(/billing page/);
+    expect(await orgOf(b)).toMatchObject({ subscriptionStatus: "CANCELLED", paidThrough: until });
+    // Still open: cancelling stops the payments, not the account.
+    expect((await requireContext()).org.id).toBe(b.orgId);
+  });
+
+  it("says so afterwards, with the day it closes, and offers a way back", async () => {
+    const until = inDays(12);
+    const b = await business({ ...PAYING, subscriptionId: "I-AFTER", paidThrough: until });
+    paypalHas("I-AFTER", { customId: b.orgId });
+    signInAs(b.owner);
+    await expect(cancelPlan()).rejects.toThrow("plan_cancelled=1");
+    request.headers = {};
+
+    const html = await page({ plan_cancelled: "1" });
+
+    expect(html).toContain("Your plan is cancelled. No more payments will be taken");
+    expect(html).toContain("Keep going after");
+    expect(html).not.toContain("Cancel subscription");
+    // Every plan is a way back, the one just cancelled included.
+    expect(html).not.toContain("Current plan");
+  });
+
+  it("counts a plan PayPal already has as cancelled as cancelled", async () => {
+    const b = await business({ ...PAYING, subscriptionId: "I-GONE", paidThrough: inDays(5) });
+    paypalHas("I-GONE", { customId: b.orgId, status: "CANCELLED" });
+    signInAs(b.owner);
+
+    await expect(cancelPlan()).rejects.toThrow("NEXT_REDIRECT /billing?plan_cancelled=1");
+    expect((await orgOf(b)).subscriptionStatus).toBe("CANCELLED");
+  });
+
+  it("changes nothing when PayPal will not cancel it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const b = await business({ ...PAYING, subscriptionId: "I-STUCK", paidThrough: inDays(5) });
+    paypalHas("I-STUCK", { customId: b.orgId });
+    signInAs(b.owner);
+    paypalDown = true;
+
+    await expect(cancelPlan()).rejects.toThrow("NEXT_REDIRECT /billing?error=cancel");
+    expect((await orgOf(b)).subscriptionStatus).toBe("ACTIVE");
+  });
+
+  it("is not for someone who cannot manage billing", async () => {
+    const b = await business({ ...PAYING, subscriptionId: "I-EMPLOYEE", paidThrough: inDays(5) });
+    paypalHas("I-EMPLOYEE", { customId: b.orgId });
+    signInAs(b.employee);
+
+    await expect(cancelPlan()).rejects.toThrow("NEXT_REDIRECT /no-access");
+    expect(sent).toEqual([]);
+    expect((await orgOf(b)).subscriptionStatus).toBe("ACTIVE");
+  });
+
+  it("asks PayPal nothing when there is nothing to cancel", async () => {
+    const exempt = await business({ billingExempt: true });
+    signInAs(exempt.owner);
+    await expect(cancelPlan()).rejects.toThrow("NEXT_REDIRECT /billing");
+
+    const done = await business({
+      ...PAYING,
+      subscriptionId: "I-DONE",
+      subscriptionStatus: "CANCELLED",
+      paidThrough: inDays(5),
+    });
+    signInAs(done.owner);
+    await expect(cancelPlan()).rejects.toThrow("NEXT_REDIRECT /billing");
+
+    expect(sent.filter((r) => r.path.endsWith("/cancel"))).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------- coming back later ---
+
+describe("coming back after cancelling", () => {
+  beforeEach(() => {
+    request.headers = { "next-action": "r3st4r" };
+  });
+
+  it("starts the new plan when the paid-for time runs out, not on top of it", async () => {
+    const until = inDays(12);
+    const b = await business({
+      ...PAYING,
+      subscriptionId: "I-WAS",
+      subscriptionStatus: "CANCELLED",
+      paidThrough: until,
+    });
+    signInAs(b.owner);
+
+    await expect(choosePlan(form({ plan: "business", interval: "monthly" }))).rejects.toThrow(
+      "ba_token=BA-1",
+    );
+
+    const started = sent.find((r) => r.path === "/v1/billing/subscriptions");
+    expect(started?.body).toMatchObject({ plan_id: "P-BUSINESS-M", start_time: until.toISOString() });
+  });
+
+  it("takes over from the cancelled plan once approved, keeping the days paid for", async () => {
+    const until = inDays(12);
+    const b = await business({
+      ...PAYING,
+      subscriptionId: "I-BEFORE",
+      subscriptionStatus: "CANCELLED",
+      paidThrough: until,
+    });
+    paypalHas("I-NEXT", { customId: b.orgId, status: "APPROVED", plan: "P-PRO-A", nextBilling: null });
+
+    await syncSubscription("I-NEXT");
+
+    expect(await orgOf(b)).toMatchObject({
+      subscriptionId: "I-NEXT",
+      subscriptionStatus: "APPROVED",
+      subscriptionPlan: "pro",
+      subscriptionInterval: "annual",
+      paidThrough: until,
+    });
+
+    // Late news of the one it replaced changes nothing.
+    paypalHas("I-BEFORE", { customId: b.orgId, status: "CANCELLED" });
+    await syncSubscription("I-BEFORE");
+    expect((await orgOf(b)).subscriptionId).toBe("I-NEXT");
+  });
+
+  it("does not let an approved plan push aside one that is renewing", async () => {
+    const b = await business({ ...PAYING, subscriptionId: "I-LIVE", paidThrough: inDays(12) });
+    paypalHas("I-SIDE", { customId: b.orgId, status: "APPROVED" });
+
+    await syncSubscription("I-SIDE");
+
+    expect(await orgOf(b)).toMatchObject({ subscriptionId: "I-LIVE", subscriptionStatus: "ACTIVE" });
+  });
+
+  it("shows a plan waiting to start, and offers no second one beside it", async () => {
+    const until = inDays(12);
+    const b = await business({
+      ...PAYING,
+      subscriptionId: "I-WAITING",
+      subscriptionStatus: "APPROVED",
+      paidThrough: until,
+    });
+    signInAs(b.owner);
+    request.headers = {};
+
+    const html = renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
+
+    expect(html).toContain("Starts on");
+    expect(html).toContain("cancel this one first");
+    expect(html).toContain("Cancel subscription");
+    expect(html).not.toContain("Monthly");
+  });
+});
+
+describe("restartDate", () => {
+  const now = new Date("2026-10-01T12:00:00Z");
+  const later = new Date("2026-10-20T12:00:00Z");
+
+  it("is the end of the paid-for time on a plan that is not renewing", () => {
+    expect(restartDate({ subscriptionStatus: "CANCELLED", paidThrough: later }, now)).toBe(later);
+  });
+
+  it("is now for a renewing plan, one with nothing left, or one about to run out", () => {
+    expect(restartDate({ subscriptionStatus: "ACTIVE", paidThrough: later }, now)).toBeNull();
+    expect(restartDate({ subscriptionStatus: "CANCELLED", paidThrough: null }, now)).toBeNull();
+    expect(
+      restartDate({ subscriptionStatus: "CANCELLED", paidThrough: new Date("2026-09-20T00:00:00Z") }, now),
+    ).toBeNull();
+    // PayPal refuses a start time already past by the time it reads it.
+    expect(
+      restartDate({ subscriptionStatus: "CANCELLED", paidThrough: new Date(now.getTime() + 30 * 60 * 1000) }, now),
+    ).toBeNull();
   });
 });

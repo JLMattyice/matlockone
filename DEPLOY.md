@@ -264,6 +264,11 @@ three days' grace while PayPal retries a failed card. A cancelled plan runs to
 the end of what it paid for. Changing plan revises the one subscription rather
 than starting a second, which would bill twice. Seats come from the plan.
 
+An owner or admin can cancel from the billing page itself (PayPal's cancel
+call; the account stays open to the end of what it paid for). Choosing a plan
+again while that paid-for time is left starts the new subscription on the day
+it runs out, so the same days are never charged twice.
+
 ### Businesses that are never billed
 
 Your own business, and anything else that should never be charged, is marked

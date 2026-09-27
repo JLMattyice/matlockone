@@ -3,13 +3,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
 
-import { choosePlan } from "./actions";
+import { cancelPlan, choosePlan } from "./actions";
 import { LicenseForm } from "@/app/(app)/settings/license/license-form";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { SubmitButton } from "@/components/ui/submit";
 import { requireContext } from "@/lib/auth";
 import { entitlement, GRACE_DAYS } from "@/lib/billing/entitlement";
+import { CANCELLABLE, restartDate } from "@/lib/billing/subscription";
 import {
   ANNUAL_DISCOUNT_BP,
   annualCents,
@@ -43,6 +45,8 @@ const ERRORS: Record<string, string> = {
   plan: "Choose one of the plans shown.",
   paypal: "PayPal didn’t accept that just now. Nothing was charged — try again in a moment.",
   setup: "Payments aren’t set up on this site yet.",
+  cancel:
+    "PayPal didn’t cancel it just now, so nothing has changed. Try again in a moment, or cancel it in PayPal.",
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -51,7 +55,13 @@ const longDate = (date: Date) => format(date, "MMMM d, yyyy");
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ welcome?: string; cancelled?: string; error?: string; seats?: string }>;
+  searchParams: Promise<{
+    welcome?: string;
+    cancelled?: string;
+    error?: string;
+    seats?: string;
+    plan_cancelled?: string;
+  }>;
 }) {
   const { user, org } = await requireContext({ unpaid: "allow" });
 
@@ -71,13 +81,23 @@ export default async function BillingPage({
         select: { name: true },
       });
 
+  // The date comes from the database, never the address, like every other
+  // word here.
   const notice = params.error
     ? (ERRORS[params.error] ?? ERRORS.paypal)
     : params.cancelled
       ? "You left PayPal before finishing, so nothing was charged."
-      : params.seats === "full" && access.ok
-        ? "Your plan is full. Move to a larger one to add more people."
-        : null;
+      : params.plan_cancelled && org.paidThrough && access.ok
+        ? `Your plan is cancelled. No more payments will be taken, and ${org.name} stays open until ${longDate(org.paidThrough)}.`
+        : params.seats === "full" && access.ok
+          ? "Your plan is full. Move to a larger one to add more people."
+          : null;
+
+  // A cancelled plan with paid-for time left: a new one starts when that
+  // time runs out. One already approved to start then is changed by
+  // cancelling it first, not by approving a second beside it.
+  const restartsOn = access.ok ? restartDate(org) : null;
+  const waitingToStart = org.subscriptionStatus === "APPROVED";
 
   return (
     <div className="space-y-6 py-4">
@@ -113,6 +133,7 @@ export default async function BillingPage({
           status={org.subscriptionStatus}
           paidThrough={org.paidThrough}
           manageUrl={manageSubscriptionUrl(config)}
+          canCancel={canPay && !!config && CANCELLABLE.has(org.subscriptionStatus ?? "")}
         />
       ) : null}
 
@@ -163,12 +184,32 @@ export default async function BillingPage({
         </Card>
       ) : null}
 
-      {!local && canPay && (!access.ok || access.via === "subscription") ? (
+      {!local &&
+      canPay &&
+      (!access.ok || (access.via === "subscription" && !waitingToStart)) ? (
         config ? (
           <section className="space-y-3">
-            {access.ok ? <h2 className="text-sm font-medium text-ink">Change plan</h2> : null}
+            {access.ok ? (
+              <div className="space-y-1">
+                <h2 className="text-sm font-medium text-ink">
+                  {restartsOn ? `Keep going after ${longDate(restartsOn)}` : "Change plan"}
+                </h2>
+                {restartsOn ? (
+                  <p className="text-sm text-ink-muted">
+                    Choose a plan and it starts on {longDate(restartsOn)}, when the time
+                    you’ve paid for runs out, so nothing is charged twice.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <PlanCards
-              current={access.ok && isPlan(org.subscriptionPlan) ? org.subscriptionPlan : null}
+              // Only a plan that is renewing is the one to stay on. After a
+              // cancellation every button is a way back, the same one included.
+              current={
+                access.ok && org.subscriptionStatus === "ACTIVE" && isPlan(org.subscriptionPlan)
+                  ? org.subscriptionPlan
+                  : null
+              }
               currentInterval={access.ok ? org.subscriptionInterval : null}
             />
           </section>
@@ -197,12 +238,14 @@ function CurrentPlan({
   status,
   paidThrough,
   manageUrl,
+  canCancel,
 }: {
   plan: Plan["id"] | null;
   interval: string | null;
   status: string | null;
   paidThrough: Date | null;
   manageUrl: string;
+  canCancel: boolean;
 }) {
   const name = plan ? PLANS[plan].name : "Your";
   const billed = interval === "annual" ? "billed yearly" : "billed monthly";
@@ -216,7 +259,9 @@ function CurrentPlan({
         ? `Cancelled. ${name === "Your" ? "It" : "Your plan"} stays open until ${longDate(paidThrough)}, then closes.`
         : status === "SUSPENDED"
           ? `PayPal couldn’t take the last payment and will try again. Update your payment in PayPal before ${longDate(new Date(paidThrough.getTime() + GRACE_DAYS * DAY_MS))} to keep it open.`
-          : `Paid through ${longDate(paidThrough)}. Renews automatically.`;
+          : status === "APPROVED"
+            ? `Starts on ${longDate(paidThrough)}, when the time already paid for runs out. PayPal takes the first payment then. To choose a different plan, cancel this one first.`
+            : `Paid through ${longDate(paidThrough)}. Renews automatically.`;
 
   return (
     <Card>
@@ -232,9 +277,36 @@ function CurrentPlan({
             Back to Matlock One
           </Link>
           <a href={manageUrl} className={buttonClasses("outline", "md")} target="_blank" rel="noreferrer">
-            Manage or cancel in PayPal
+            Manage in PayPal
           </a>
         </div>
+
+        {canCancel && paidThrough ? (
+          // Folded away, so it is found by looking for it rather than
+          // passed on the way to something else; and the button inside
+          // takes a second click, like every other thing that ends something.
+          <details className="border-t border-line pt-4">
+            <summary className="cursor-pointer text-sm text-ink-muted hover:text-ink">
+              Cancel subscription
+            </summary>
+            <div className="mt-3 space-y-3">
+              <p className="max-w-xl text-sm text-ink-muted">
+                No more payments will be taken. Matlock One stays open until{" "}
+                {longDate(paidThrough)}, then closes. Nothing is deleted, and you can choose a
+                plan again whenever you like.
+              </p>
+              <form action={cancelPlan}>
+                <ConfirmButton
+                  variant="outline"
+                  confirmLabel="Click again to cancel"
+                  pendingLabel="Cancelling…"
+                >
+                  Cancel my plan
+                </ConfirmButton>
+              </form>
+            </div>
+          </details>
+        ) : null}
       </CardBody>
     </Card>
   );
