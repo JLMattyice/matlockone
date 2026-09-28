@@ -5,10 +5,12 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 
 import { BILLING_PATH, entitlement } from "./billing/entitlement";
+import { dataStaysOnThisMachine } from "./config";
 import { prisma } from "./db";
 import { asStatus, ROLES, type Role } from "./constants";
 import { verifyPassword } from "./password";
 import { can, type Permission, PermissionError } from "./permissions";
+import { hit, SAVES_PER_USER } from "./rate-limit";
 import { createSession, destroySession, readSessionToken, resolveSession } from "./session";
 import type { Organization } from "@/generated/prisma/client";
 
@@ -80,7 +82,8 @@ export async function requireContext(options: ContextOptions = {}): Promise<AppC
   // every page and every action begins, rather than action by action: a single
   // action that forgot would be a way for a stranger to create records in the
   // demo, or send real email from it.
-  if (ctx.org.isDemo && (await isSubmission())) {
+  const submitting = await isSubmission();
+  if (ctx.org.isDemo && submitting) {
     redirect(`${DEMO_REFUSED_PATH}${await backPath()}`);
   }
 
@@ -89,7 +92,31 @@ export async function requireContext(options: ContextOptions = {}): Promise<AppC
   // demo check — one place, so no page or action can be the one that forgot.
   if (options.unpaid !== "allow" && !entitlement(ctx.org).ok) redirect(BILLING_PATH);
 
+  // How fast one person may save, for the same reason again: in one place,
+  // every save is counted. Not on a desktop install that keeps its own data,
+  // which shares its database with nobody.
+  if (submitting && !dataStaysOnThisMachine()) {
+    const wait = await saveLimitWait(ctx.user.id);
+    if (wait !== null) redirect(`${SLOW_DOWN_PATH}?wait=${wait}`);
+  }
+
   return ctx;
+}
+
+/** Where somebody lands after saving faster than SAVES_PER_USER allows. */
+export const SLOW_DOWN_PATH = "/slow-down";
+
+/**
+ * Seconds until this person may save again, or null if they may now. Fails
+ * open: the limit being unreadable is no reason to refuse a real save.
+ */
+async function saveLimitWait(userId: string): Promise<number | null> {
+  try {
+    const verdict = await hit(`saves:user:${userId}`, SAVES_PER_USER);
+    return verdict.ok ? null : verdict.retryAfterSeconds;
+  } catch {
+    return null;
+  }
 }
 
 /** Where a demo visitor lands after trying to save. */

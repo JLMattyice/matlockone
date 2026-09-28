@@ -13,6 +13,7 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
+import { storageUsage } from "@/lib/quotas";
 import { like } from "@/lib/search";
 import { formatBytes, isImageMime } from "@/lib/storage-limits";
 import type { Prisma } from "@/generated/prisma/client";
@@ -47,7 +48,7 @@ export default async function FilesPage({
       : {}),
   };
 
-  const [total, rows, sizeSum] = await Promise.all([
+  const [total, rows, usage] = await Promise.all([
     prisma.attachment.count({ where }),
     prisma.attachment.findMany({
       where,
@@ -64,10 +65,7 @@ export default async function FilesPage({
         expense: { select: { id: true, description: true } },
       },
     }),
-    prisma.attachment.aggregate({
-      where: { organizationId: org.id },
-      _sum: { sizeBytes: true },
-    }),
+    storageUsage(org),
   ]);
 
   const writable = can(user, "files:write");
@@ -77,7 +75,11 @@ export default async function FilesPage({
     <div className="space-y-6">
       <PageHeader
         title="Files"
-        description={`${total} file${total === 1 ? "" : "s"} · ${formatBytes(sizeSum._sum.sizeBytes ?? 0)} stored`}
+        description={`${total} file${total === 1 ? "" : "s"} · ${
+          usage.allowance === null
+            ? `${formatBytes(usage.used)} stored`
+            : `${formatBytes(usage.used)} of ${formatBytes(usage.allowance)} used`
+        }`}
       />
 
       <ListToolbar

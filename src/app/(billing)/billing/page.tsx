@@ -12,6 +12,8 @@ import { SubmitButton } from "@/components/ui/submit";
 import { requireContext } from "@/lib/auth";
 import { entitlement, GRACE_DAYS } from "@/lib/billing/entitlement";
 import { CANCELLABLE, restartDate } from "@/lib/billing/subscription";
+import { storageUsage, type StorageUsage } from "@/lib/quotas";
+import { formatBytes } from "@/lib/storage-limits";
 import {
   ANNUAL_DISCOUNT_BP,
   annualCents,
@@ -134,6 +136,7 @@ export default async function BillingPage({
           paidThrough={org.paidThrough}
           manageUrl={manageSubscriptionUrl(config)}
           canCancel={canPay && !!config && CANCELLABLE.has(org.subscriptionStatus ?? "")}
+          storage={await storageUsage(org)}
         />
       ) : null}
 
@@ -239,6 +242,7 @@ function CurrentPlan({
   paidThrough,
   manageUrl,
   canCancel,
+  storage,
 }: {
   plan: Plan["id"] | null;
   interval: string | null;
@@ -246,6 +250,7 @@ function CurrentPlan({
   paidThrough: Date | null;
   manageUrl: string;
   canCancel: boolean;
+  storage: StorageUsage;
 }) {
   const name = plan ? PLANS[plan].name : "Your";
   const billed = interval === "annual" ? "billed yearly" : "billed monthly";
@@ -272,6 +277,8 @@ function CurrentPlan({
           </p>
           {standing ? <p className="text-sm text-ink-muted">{standing}</p> : null}
         </div>
+
+        {storage.allowance !== null ? <StorageMeter used={storage.used} allowance={storage.allowance} /> : null}
         <div className="flex flex-wrap gap-3">
           <Link href="/dashboard" className={buttonClasses("primary", "md")}>
             Back to Matlock One
@@ -312,6 +319,45 @@ function CurrentPlan({
   );
 }
 
+/**
+ * Files used against the plan's allowance. Amber from 90%, so there is warning
+ * before an upload is refused.
+ */
+function StorageMeter({ used, allowance }: { used: number; allowance: number }) {
+  const share = Math.min(used / allowance, 1);
+  const nearlyFull = share >= 0.9;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="text-ink">Files and photos</span>
+        <span className="tabular text-ink-muted">
+          {formatBytes(used)} of {formatBytes(allowance)}
+        </span>
+      </div>
+      <div
+        className="h-1.5 overflow-hidden rounded-full bg-surface-3"
+        role="meter"
+        aria-label="Storage used"
+        aria-valuemin={0}
+        aria-valuemax={allowance}
+        aria-valuenow={Math.min(used, allowance)}
+      >
+        <div
+          className={nearlyFull ? "h-full bg-warning" : "h-full bg-brand"}
+          style={{ width: `${Math.max(share * 100, used > 0 ? 1 : 0)}%` }}
+        />
+      </div>
+      {nearlyFull ? (
+        <p className="text-xs text-warning">
+          {share >= 1
+            ? "Full. New files can’t be added until some are deleted or the plan is larger."
+            : "Nearly full. Delete files you no longer need, or move to a larger plan."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function PlanCards({
   current,
   currentInterval,
@@ -329,7 +375,9 @@ function PlanCards({
             <div className="space-y-1">
               <p className="text-base font-semibold text-ink">{plan.name}</p>
               <p className="text-sm text-ink-muted">{plan.tagline}</p>
-              <p className="text-xs text-ink-subtle">{plan.seatLabel}</p>
+              <p className="text-xs text-ink-subtle">
+                {plan.seatLabel} · {plan.storageLabel}
+              </p>
             </div>
 
             <div className="space-y-0.5">

@@ -13,7 +13,10 @@ export function allowedExtensionsLabel() {
 export function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  // Whole gigabytes read as "50 GB", the way the plans are written.
+  const gb = bytes / 1024 ** 3;
+  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
 }
 
 export function isImageMime(mime: string) {

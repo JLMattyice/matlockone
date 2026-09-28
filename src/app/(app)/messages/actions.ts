@@ -19,6 +19,7 @@ import {
 } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
+import { storageRoom } from "@/lib/quotas";
 import { isImageMime, putFile, removeFile } from "@/lib/storage";
 import { acceptUploadTicket } from "@/lib/storage/accept";
 
@@ -104,6 +105,7 @@ export async function sendMessage(formData: FormData): Promise<SendResult> {
 
     // The message text, trimmed, is the caption the photo carries on the job.
     const caption = body ? body.slice(0, 200) : null;
+    const room = await storageRoom(org);
 
     for (const raw of tickets) {
       const accepted = await acceptUploadTicket(raw, org.id);
@@ -118,6 +120,13 @@ export async function sendMessage(formData: FormData): Promise<SendResult> {
       if (upload.entityType !== "job" || upload.entityId !== jobId || !isImageMime(upload.mimeType)) {
         await removeFile(upload.key);
         problems.push(`${upload.originalName} could not be added to this job.`);
+        continue;
+      }
+
+      const full = room.take(upload.sizeBytes);
+      if (full) {
+        await removeFile(upload.key);
+        problems.push(full);
         continue;
       }
 
@@ -142,6 +151,11 @@ export async function sendMessage(formData: FormData): Promise<SendResult> {
     for (const file of files) {
       if (!isImageMime(file.type)) {
         problems.push(`${file.name} is not a photo.`);
+        continue;
+      }
+      const full = room.take(file.size);
+      if (full) {
+        problems.push(full);
         continue;
       }
       const stored = await putFile(org.id, file);

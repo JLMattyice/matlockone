@@ -374,7 +374,8 @@ function Pricing() {
       </h2>
       <p className="mt-5 max-w-xl text-ink-muted">
         Every plan includes the whole workspace. What changes is how many people
-        are in it with you.
+        are in it with you, and how much room there is for their files and
+        photos.
       </p>
 
       <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -410,6 +411,7 @@ function Pricing() {
             >
               {plan.seatLabel}
             </p>
+            <p className="mt-1 text-sm text-ink-muted">{plan.storageLabel}</p>
             <p className="mt-2 flex-1 text-sm text-ink-muted">{plan.tagline}</p>
 
             {plan.extras.length > 0 ? (

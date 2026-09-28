@@ -79,6 +79,19 @@ export function entitlement(org: BillingFields, now: Date = new Date()): Entitle
   return { ok: false, reason: org.paidThrough || org.licenseKey ? "lapsed" : "never-paid" };
 }
 
+/**
+ * How much the business may keep in files and photos, or null for no cap —
+ * the demo, an exempt business, and a licence, which only a desktop install
+ * that stores files on its own disk carries.
+ */
+export function storageAllowance(
+  access: Entitlement,
+): { bytes: number; planName: string } | null {
+  if (!access.ok || access.via !== "subscription" || !access.plan) return null;
+  const plan = PLANS[access.plan];
+  return { bytes: plan.storageBytes, planName: plan.name };
+}
+
 export type SeatCheck =
   | { ok: true }
   | { ok: false; limit: number; active: number; message: string };

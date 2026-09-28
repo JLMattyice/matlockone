@@ -88,6 +88,17 @@ export const PAY_REDIRECT_PER_INVOICE: RateLimitRule = { limit: 20, windowSecond
 export const PASSWORD_CHECK_PER_USER: RateLimitRule = { limit: 5, windowSeconds: 15 * MINUTE };
 
 /**
+ * Saves by one person, across everything they can save.
+ *
+ * Every business shares one database, so a runaway script — or a stolen
+ * password driving one — must not be able to write as fast as it can. A
+ * save every two seconds for five minutes straight is more than anybody
+ * does by hand, and a script meets it inside a minute. Per person rather
+ * than per business, so a big crew all working at once never adds up to it.
+ */
+export const SAVES_PER_USER: RateLimitRule = { limit: 150, windowSeconds: 5 * MINUTE };
+
+/**
  * Reset emails for one address.
  *
  * Each request sends a real email, so without a limit the form is a way to

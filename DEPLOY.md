@@ -363,6 +363,9 @@ table, keyed by what is being limited, in fixed windows:
 | Pay redirect | 20 | 1 hour | The invoice token |
 | Changing your password | 5 | 15 minutes | The account |
 | Share links that do not exist | 30 | 1 hour | The caller's address |
+| Forgot-password emails | 3 | 1 hour | The email address |
+| Forgot-password emails | 10 | 1 hour | The caller's address |
+| Saving anything | 150 | 5 minutes | The person saving |
 
 Sign-in counts every attempt and a correct password clears the count, so a
 forgetful evening costs nothing. While a window is shut the right password is
@@ -376,8 +379,9 @@ stolen session could otherwise guess their way to a new password and lock the
 owner out. It works like sign-in: counted before the check, cleared by the
 right answer, and the right answer refused while the window is shut.
 
-**Share links** are the only credential their pages have, and their tokens are
-cuids with a short random part, so what is limited is guessing. Only lookups
+**Share links** are the only credential their pages have. Links made before
+2026-09-26 carry cuids with a short random part (newer ones are 32 random
+characters), so what is limited is guessing. Only lookups
 that find nothing count, per address; a real link can be opened as often as
 anybody likes. An address past the limit is refused every link, real ones
 included, with the same page either way, so a guesser cannot tell whether a
@@ -389,11 +393,26 @@ by `dataStaysOnThisMachine()` rather than a flag: the first screen of a fresh
 install is the sign-up form, share links only resolve on the office network,
 and on that network every machine shares one address.
 
+**Saving** is counted in `requireContext()`, the one place every save begins:
+more than 150 in five minutes from one person lands them on `/slow-down`
+until the window closes. Nobody reaches that by hand; a runaway script or a
+stolen password driving one does, inside a minute. Per person, so a big crew
+working at once never adds up to it; not counted on a desktop install.
+
+**Storage** is capped per plan — 10, 50 and 200 GB of files and photos
+(`storageBytes` in `src/lib/checkout/plans.ts`) — and checked before an upload
+ticket is signed and again when the upload is recorded; a file that arrives
+with no room is deleted from the store. Exempt businesses, the demo and a
+desktop install that keeps its files on its own disk have no cap. Nothing is
+removed for being over: a business that moves down a plan can keep what it
+has, and add more once it is back under. Billing and Files show the usage.
+
 **To unlock somebody early**, delete their row:
 
 ```sql
 DELETE FROM "RateLimit" WHERE key = 'login:email:someone@example.com';
 DELETE FROM "RateLimit" WHERE key = 'share:miss:203.0.113.7';
+DELETE FROM "RateLimit" WHERE key = 'saves:user:<their user id>';
 ```
 
 What this does not stop is a distributed attacker — a thousand addresses

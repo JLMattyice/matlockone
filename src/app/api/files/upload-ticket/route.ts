@@ -4,6 +4,7 @@ import { entitlement } from "@/lib/billing/entitlement";
 import { attachmentTargetExists } from "@/lib/attachment-targets";
 import { isAttachmentEntityType } from "@/lib/attachment-entities";
 import { getContext } from "@/lib/auth";
+import { storageRoom } from "@/lib/quotas";
 import { can } from "@/lib/permissions";
 import { storageAdapter } from "@/lib/storage/providers";
 import { newStorageKey } from "@/lib/storage/keys";
@@ -90,6 +91,11 @@ export async function POST(request: NextRequest) {
   if (!(await attachmentTargetExists(entityType, entityId, ctx.org.id))) {
     return NextResponse.json({ error: "That record no longer exists." }, { status: 404 });
   }
+
+  // Before the bytes are sent. Checked again when the upload is recorded,
+  // since two tickets can be asked for at once.
+  const full = (await storageRoom(ctx.org)).take(sizeBytes);
+  if (full) return NextResponse.json({ error: full }, { status: 413 });
 
   const key = newStorageKey(ctx.org.id, mimeType);
   if (!key) {

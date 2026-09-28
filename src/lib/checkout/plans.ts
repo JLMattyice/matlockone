@@ -16,12 +16,17 @@ export type Plan = {
   /** Active users included. null means unlimited. */
   seats: number | null;
   seatLabel: string;
+  /** Files and photos the business may keep, in bytes. */
+  storageBytes: number;
+  storageLabel: string;
   tagline: string;
   /** Sold harder than the others, and marked as such on the page. */
   featured: boolean;
   /** Beyond what every plan already includes. */
   extras: string[];
 };
+
+const GB = 1024 ** 3;
 
 /** Annual billing discount, in basis points — 1700 = 17%. */
 export const ANNUAL_DISCOUNT_BP = 1700;
@@ -33,6 +38,8 @@ export const PLANS: Record<LicensePlan, Plan> = {
     monthlyCents: 2_900,
     seats: 1,
     seatLabel: "1 person",
+    storageBytes: 10 * GB,
+    storageLabel: "10 GB of files and photos",
     tagline: "You are the office and the crew.",
     featured: false,
     extras: [],
@@ -43,6 +50,8 @@ export const PLANS: Record<LicensePlan, Plan> = {
     monthlyCents: 5_900,
     seats: 10,
     seatLabel: "Up to 10 people",
+    storageBytes: 50 * GB,
+    storageLabel: "50 GB of files and photos",
     tagline: "A crew in the field and someone running the books.",
     featured: true,
     extras: ["Crew scheduling and workload"],
@@ -53,6 +62,8 @@ export const PLANS: Record<LicensePlan, Plan> = {
     monthlyCents: 9_900,
     seats: null,
     seatLabel: "Unlimited people",
+    storageBytes: 200 * GB,
+    storageLabel: "200 GB of files and photos",
     tagline: "More than one crew, more than one calendar.",
     featured: false,
     extras: ["Crew scheduling and workload", "Priority support"],

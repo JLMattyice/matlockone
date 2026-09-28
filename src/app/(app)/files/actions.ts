@@ -17,6 +17,7 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { attachmentTargetExists } from "@/lib/attachment-targets";
+import { storageRoom } from "@/lib/quotas";
 import { isImageMime, putFile, removeFile } from "@/lib/storage";
 import { acceptUploadTicket } from "@/lib/storage/accept";
 
@@ -60,8 +61,15 @@ export async function uploadAttachment(
 
   let stored = 0;
   const problems: string[] = [];
+  const room = await storageRoom(org);
 
   for (const file of files) {
+    const full = room.take(file.size);
+    if (full) {
+      problems.push(full);
+      continue;
+    }
+
     const result = await putFile(org.id, file);
 
     if (!result.ok) {
@@ -155,6 +163,7 @@ export async function confirmUploads(
   const problems: string[] = [];
   let entityType: AttachmentEntityType | null = null;
   let entityId = "";
+  const room = await storageRoom(org);
 
   for (const raw of tickets) {
     const accepted = await acceptUploadTicket(raw, org.id);
@@ -163,6 +172,15 @@ export async function confirmUploads(
       continue;
     }
     const upload = accepted.upload;
+
+    // The bytes are already in the store — the browser sent them there — so
+    // a file with no room is removed again rather than left taking it.
+    const full = room.take(upload.sizeBytes);
+    if (full) {
+      await removeFile(upload.key);
+      problems.push(full);
+      continue;
+    }
 
     const resolvedKind: AttachmentKind =
       kind === "DOCUMENT" && isImageMime(upload.mimeType) ? "PHOTO" : kind;
