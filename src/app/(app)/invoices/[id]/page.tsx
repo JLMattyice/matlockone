@@ -302,7 +302,7 @@ export default async function InvoiceDetailPage({
         ) : null}
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="overflow-hidden lg:col-span-2">
           <DocumentView
             org={org}

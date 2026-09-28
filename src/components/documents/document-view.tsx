@@ -7,7 +7,7 @@ import {
   type LineItemKind,
 } from "@/lib/constants";
 import { formatMoney, formatRate } from "@/lib/money";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 
 /**
  * The document a client actually reads.
@@ -130,7 +130,7 @@ export function DocumentView({
               </p>
             ))}
             <p className="mt-1 text-sm text-ink-muted">
-              {[org.phone, org.email].filter(Boolean).join(" · ")}
+              {[formatPhone(org.phone), org.email].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>

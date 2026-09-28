@@ -242,7 +242,7 @@ export function JobForm({
             />
           </Field>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Client" htmlFor="clientId">
               <Select
                 id="clientId"
@@ -297,7 +297,7 @@ export function JobForm({
         />
 
         <CardBody className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field
               label="Starts"
               htmlFor="scheduledStart"
@@ -336,7 +336,7 @@ export function JobForm({
             All-day — no specific arrival time
           </label>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Priority" htmlFor="priority">
               <Select
                 id="priority"
@@ -384,7 +384,7 @@ export function JobForm({
 
               {repeat ? (
                 <div className="mt-4 space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <Field label="Every" htmlFor="interval">
                       <Input
                         id="interval"
@@ -517,7 +517,7 @@ export function JobForm({
           {crew.length === 0 ? (
             <p className="text-sm text-ink-muted">No active team members.</p>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {crew.map((member) => {
                 const checked = assignees.includes(member.id);
                 const leadIndex = assignees.indexOf(member.id);

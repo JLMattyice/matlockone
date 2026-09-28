@@ -28,7 +28,7 @@ export function MaterialForm({
     <form ref={formRef} action={formAction} className="space-y-3">
       <input type="hidden" name="jobId" value={jobId} />
 
-      <div className="grid gap-2 sm:grid-cols-[1fr_5rem_5rem_7rem]">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_5rem_5rem_7rem]">
         <Input
           name="name"
           required

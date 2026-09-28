@@ -45,7 +45,7 @@ export function ProfileForm({
         />
 
         <CardBody className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Name" htmlFor="name" required error={err("name")}>
               <Input id="name" name="name" defaultValue={values.name} required />
             </Field>
@@ -114,7 +114,7 @@ export function PasswordForm() {
           description="Changing it signs you out everywhere else."
         />
 
-        <CardBody className="grid gap-4 sm:grid-cols-2">
+        <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field
             label="Current password"
             htmlFor="currentPassword"

@@ -28,7 +28,15 @@ const PUBLIC_PREFIXES = [
  * application public. Each new marketing page is listed here by hand, which is
  * the point — opening a route to the world stays a deliberate edit.
  */
-const PUBLIC_PAGES = new Set(["/", "/checkout/thanks"]);
+const PUBLIC_PAGES = new Set([
+  "/",
+  "/checkout/thanks",
+  // What a phone fetches to add Matlock One to its home screen and to show
+  // the offline page. A redirect to sign-in would break all three.
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/offline.html",
+]);
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

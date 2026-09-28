@@ -49,7 +49,7 @@ export function PaymentForm({
     <form ref={attach} action={formAction} className="space-y-3">
       <input type="hidden" name="invoiceId" value={invoiceId} />
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Amount" htmlFor="amount" required error={state.fieldErrors?.amount}>
           <div className="relative">
             <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-subtle">

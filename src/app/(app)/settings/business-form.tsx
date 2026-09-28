@@ -60,7 +60,7 @@ export function BusinessForm({ values }: { values: BusinessValues }) {
         />
 
         <CardBody className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Business name" htmlFor="name" required error={err("name")}>
               <Input
                 id="name"
@@ -120,7 +120,7 @@ export function BusinessForm({ values }: { values: BusinessValues }) {
             <p className="mb-3 text-xs font-semibold tracking-wider text-ink-subtle uppercase">
               Address
             </p>
-            <div className="grid gap-4 sm:grid-cols-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
               <Field label="Street" htmlFor="addressLine1" className="sm:col-span-4">
                 <Input
                   id="addressLine1"
@@ -172,7 +172,7 @@ export function BusinessForm({ values }: { values: BusinessValues }) {
             <p className="mb-3 text-xs font-semibold tracking-wider text-ink-subtle uppercase">
               Regional
             </p>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Time zone" htmlFor="timeZone" error={err("timeZone")}>
                 <Select
                   id="timeZone"

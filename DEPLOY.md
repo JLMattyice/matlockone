@@ -308,6 +308,23 @@ A desktop install that keeps its own data has no such mailbox; its forgot
 page points at **File → Reset a password…** in the launcher. Anyone on a team
 can also be reset by an owner or administrator from the Team page.
 
+## On a phone
+
+Matlock One can be added to a phone's home screen and opens there full screen,
+like an app (`src/app/manifest.ts`). Its icons are generated, not drawn:
+`npm run icons` rewrites `public/icons/`, `src/app/icon.png` and
+`src/app/apple-icon.png` from `scripts/make-icon.mjs`, and those are committed.
+
+`public/sw.js` does one thing: when a page cannot load for lack of signal, it
+shows `public/offline.html` instead of the browser's error. It caches nothing
+else, deliberately — every page is live business data, and a stale copy shown
+as current is worse than none. Keep it that way. It is not registered inside
+the desktop app, which has its own offline screen.
+
+`tests/mobile.test.ts` fails the build if a responsive grid leaves out its
+phone column (`grid-cols-1`): without it one long job name widens the page
+past the screen.
+
 ## Automations
 
 Two of the automations wait for a date rather than an event: chasing an

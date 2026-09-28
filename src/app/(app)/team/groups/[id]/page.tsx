@@ -65,7 +65,7 @@ export default async function GroupPage({
         </p>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader
@@ -91,7 +91,7 @@ export default async function GroupPage({
                 }
               />
             ) : (
-              <CardBody className="grid gap-2 sm:grid-cols-2">
+              <CardBody className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {members.map((member) => {
                   const role = asStatus(ROLES, member.role, "EMPLOYEE") as Role;
 

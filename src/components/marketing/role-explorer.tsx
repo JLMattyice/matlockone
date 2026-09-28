@@ -236,7 +236,7 @@ export function RoleAppFrame({ month }: { month: string }) {
         <Badge tone={view.tone}>{view.label}</Badge>
       </div>
 
-      <div className="grid gap-0 sm:grid-cols-[13rem_1fr]">
+      <div className="grid grid-cols-1 gap-0 sm:grid-cols-[13rem_1fr]">
         <nav
           aria-label={`Navigation as ${view.label}`}
           className="hidden border-r border-line bg-surface p-3 sm:block"
@@ -288,7 +288,7 @@ export function RoleAppFrame({ month }: { month: string }) {
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {tiles.map((tile) => (
               <FrameTile key={tile.label} tile={tile} month={month} />
             ))}

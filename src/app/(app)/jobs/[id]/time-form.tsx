@@ -37,7 +37,7 @@ export function TimeForm({
         <input type="hidden" name="userId" value={currentUserId} />
       )}
 
-      <div className="grid gap-2 sm:grid-cols-[1fr_1fr_6rem]">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_6rem]">
         {canLogForOthers ? (
           <Select name="userId" defaultValue={currentUserId} aria-label="Who">
             {crew.map((member) => (

@@ -37,6 +37,29 @@ export function formatPhone(phone: string | null | undefined) {
   return phone;
 }
 
+type AddressParts = {
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+};
+
+/**
+ * Turn-by-turn directions to an address, in whatever maps app the device has.
+ *
+ * Google's documented cross-platform link: it opens the Google Maps app on a
+ * phone that has it, and the website — which works on an iPhone too — where
+ * it does not. Null when there is nothing to navigate to.
+ */
+export function directionsUrl(address: AddressParts): string | null {
+  const parts = [address.line1, address.line2, address.city, address.state, address.postalCode]
+    .map((part) => part?.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(parts.join(", "))}`;
+}
+
 export function truncate(text: string, max: number) {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }

@@ -275,7 +275,7 @@ export default async function ReportsPage({
         </div>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* ----------------------------------------------------- services --- */}
         <Card className="overflow-hidden">
           <CardHeader

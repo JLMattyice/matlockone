@@ -62,7 +62,7 @@ import { prisma } from "@/lib/db";
 import { currencySymbol, formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { describeRecurrence } from "@/lib/recurrence";
-import { formatPhone, toDateTimeLocal } from "@/lib/utils";
+import { directionsUrl, formatPhone, toDateTimeLocal } from "@/lib/utils";
 
 export async function generateMetadata({
   params,
@@ -241,7 +241,7 @@ export default async function JobDetailPage({
         table wider than the phone jams the whole column open and the page
         scrolls sideways instead of the table scrolling inside its own wrapper.
       */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* ------------------------------------------------- materials --- */}
           <Card className="overflow-hidden">
@@ -595,8 +595,10 @@ export default async function JobDetailPage({
           />
         </div>
 
-        {/* ------------------------------------------------------ sidebar --- */}
-        <div className="min-w-0 space-y-6">
+        {/* ------------------------------------------------------ sidebar ---
+            First on a phone, where the columns stack: when, where and who is
+            what a tech opens the job for, and it was below every form. */}
+        <div className="order-first min-w-0 space-y-6 lg:order-none">
           <Card>
             <CardHeader title="Schedule" />
             <div className="space-y-3 px-5 py-4">
@@ -674,14 +676,23 @@ export default async function JobDetailPage({
                     className="mt-0.5 h-4 w-4 shrink-0 text-ink-subtle"
                     strokeWidth={1.75}
                   />
-                  <p className="text-sm text-ink-muted">
+                  {/* A link, so a tech on the way taps it for directions. */}
+                  <a
+                    href={directionsUrl(job.address) ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group text-sm text-ink-muted hover:text-brand"
+                  >
                     {job.address.line1}
                     {job.address.line2 ? `, ${job.address.line2}` : ""}
                     <br />
                     {[job.address.city, job.address.state, job.address.postalCode]
                       .filter(Boolean)
                       .join(" ")}
-                  </p>
+                    <span className="mt-0.5 block text-xs font-medium text-brand group-hover:underline">
+                      Directions
+                    </span>
+                  </a>
                 </div>
               ) : null}
             </div>

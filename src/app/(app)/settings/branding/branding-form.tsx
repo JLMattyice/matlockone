@@ -103,7 +103,7 @@ export function BrandingForm({ values }: { values: BrandingValues }) {
         />
 
         <CardBody className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field
               label="Primary color"
               htmlFor="primaryColor"
@@ -206,7 +206,7 @@ export function BrandingForm({ values }: { values: BrandingValues }) {
             </Select>
           </Field>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {TERMS.map((term) => (
               <Fragment key={term.of}>
                 <Field

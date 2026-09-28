@@ -103,7 +103,7 @@ export default async function ExpensesPage({
       ) : null}
 
       {top.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {top.map((row) => (
             <Card key={row.category} className="p-4">
               <p className="truncate text-xs font-medium text-ink-muted">

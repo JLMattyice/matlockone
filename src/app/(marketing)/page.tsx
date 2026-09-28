@@ -126,7 +126,7 @@ function Problem() {
         rebuilt by hand from both.
       </p>
 
-      <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {SCATTERED.map((tool) => (
           <li
             key={tool}
@@ -191,7 +191,7 @@ const REAL = [
 function Real({ demo }: { demo: boolean }) {
   return (
     <Section className="pt-28 lg:pt-36">
-      <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-20">
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_1fr] lg:gap-20">
         <div>
           <h2 className="display text-3xl text-ink sm:text-4xl lg:text-5xl">
             This is real software, not a landing page
@@ -377,7 +377,7 @@ function Pricing() {
         are in it with you.
       </p>
 
-      <div className="mt-12 grid gap-4 lg:grid-cols-3">
+      <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {PLANS.map((plan) => (
           <div
             key={plan.name}
@@ -450,7 +450,7 @@ function Pricing() {
         <p className="text-sm font-medium text-ink">
           In every plan, including Starter
         </p>
-        <ul className="mt-4 grid gap-x-8 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
           {INCLUDED.map((item) => (
             <li key={item} className="flex gap-2.5 text-sm text-ink-muted">
               <Check
@@ -467,7 +467,7 @@ function Pricing() {
         </p>
       </div>
 
-      <div className="mt-8 grid gap-6 sm:grid-cols-2">
+      <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div>
           <h3 className="text-sm font-medium text-ink">How buying works</h3>
           <ol className="mt-3 space-y-2 text-sm text-ink-muted">
@@ -594,7 +594,7 @@ async function DownloadSection() {
 
   return (
     <Section id="download" className="scroll-mt-24 pt-28 lg:pt-36">
-      <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-20">
+      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1fr] lg:gap-20">
         <div>
           <h2 className="display text-3xl text-ink sm:text-4xl lg:text-5xl">
             Sign up once, sign in everywhere

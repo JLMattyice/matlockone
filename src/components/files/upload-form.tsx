@@ -168,7 +168,7 @@ export function UploadForm({
         />
       </label>
 
-      <div className="grid gap-2 sm:grid-cols-[9rem_9rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[9rem_9rem_minmax(0,1fr)]">
         <Select name="kind" defaultValue="DOCUMENT" aria-label="File type">
           <option value="DOCUMENT">Document</option>
           <option value="PHOTO">Photo</option>

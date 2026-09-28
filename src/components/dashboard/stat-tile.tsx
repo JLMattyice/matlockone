@@ -29,7 +29,7 @@ export function StatTile({
   const content = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-ink-muted">{label}</p>
+        <p className="text-xs font-medium text-ink-muted sm:text-sm">{label}</p>
         <span
           className={cn(
             "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
@@ -39,7 +39,9 @@ export function StatTile({
           <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden />
         </span>
       </div>
-      <p className="tabular mt-3 text-2xl font-semibold tracking-tight text-ink">
+      {/* Smaller on a phone, where two tiles share the width; and allowed to
+          break rather than push the page sideways on a seven-figure month. */}
+      <p className="tabular mt-3 text-xl font-semibold tracking-tight [overflow-wrap:anywhere] text-ink sm:text-2xl">
         {value}
       </p>
       {sublabel ? (
@@ -49,7 +51,7 @@ export function StatTile({
   );
 
   const className = cn(
-    "rounded-card border border-line bg-surface p-4 shadow-xs",
+    "min-w-0 rounded-card border border-line bg-surface p-3.5 shadow-xs sm:p-4",
     href && "transition-colors hover:border-line-strong hover:bg-surface-2",
   );
 

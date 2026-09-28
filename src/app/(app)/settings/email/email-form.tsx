@@ -131,7 +131,7 @@ export function EmailForm({ values }: { values: EmailAccountValues }) {
 
             <p className="text-sm text-ink-muted">{meta.description}</p>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
                 label="From name"
                 htmlFor="fromName"
@@ -187,7 +187,7 @@ export function EmailForm({ values }: { values: EmailAccountValues }) {
                   </Select>
                 </Field>
 
-                <div className="grid gap-4 sm:grid-cols-[1fr_7rem]">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_7rem]">
                   <Field
                     label="Outgoing server"
                     htmlFor="host"

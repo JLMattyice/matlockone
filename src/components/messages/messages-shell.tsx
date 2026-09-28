@@ -60,7 +60,7 @@ export function MessagesShell({
     <div
       ref={ref}
       style={height ? { height } : undefined}
-      className="grid h-[calc(100dvh-6.5rem)] min-h-96 gap-4 lg:h-[calc(100dvh-7.5rem)] lg:grid-cols-[20rem_minmax(0,1fr)]"
+      className="grid grid-cols-1 h-[calc(100dvh-6.5rem)] min-h-96 gap-4 lg:h-[calc(100dvh-7.5rem)] lg:grid-cols-[20rem_minmax(0,1fr)]"
     >
       <div className={cn("min-h-0", threadOpen && "hidden lg:block")}>{list}</div>
       <div className={cn("min-h-0", !threadOpen && "hidden lg:block")}>{children}</div>

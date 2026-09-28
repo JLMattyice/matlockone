@@ -17,7 +17,7 @@ import {
 import { effectiveInvoiceStatus } from "@/lib/documents";
 import { formatMoney } from "@/lib/money";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
-import { hexToRgbChannels } from "@/lib/utils";
+import { formatPhone, hexToRgbChannels } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Your invoice",
@@ -169,7 +169,7 @@ export default async function PublicInvoicePage({
 
         <footer className="pt-2 pb-6 text-center text-xs text-ink-subtle no-print">
           Questions about this invoice? Contact {org.name}
-          {org.phone ? ` on ${org.phone}` : ""}
+          {org.phone ? ` on ${formatPhone(org.phone)}` : ""}
           {org.email ? ` or at ${org.email}` : ""}.
         </footer>
       </div>

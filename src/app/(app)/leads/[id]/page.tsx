@@ -283,7 +283,7 @@ export default async function LeadDetailPage({
       </Card>
 
       {/* ----------------------------------------------------------- body --- */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="overflow-hidden lg:col-span-2">
           <CardHeader
             title="Notes"
@@ -299,7 +299,8 @@ export default async function LeadDetailPage({
           />
         </Card>
 
-        <Card>
+        {/* First on a phone, where the columns stack: how to reach them. */}
+        <Card className="order-first lg:order-none">
           <CardHeader title="Details" />
           <dl className="divide-y divide-line text-sm">
             <Detail label="Estimated value">

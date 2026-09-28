@@ -174,7 +174,7 @@ export function LineItemEditor({
         {lines.map((line, index) => (
           <div
             key={line.key}
-            className="grid gap-2 rounded-lg border border-line bg-surface-2 p-2 lg:grid-cols-[7rem_minmax(0,1fr)_4.5rem_4rem_7rem_4rem_5.5rem_2rem] lg:items-start lg:border-0 lg:bg-transparent lg:p-1"
+            className="grid grid-cols-1 gap-2 rounded-lg border border-line bg-surface-2 p-2 lg:grid-cols-[7rem_minmax(0,1fr)_4.5rem_4rem_7rem_4rem_5.5rem_2rem] lg:items-start lg:border-0 lg:bg-transparent lg:p-1"
           >
             <Select
               value={line.kind}

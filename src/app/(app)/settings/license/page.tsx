@@ -88,7 +88,7 @@ export default async function LicenseSettingsPage({
           }
         />
         <CardBody className="space-y-4">
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
             <div>
               <dt className="text-xs text-ink-subtle">Plan</dt>
               <dd className="mt-0.5 text-sm text-ink">

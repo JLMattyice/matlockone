@@ -77,7 +77,7 @@ export default async function InvoicesPage({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Outstanding" value={money(summary.outstandingCents)} sub={`${summary.openCount} open`} />
         <Stat
           label="Overdue"

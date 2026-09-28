@@ -83,7 +83,7 @@ export function DocumentsForm({ values }: { values: DocumentValues }) {
         />
 
         <CardBody className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field
               label="Sales tax rate"
               htmlFor="taxRate"
@@ -195,7 +195,7 @@ function NumberingRow({
   disabled?: boolean;
 }) {
   return (
-    <div className="grid items-start gap-3 sm:grid-cols-[7rem_1fr_1fr_auto]">
+    <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[7rem_1fr_1fr_auto]">
       <span className="pt-2.5 text-sm font-medium text-ink">{label}</span>
 
       <Field label="Prefix" htmlFor={prefixName}>

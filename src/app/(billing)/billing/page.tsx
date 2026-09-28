@@ -322,7 +322,7 @@ function PlanCards({
   const saving = Math.round(ANNUAL_DISCOUNT_BP / 100);
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       {planList().map((plan) => (
         <Card key={plan.id} className={plan.featured ? "border-brand/40" : undefined}>
           <CardBody className="flex h-full flex-col gap-4 p-5">

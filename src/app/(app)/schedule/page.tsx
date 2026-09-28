@@ -35,6 +35,7 @@ import {
   JOB_STATUSES,
   type JobStatus,
 } from "@/lib/constants";
+import { isPhone } from "@/lib/device";
 import { can } from "@/lib/permissions";
 import { durationMinutes } from "@/lib/utils";
 
@@ -57,7 +58,13 @@ export default async function SchedulePage({
   const { user, org } = ctx;
   const params = await searchParams;
 
-  const view: CalendarView = isCalendarView(params.view) ? params.view : "week";
+  // A week squeezed onto a phone reads "11:00 AM D…" in every box, so a phone
+  // starts on the day. Choosing a view in the bar overrides it either way.
+  const view: CalendarView = isCalendarView(params.view)
+    ? params.view
+    : (await isPhone())
+      ? "day"
+      : "week";
   const anchor = parseAnchor(params.date);
   const { from, to } = rangeFor(view, anchor);
 

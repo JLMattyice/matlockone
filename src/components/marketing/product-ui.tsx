@@ -151,7 +151,7 @@ const HERO_TILES = [
 export function HeroDashboard() {
   return (
     <Frame>
-      <div className="grid sm:grid-cols-[10.5rem_1fr]">
+      <div className="grid grid-cols-1 sm:grid-cols-[10.5rem_1fr]">
         <nav
           aria-hidden
           className="hidden border-r border-line bg-surface-2 p-3 sm:block"
@@ -546,7 +546,7 @@ export function ProductShowcase() {
     // min-w-0 on both tracks: a grid item defaults to min-width:auto, so the
     // panel's nowrap table would otherwise widen the column past the viewport
     // and take the selector list out with it.
-    <div className="grid gap-6 lg:grid-cols-[16rem_1fr] lg:gap-10">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[16rem_1fr] lg:gap-10">
       <div className="min-w-0">
         <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-1">
           {MODULES.map((item) => {

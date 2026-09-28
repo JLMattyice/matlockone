@@ -10,6 +10,7 @@ import {
 } from "pdf-lib";
 
 import { formatMoney } from "@/lib/money";
+import { formatPhone } from "@/lib/utils";
 
 /**
  * The invoice as a file a client can keep.
@@ -254,7 +255,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   const orgDetails = [
     org.legalName && org.legalName !== org.name ? org.legalName : null,
     ...addressLines(org),
-    [org.phone, org.email].filter(Boolean).join("  ·  ") || null,
+    [formatPhone(org.phone), org.email].filter(Boolean).join("  ·  ") || null,
     org.website,
   ].filter((line): line is string => Boolean(line));
 
@@ -301,7 +302,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   for (const line of [
     ...addressLines(input.address),
     client.email,
-    client.phone,
+    formatPhone(client.phone),
   ].filter((line): line is string => Boolean(line))) {
     text(line, { size: 8.5, color: MUTED });
     y -= 11;

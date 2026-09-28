@@ -88,27 +88,37 @@ export function ListToolbar({
         />
       </div>
 
-      {filters.map((filter) => (
-        <Select
-          key={filter.name}
-          aria-label={filter.label}
-          value={searchParams.get(filter.name) ?? ""}
-          onChange={(e) =>
-            push((params) => {
-              if (e.target.value) params.set(filter.name, e.target.value);
-              else params.delete(filter.name);
-            })
-          }
-          className="sm:w-44"
-        >
-          <option value="">{filter.allLabel ?? `All ${filter.label}`}</option>
-          {filter.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-      ))}
+      {/* Two to a row on a phone, instead of four full-width boxes stacked
+          above the list. From sm up the wrapper steps aside (display:
+          contents) and they sit in the row as before. */}
+      <div
+        className={cn(
+          "grid gap-3 sm:contents",
+          filters.length > 1 ? "grid-cols-2" : "grid-cols-1",
+        )}
+      >
+        {filters.map((filter) => (
+          <Select
+            key={filter.name}
+            aria-label={filter.label}
+            value={searchParams.get(filter.name) ?? ""}
+            onChange={(e) =>
+              push((params) => {
+                if (e.target.value) params.set(filter.name, e.target.value);
+                else params.delete(filter.name);
+              })
+            }
+            className="sm:w-44"
+          >
+            <option value="">{filter.allLabel ?? `All ${filter.label}`}</option>
+            {filter.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        ))}
+      </div>
 
       {hasFilters ? (
         <button

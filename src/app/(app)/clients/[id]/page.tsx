@@ -56,7 +56,7 @@ import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { canSeeBusinessActivity, clientTimeline } from "@/lib/activity";
 import { can } from "@/lib/permissions";
-import { formatPhone } from "@/lib/utils";
+import { directionsUrl, formatPhone } from "@/lib/utils";
 
 const VIEWS = [
   "overview",
@@ -406,7 +406,7 @@ async function Overview({
   const pinned = notes.filter((note) => note.pinned).slice(0, 3);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
         <Card className="overflow-hidden">
           <CardHeader
@@ -497,7 +497,9 @@ async function Overview({
         ) : null}
       </div>
 
-      <div className="space-y-6">
+      {/* First on a phone, where the columns stack: the addresses and the
+          number to call are what somebody opens a customer for. */}
+      <div className="order-first min-w-0 space-y-6 lg:order-none">
         <Card>
           <CardHeader title="Addresses" />
           {client.addresses.length === 0 ? (
@@ -527,6 +529,16 @@ async function Overview({
                       .filter(Boolean)
                       .join(" ")}
                   </p>
+                  {directionsUrl(address) ? (
+                    <a
+                      href={directionsUrl(address)!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-block text-xs font-medium text-brand hover:underline"
+                    >
+                      Directions
+                    </a>
+                  ) : null}
                 </li>
               ))}
             </ul>

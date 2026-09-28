@@ -93,7 +93,7 @@ export default async function DashboardPage() {
 
       <HealthBand title="Work" tiles={health.work} />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
             title="Upcoming"
@@ -201,7 +201,7 @@ export default async function DashboardPage() {
       </div>
 
       {data.seesMoney ? (
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <CardHeader
               title={data.seesExpenses ? "Money in and out" : "Revenue"}
@@ -463,19 +463,21 @@ const HEALTH_ICONS: Record<HealthIcon, LucideIcon> = {
 function HealthBand({ title, tiles }: { title: string; tiles: HealthTile[] }) {
   if (tiles.length === 0) return null;
 
+  // Two to a row even on a phone: one tile per row put eight big boxes
+  // between an owner and today's work.
   const columns =
     tiles.length >= 4
-      ? "sm:grid-cols-2 xl:grid-cols-4"
+      ? "grid-cols-2 xl:grid-cols-4"
       : tiles.length === 3
-        ? "sm:grid-cols-3"
-        : "sm:grid-cols-2";
+        ? "grid-cols-2 sm:grid-cols-3"
+        : "grid-cols-2";
 
   return (
     <section>
       <h2 className="mb-2.5 text-xs font-semibold tracking-wider text-ink-subtle uppercase">
         {title}
       </h2>
-      <div className={cn("grid gap-4", columns)}>
+      <div className={cn("grid gap-3 sm:gap-4", columns)}>
         {tiles.map((tile) => (
           <StatTile
             key={tile.key}

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
+import { ServiceWorker } from "@/components/app-shell/service-worker";
 import { ThemeScript } from "@/components/app-shell/theme-script";
 
 import "./globals.css";
@@ -10,7 +11,13 @@ export const metadata: Metadata = {
     template: "%s · Matlock One",
   },
   description:
-    "Field service management: clients, leads, scheduling, estimates, invoicing and payments.",
+    "Customers, jobs, scheduling, quoting, invoicing and payments in one workspace.",
+  applicationName: "Matlock One",
+  // Added to an iPhone's home screen, it opens full screen under this name.
+  // The manifest (app/manifest.ts) says the same to Android. The icons are
+  // app/icon.png and app/apple-icon.png, which Next links by themselves —
+  // naming one here as well would drop the others.
+  appleWebApp: { capable: true, title: "Matlock One", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -30,7 +37,10 @@ export default function RootLayout({
       <head>
         <ThemeScript />
       </head>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }
