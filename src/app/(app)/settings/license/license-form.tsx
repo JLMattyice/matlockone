@@ -20,7 +20,7 @@ export function LicenseForm({ licensed }: { licensed: boolean }) {
       <Card>
         <CardHeader
           title={licensed ? "Replace your licence key" : "Enter your licence key"}
-          description="It arrives by email when you subscribe, and starts with MO1."
+          description="Matlock Software sends it by email. It starts with MO1."
         />
         <CardBody>
           <Field

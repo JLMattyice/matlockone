@@ -129,10 +129,11 @@ partly paid, a payment recorded twice.
   Matlock One itself is a different system from how a customer's own clients
   pay them, where Stripe does ship. A test asserts nothing unimplemented is
   offered.
-- **Renewals are keyed on the payment, never the subscription.** Each period
-  arrives as its own `PAYMENT.SALE.COMPLETED` with its own id, so each earns its
-  own licence with a fresh expiry. Keying on the subscription id would hand a
-  renewing customer back their first, already-expired key.
+- **Licence keys are issued by hand, and only for desktop installs that keep
+  their own data.** The site once sold keys by email to anybody who paid; that
+  checkout was removed on 2026-09-27, because a hosted business pays by
+  subscription and never needs one. `npm run sale` records the sale and signs
+  the key, once per sale reference.
 - **Licence delivery is built, and uses Matlock's own mailbox.** Configured from
   `SYSTEM_MAIL_*`, deliberately separate from the per-customer email settings:
   those credentials belong to a customer and are encrypted per organization,
@@ -140,8 +141,8 @@ partly paid, a payment recorded twice.
   could not be reused for the same reason. Delivery is recorded on the purchase
   (`deliveredAt` / `deliveryError`), never sends twice, and never decides
   whether a sale succeeded — a mail failure is logged and retried through
-  `npm run sale -- --deliver`, because the key is already stored and shown on
-  the return page.
+  `npm run sale -- --deliver`, because the key is already stored and printed
+  when the sale is recorded.
 - **A licence key does not survive SMTP unwrapped.** It is ~300 characters on
   one line and quoted-printable soft-wraps anything past 76. Clients rejoin it
   on decode, so what the customer copies is intact — but any future change to

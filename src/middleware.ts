@@ -30,7 +30,6 @@ const PUBLIC_PREFIXES = [
  */
 const PUBLIC_PAGES = new Set([
   "/",
-  "/checkout/thanks",
   // What a phone fetches to add Matlock One to its home screen and to show
   // the offline page. A redirect to sign-in would break all three.
   "/manifest.webmanifest",

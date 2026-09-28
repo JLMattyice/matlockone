@@ -178,10 +178,9 @@ export async function startSubscription(
     /**
      * The business this subscription pays for. PayPal hands it back on the
      * subscription and its events, which is how a payment finds the account
-     * it opens without anybody typing a licence key. Absent for the
-     * anonymous purchase that emails a key for a desktop install.
+     * it opens without anybody typing a licence key.
      */
-    customId?: string | null;
+    customId: string;
     /**
      * When the first payment is taken, if not straight away: a business
      * coming back to a plan it cancelled starts paying when the time it
@@ -209,7 +208,7 @@ export async function startSubscription(
       },
       body: JSON.stringify({
         plan_id: planId,
-        ...(input.customId ? { custom_id: input.customId } : {}),
+        custom_id: input.customId,
         ...(input.startTime ? { start_time: input.startTime.toISOString() } : {}),
         ...(input.email ? { subscriber: { email_address: input.email } } : {}),
         application_context: {
@@ -491,92 +490,10 @@ export async function verifyWebhook(
 
 // ------------------------------------------------------------ event shape ---
 
-export type FulfillableEvent = {
-  /** The idempotency key: PayPal's own id for this payment or activation. */
-  externalId: string;
-  paypalPlanId: string;
-  email: string | null;
-  subscriptionId: string;
-  amountCents: number | null;
-  currency: string | null;
-};
-
 type PayPalEvent = {
   event_type?: string;
   resource?: Record<string, unknown>;
 };
-
-/** Events that mean money arrived and a licence is owed. */
-export const FULFILLING_EVENTS = [
-  "BILLING.SUBSCRIPTION.ACTIVATED",
-  "PAYMENT.SALE.COMPLETED",
-] as const;
-
-function cents(value: unknown): number | null {
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return null;
-  return Math.round(amount * 100);
-}
-
-/**
- * Reads what a webhook is actually telling us, or null if it is not our
- * business.
- *
- * Activation covers the first period. Each renewal arrives later as its own
- * completed sale with its own id, so each one is a distinct purchase and gets
- * its own licence — which is why the idempotency key is the payment's id and
- * never the subscription's.
- */
-export function parseEvent(event: unknown): FulfillableEvent | null {
-  if (typeof event !== "object" || event === null) return null;
-
-  const { event_type: type, resource } = event as PayPalEvent;
-  if (!type || !resource) return null;
-  if (!(FULFILLING_EVENTS as readonly string[]).includes(type)) return null;
-
-  if (type === "BILLING.SUBSCRIPTION.ACTIVATED") {
-    const id = resource.id;
-    const planId = resource.plan_id;
-    if (typeof id !== "string" || typeof planId !== "string") return null;
-
-    const subscriber = resource.subscriber as
-      | { email_address?: string }
-      | undefined;
-    const billing = resource.billing_info as
-      | { last_payment?: { amount?: { value?: string; currency_code?: string } } }
-      | undefined;
-
-    return {
-      externalId: id,
-      paypalPlanId: planId,
-      email: subscriber?.email_address ?? null,
-      subscriptionId: id,
-      amountCents: cents(billing?.last_payment?.amount?.value),
-      currency: billing?.last_payment?.amount?.currency_code ?? null,
-    };
-  }
-
-  // PAYMENT.SALE.COMPLETED — a renewal. It carries the subscription it belongs
-  // to as billing_agreement_id, and nothing else ties it to a plan.
-  const id = resource.id;
-  const subscriptionId = resource.billing_agreement_id;
-  if (typeof id !== "string" || typeof subscriptionId !== "string") return null;
-
-  const amount = resource.amount as
-    | { total?: string; currency?: string }
-    | undefined;
-
-  return {
-    externalId: id,
-    // Resolved from the subscription by the caller: a sale does not name a plan.
-    paypalPlanId: "",
-    email: null,
-    subscriptionId,
-    amountCents: cents(amount?.total),
-    currency: amount?.currency ?? null,
-  };
-}
 
 export type SubscriptionDetails = {
   id: string;

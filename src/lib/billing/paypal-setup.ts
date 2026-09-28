@@ -1,9 +1,5 @@
 import { annualCents, planList, type Plan } from "@/lib/checkout/plans";
-import {
-  FULFILLING_EVENTS,
-  SUBSCRIPTION_EVENTS,
-  type PayPalInterval,
-} from "@/lib/checkout/paypal";
+import { SUBSCRIPTION_EVENTS, type PayPalInterval } from "@/lib/checkout/paypal";
 import type { LicensePlan } from "@/lib/license/token";
 
 /**
@@ -27,9 +23,7 @@ export type PayPalCall = (
 
 export const PRODUCT_NAME = "Matlock One";
 
-export const WEBHOOK_EVENTS: string[] = [
-  ...new Set<string>([...SUBSCRIPTION_EVENTS, ...FULFILLING_EVENTS]),
-];
+export const WEBHOOK_EVENTS: string[] = [...SUBSCRIPTION_EVENTS];
 
 export type PlanKey = `${LicensePlan}_${PayPalInterval}`;
 

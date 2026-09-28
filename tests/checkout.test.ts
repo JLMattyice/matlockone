@@ -11,10 +11,6 @@ import {
   planList,
   priceCents,
 } from "@/lib/checkout/plans";
-import {
-  CHECKOUT_PROVIDER_META,
-  availableCheckoutProviders,
-} from "@/lib/checkout/providers";
 import { prisma } from "@/lib/db";
 import { verifyLicense } from "@/lib/license/token";
 
@@ -268,23 +264,5 @@ describe("the price list", () => {
     expect(isPlan("business")).toBe(true);
     expect(isPlan("enterprise")).toBe(false);
     expect(isPlan(null)).toBe(false);
-  });
-});
-
-describe("checkout providers", () => {
-  it("offers none it has no adapter for", () => {
-    // The same rule the payment catalog holds: a button that takes money and
-    // issues nothing is worse than no button.
-    for (const provider of availableCheckoutProviders()) {
-      expect(provider.implemented).toBe(true);
-    }
-
-    expect(CHECKOUT_PROVIDER_META.STRIPE.implemented).toBe(false);
-  });
-
-  it("explains why an unbuilt provider is unavailable", () => {
-    for (const meta of Object.values(CHECKOUT_PROVIDER_META)) {
-      if (!meta.implemented) expect(meta.note).toBeTruthy();
-    }
   });
 });

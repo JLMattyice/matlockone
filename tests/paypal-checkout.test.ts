@@ -4,26 +4,20 @@ import {
   apiBase,
   isPayPalCertUrl,
   hasWebhookHeaders,
-  parseEvent,
   paypalConfig,
   planForPayPalId,
   planIdFor,
+  subscriptionIdOf,
   type PayPalConfig,
 } from "@/lib/checkout/paypal";
-import {
-  CHECKOUT_PROVIDER_META,
-  availableCheckoutProviders,
-  canSellOnline,
-  isCheckoutProviderConfigured,
-} from "@/lib/checkout/providers";
 
 /**
  * The parts of the PayPal integration that can be tested without PayPal.
  *
  * The network calls cannot be — they need live credentials — so everything that
  * decides *what a payment means* is kept out of them and tested here: which
- * plan was bought, which id makes a sale unique, and what gets rejected before
- * anything is read.
+ * plan was bought, which subscription a webhook is about, and what gets
+ * rejected before anything is read.
  */
 
 const config: PayPalConfig = {
@@ -113,75 +107,38 @@ describe("mapping plans", () => {
 });
 
 describe("reading a webhook", () => {
-  const activated = {
-    event_type: "BILLING.SUBSCRIPTION.ACTIVATED",
-    resource: {
-      id: "I-SUB123",
-      plan_id: "P-BUSINESS-A",
-      subscriber: { email_address: "owner@example.com" },
-      billing_info: {
-        last_payment: { amount: { value: "587.64", currency_code: "USD" } },
-      },
-    },
-  };
+  // Only the subscription's id is taken from an event. What it is worth is
+  // asked of PayPal (syncSubscription), so a forged or stale body can at worst
+  // make the site look something up.
 
-  const renewal = {
-    event_type: "PAYMENT.SALE.COMPLETED",
-    resource: {
-      id: "SALE-999",
-      billing_agreement_id: "I-SUB123",
-      amount: { total: "587.64", currency: "USD" },
-    },
-  };
-
-  it("reads an activation", () => {
-    const parsed = parseEvent(activated);
-    expect(parsed).toMatchObject({
-      externalId: "I-SUB123",
-      paypalPlanId: "P-BUSINESS-A",
-      email: "owner@example.com",
-      amountCents: 58_764,
-      currency: "USD",
-    });
-  });
-
-  it("keys a renewal on the sale, not the subscription", () => {
-    // The whole reason renewals work: every period is its own payment id, so
-    // each one is a distinct purchase and earns its own licence. Keying on the
-    // subscription would make renewal two hand back the first licence, already
-    // expired.
-    const parsed = parseEvent(renewal);
-    expect(parsed?.externalId).toBe("SALE-999");
-    expect(parsed?.subscriptionId).toBe("I-SUB123");
-    expect(parsed?.externalId).not.toBe(parsed?.subscriptionId);
-  });
-
-  it("converts money without floating point drift", () => {
-    expect(parseEvent(renewal)?.amountCents).toBe(58_764);
-  });
-
-  it("ignores events that owe nobody a licence", () => {
-    expect(
-      parseEvent({ event_type: "BILLING.SUBSCRIPTION.CREATED", resource: { id: "x" } }),
-    ).toBeNull();
-    expect(
-      parseEvent({ event_type: "BILLING.SUBSCRIPTION.CANCELLED", resource: { id: "x" } }),
-    ).toBeNull();
-  });
-
-  it("survives anything at all in the body", () => {
-    for (const junk of [null, undefined, 42, "hello", {}, { event_type: "X" }, []]) {
-      expect(parseEvent(junk)).toBeNull();
+  it("reads the subscription an activation, a cancellation or a failed payment is about", () => {
+    for (const type of [
+      "BILLING.SUBSCRIPTION.ACTIVATED",
+      "BILLING.SUBSCRIPTION.CANCELLED",
+      "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+    ]) {
+      expect(subscriptionIdOf({ event_type: type, resource: { id: "I-SUB123" } }), type).toBe("I-SUB123");
     }
   });
 
-  it("refuses an activation missing the fields it needs", () => {
+  it("reads a renewal's subscription from the sale, not the sale's own id", () => {
     expect(
-      parseEvent({
-        event_type: "BILLING.SUBSCRIPTION.ACTIVATED",
-        resource: { id: "I-1" },
+      subscriptionIdOf({
+        event_type: "PAYMENT.SALE.COMPLETED",
+        resource: { id: "SALE-999", billing_agreement_id: "I-SUB123" },
       }),
-    ).toBeNull();
+    ).toBe("I-SUB123");
+  });
+
+  it("ignores events that are not about a subscription", () => {
+    expect(subscriptionIdOf({ event_type: "CHECKOUT.ORDER.APPROVED", resource: { id: "x" } })).toBeNull();
+    expect(subscriptionIdOf({ event_type: "PAYMENT.SALE.COMPLETED", resource: { id: "SALE-1" } })).toBeNull();
+  });
+
+  it("survives anything at all in the body", () => {
+    for (const junk of [null, undefined, 42, "hello", {}, { event_type: "X" }, [], { event_type: "BILLING.SUBSCRIPTION.ACTIVATED" }]) {
+      expect(subscriptionIdOf(junk)).toBeNull();
+    }
   });
 });
 
@@ -211,30 +168,5 @@ describe("refusing an unsigned or hostile webhook", () => {
     expect(isPayPalCertUrl("https://169.254.169.254/latest/meta-data")).toBe(false);
     expect(isPayPalCertUrl("not a url")).toBe(false);
     expect(isPayPalCertUrl(null)).toBe(false);
-  });
-});
-
-describe("what the deployment will offer", () => {
-  it("does not offer PayPal without credentials", () => {
-    for (const key of ENV_KEYS) delete process.env[key];
-
-    expect(CHECKOUT_PROVIDER_META.PAYPAL.implemented).toBe(true);
-    expect(isCheckoutProviderConfigured("PAYPAL")).toBe(false);
-    expect(availableCheckoutProviders().map((p) => p.id)).not.toContain("PAYPAL");
-    expect(canSellOnline()).toBe(false);
-  });
-
-  it("offers it once they are set", () => {
-    process.env.PAYPAL_CLIENT_ID = "id";
-    process.env.PAYPAL_CLIENT_SECRET = "secret";
-    process.env.PAYPAL_WEBHOOK_ID = "WH-1";
-
-    expect(isCheckoutProviderConfigured("PAYPAL")).toBe(true);
-    expect(canSellOnline()).toBe(true);
-  });
-
-  it("never offers a provider with no adapter", () => {
-    expect(CHECKOUT_PROVIDER_META.STRIPE.implemented).toBe(false);
-    expect(isCheckoutProviderConfigured("STRIPE")).toBe(false);
   });
 });

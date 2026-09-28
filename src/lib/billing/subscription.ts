@@ -55,9 +55,9 @@ export type SyncResult =
   | {
       linked: false;
       /**
-       * not-ours: no business in this deployment started it — it is the
-       * anonymous purchase that emails a key, or it belongs to another
-       * business than the one asking. unreachable: PayPal did not answer.
+       * not-ours: no business in this deployment started it, or it belongs
+       * to another business than the one asking. unreachable: PayPal did not
+       * answer.
        */
       reason: "not-configured" | "unreachable" | "not-ours" | "unknown-plan";
     };

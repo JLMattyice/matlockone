@@ -568,7 +568,7 @@ describe("syncSubscription", () => {
     expect((await orgOf(payer)).subscriptionId).toBeNull();
   });
 
-  it("leaves the anonymous licence purchase to the licence path", async () => {
+  it("claims nothing for a subscription no business here started", async () => {
     paypalHas("I-ANON", { customId: null });
 
     expect(await syncSubscription("I-ANON")).toEqual({ linked: false, reason: "not-ours" });
@@ -707,6 +707,28 @@ describe("the webhook", () => {
 
     expect(response.status).toBe(503);
     expect((await orgOf(b)).subscriptionId).toBeNull();
+  });
+
+  it("acknowledges news of a subscription no business holds, and changes nothing", async () => {
+    // Retrying will not make it ours, so PayPal is told to stop.
+    paypalHas("I-STRANGER", { customId: null });
+    const before = await prisma.organization.count({ where: { subscriptionId: { not: null } } });
+
+    const response = await deliver({
+      event_type: "PAYMENT.SALE.COMPLETED",
+      resource: { id: "SALE-X", billing_agreement_id: "I-STRANGER" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, ignored: "not-ours" });
+    expect(await prisma.organization.count({ where: { subscriptionId: { not: null } } })).toBe(before);
+  });
+
+  it("acknowledges a verified event that is not about a subscription", async () => {
+    const response = await deliver({ event_type: "CHECKOUT.ORDER.APPROVED", resource: { id: "O-1" } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, ignored: true });
   });
 
   it("reads nothing from a delivery PayPal did not sign", async () => {
