@@ -338,7 +338,13 @@ route refuses anything without it, because an address anybody can hit that
 makes the database walk every business is a way to slow it down for everyone.
 Without the variable the route answers 503, the boot log carries a warning,
 and the Automations screen goes on telling people to press Check now — which
-still works, and which is how a desktop install runs them every time.
+still works.
+
+A desktop install that keeps its own data runs the same route itself: the
+launcher (`electron/sweeps.js`) makes a secret for each launch, hands it to
+its server as `CRON_SECRET` with `AUTOMATIONS_SWEEP=desktop`, and calls the
+check two minutes after starting and every three hours while the app is
+open. Each run is one line in the server log.
 
 Repeat calls are harmless. Each automation fires once per invoice or customer
 however often it runs, so a retried or doubled call raises nothing new. Each

@@ -118,17 +118,25 @@ export function dataStaysOnThisMachine(env: ConfigEnv = process.env): boolean {
 export const MIN_CRON_SECRET = 16;
 
 /**
- * Whether the automations that wait for a date run by themselves here.
+ * When the automations that wait for a date run by themselves here, or null
+ * if only Check now runs them.
  *
- * Only on Vercel, which calls /api/cron/automations every morning as vercel.json
- * asks, and only with CRON_SECRET set: Vercel sends it with that call, and the
- * route refuses anything without it. Everywhere else — every desktop install
- * included — those automations run when somebody presses Check now.
+ * "daily" on Vercel, which calls /api/cron/automations every morning as
+ * vercel.json asks. "while-open" on a desktop install, where the launcher calls
+ * the same route every few hours while the app is running (electron/sweeps.js)
+ * and says so with AUTOMATIONS_SWEEP. Both need CRON_SECRET, which the caller
+ * sends and the route refuses to run without.
  */
+export function sweepSchedule(env: ConfigEnv = process.env): "daily" | "while-open" | null {
+  if ((env.CRON_SECRET?.trim().length ?? 0) < MIN_CRON_SECRET) return null;
+  if (env.VERCEL) return "daily";
+  if (env.AUTOMATIONS_SWEEP === "desktop") return "while-open";
+  return null;
+}
+
+/** Whether they run by themselves at all. */
 export function sweepsAutomatically(env: ConfigEnv = process.env): boolean {
-  return (
-    Boolean(env.VERCEL) && (env.CRON_SECRET?.trim().length ?? 0) >= MIN_CRON_SECRET
-  );
+  return sweepSchedule(env) !== null;
 }
 
 /**

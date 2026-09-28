@@ -40,7 +40,8 @@ export function AutomationsForm({
   automations: AutomationRow[];
   raised: number;
   /** Whether this deployment runs the date-based check every morning itself. */
-  automatic: boolean;
+  /** When the date-based check runs by itself here, if it does. */
+  automatic: "daily" | "while-open" | null;
   readOnly: boolean;
 }) {
   const [sweepState, runSweep] = useActionState<ActionState, FormData>(
@@ -71,12 +72,15 @@ export function AutomationsForm({
           <CardHeader
             title="Check now"
             description={
-              // Says which is true here. On the hosted app the check runs each
-              // morning; on a desktop install nothing wakes up by itself, and
-              // claiming otherwise would leave overdue invoices unchased.
-              automatic
+              // Says which is true here: every morning on the hosted app,
+              // every few hours while a desktop install is open, or only when
+              // somebody presses this. Claiming a schedule that is not there
+              // would leave overdue invoices unchased.
+              automatic === "daily"
                 ? "Two of these wait for a date to pass rather than for something to happen. They are checked every morning by themselves; this runs the same check now."
-                : "Two of these wait for a date to pass rather than for something to happen. Nothing in Matlock One wakes up on its own, so this is where that check runs."
+                : automatic === "while-open"
+                  ? "Two of these wait for a date to pass rather than for something to happen. They are checked by themselves every few hours while Matlock One is open on this computer; this runs the same check now."
+                  : "Two of these wait for a date to pass rather than for something to happen. Nothing in Matlock One wakes up on its own, so this is where that check runs."
             }
           />
 

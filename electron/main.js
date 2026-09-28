@@ -15,6 +15,7 @@ const path = require("node:path");
 
 const { attachContextMenu } = require("./context-menu");
 const { setupUpdates } = require("./updater");
+const { newSweepSecret, startAutomationSweeps } = require("./sweeps");
 const {
   encryptionKey,
   ensureDatabase,
@@ -274,6 +275,9 @@ async function startServer(carried) {
     );
   }
 
+  // For the launcher's own calls to the automations check; see sweeps.js.
+  const sweepSecret = newSweepSecret();
+
   serverProcess = spawn(
     resources.nodeBinary,
     [resources.serverEntry],
@@ -295,6 +299,10 @@ async function startServer(carried) {
         ENCRYPTION_KEY: encryptionKey(store.encryptionKeyFile),
         // Client-facing links resolve on the local network.
         APP_URL: connectionInfo.lan[0] ?? local,
+        // The automations that wait for a date are run by this launcher,
+        // which tells the Automations screen to say so.
+        CRON_SECRET: sweepSecret,
+        AUTOMATIONS_SWEEP: "desktop",
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -332,6 +340,8 @@ async function startServer(carried) {
     app.quit();
     return null;
   }
+
+  startAutomationSweeps({ baseUrl: local, secret: sweepSecret, log: (line) => log.write(line) });
 
   return local;
 }

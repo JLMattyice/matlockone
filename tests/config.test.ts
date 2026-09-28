@@ -6,6 +6,7 @@ import {
   resolveAppUrl,
   secureCookies,
   signupOpen,
+  sweepSchedule,
   sweepsAutomatically,
 } from "@/lib/config";
 
@@ -307,16 +308,26 @@ describe("configProblems", () => {
   });
 });
 
-describe("sweepsAutomatically", () => {
-  it("is true only on Vercel with a secret long enough to be one", () => {
-    expect(sweepsAutomatically({ VERCEL: "1", CRON_SECRET: "c".repeat(32) })).toBe(true);
-    expect(sweepsAutomatically({ VERCEL: "1", CRON_SECRET: "  short  " })).toBe(false);
-    expect(sweepsAutomatically({ VERCEL: "1" })).toBe(false);
+describe("when the date-based automations run by themselves", () => {
+  it("is every morning on Vercel, with a secret long enough to be one", () => {
+    expect(sweepSchedule({ VERCEL: "1", CRON_SECRET: "c".repeat(32) })).toBe("daily");
+    expect(sweepSchedule({ VERCEL: "1", CRON_SECRET: "  short  " })).toBeNull();
+    expect(sweepSchedule({ VERCEL: "1" })).toBeNull();
   });
 
-  it("is false on a desktop install, secret or not", () => {
-    // The settings screen tells a desktop user to press Check now. Saying the
-    // check runs every morning there would leave overdue invoices unchased.
+  it("is while the app is open on a desktop install whose launcher runs them", () => {
+    // electron/sweeps.js calls the check every few hours, with a secret it
+    // makes for each launch, and says so with AUTOMATIONS_SWEEP.
+    expect(sweepSchedule({ AUTOMATIONS_SWEEP: "desktop", CRON_SECRET: "c".repeat(64) })).toBe("while-open");
+  });
+
+  it("is only Check now anywhere else", () => {
+    // Saying the check runs by itself where it does not would leave overdue
+    // invoices unchased.
+    expect(sweepSchedule({ CRON_SECRET: "c".repeat(32) })).toBeNull();
+    expect(sweepSchedule({ AUTOMATIONS_SWEEP: "desktop" })).toBeNull();
+    expect(sweepSchedule({})).toBeNull();
     expect(sweepsAutomatically({ CRON_SECRET: "c".repeat(32) })).toBe(false);
+    expect(sweepsAutomatically({ VERCEL: "1", CRON_SECRET: "c".repeat(32) })).toBe(true);
   });
 });
