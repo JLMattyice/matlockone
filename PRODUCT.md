@@ -195,8 +195,9 @@ partly paid, a payment recorded twice.
   must never become a second body color.
 - Marketing grounds are the green-blacks `#080A09` and `#101512` (both are
   green-tinted, G highest, so they sit inside the family).
-- **The application** keeps its own light/blue re-skinnable identity with
-  `#2563eb`, tokenized in `src/app/globals.css`, and both themes stay
+- **The application** keeps its own light/green re-skinnable identity with
+  `#1d7c5c` — the icon's forest green lifted until white text on it reads at
+  5.1:1 — tokenized in `src/app/globals.css`, and both themes stay
   first-class. **The marketing site is committed dark and deliberately not
   themeable** — it is an argument, not a workspace.
 - Voice, inherited from the README: plain, specific, unhyped. It explains

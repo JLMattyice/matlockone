@@ -89,6 +89,13 @@ export function durationMinutes(
   return minutes > 0 ? minutes : fallback;
 }
 
+/**
+ * Matlock One's own green, and every business's until it picks another: the
+ * icon's green lifted to where white text on it reads as well as it did on
+ * the blue it replaced. Also `--brand` in globals.css and the schema default.
+ */
+export const DEFAULT_BRAND_COLOR = "#1d7c5c";
+
 /** Turns a hex color into an "R G B" triplet for CSS `rgb(var(--x) / <alpha>)`. */
 export function hexToRgbChannels(hex: string): string | null {
   const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());

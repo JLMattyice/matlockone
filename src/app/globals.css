@@ -50,7 +50,7 @@
   --ink-muted: #475569;
   --ink-subtle: #94a3b8;
 
-  --brand: #2563eb;
+  --brand: #1d7c5c;
   --brand-ink: #ffffff;
   --accent: #0f172a;
 
@@ -165,7 +165,7 @@
 /*
  * Matlock One — the public product site.
  *
- * The application is a light, blue, re-skinnable workspace. The marketing site
+ * The application is a light, green, re-skinnable workspace. The marketing site
  * is a committed dark one, and it is deliberately not themeable: it is an
  * argument, not a workspace, and it should look the same to everyone who is
  * shown it.

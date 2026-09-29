@@ -24,6 +24,7 @@ import { createPrismaClient } from "../src/lib/db";
 import { providerFor } from "../src/lib/db-provider";
 import { computeTotals } from "../src/lib/money";
 import { hashPassword } from "../src/lib/password";
+import { DEFAULT_BRAND_COLOR } from "../src/lib/utils";
 
 // Adapter selection lives in src/lib/db.ts. Going through it means the seed
 // reaches Postgres or SQLite by the same rule the application uses, rather than
@@ -187,7 +188,7 @@ async function main() {
       state: "NC",
       postalCode: "27502",
       country: "US",
-      primaryColor: "#0f766e",
+      primaryColor: DEFAULT_BRAND_COLOR,
       accentColor: "#0f172a",
       currency: "USD",
       locale: "en-US",

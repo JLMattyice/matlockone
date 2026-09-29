@@ -17,7 +17,7 @@ import {
 import { effectiveInvoiceStatus } from "@/lib/documents";
 import { formatMoney } from "@/lib/money";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
-import { formatPhone, hexToRgbChannels } from "@/lib/utils";
+import { DEFAULT_BRAND_COLOR, formatPhone, hexToRgbChannels } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Your invoice",
@@ -56,7 +56,7 @@ export default async function PublicInvoicePage({
       : pay === "not-payable"
         ? "This invoice cannot be paid online — it may already be settled or cancelled."
         : null;
-  const brand = hexToRgbChannels(org.primaryColor) ? org.primaryColor : "#2563eb";
+  const brand = hexToRgbChannels(org.primaryColor) ? org.primaryColor : DEFAULT_BRAND_COLOR;
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
 
   // A draft has not been issued to anyone yet; the link should not resolve.
