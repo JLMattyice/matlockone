@@ -11,7 +11,9 @@
  * finds out about a failed load only if nothing here answers for it.
  */
 
-const CACHE = "matlock-one-offline-v1";
+// A new name whenever offline.html changes. A worker whose own bytes are the
+// same is never reinstalled, so without it phones keep the page they have.
+const CACHE = "matlock-one-offline-v2";
 const OFFLINE_PAGE = "/offline.html";
 
 self.addEventListener("install", (event) => {

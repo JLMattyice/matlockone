@@ -6,7 +6,10 @@
     <title>No connection · Matlock One</title>
     <!--
       Shown by /sw.js when a page cannot load. Self-contained on purpose: with
-      no connection, nothing else can be fetched to draw it.
+      no connection, nothing else can be fetched to draw it. Phones keep a copy,
+      so change CACHE in /sw.js whenever this file changes, or they keep the old
+      one. The mark is src/lib/brand-mark.mjs, inlined; tests/mobile.test.ts
+      fails if the two differ.
     -->
     <style>
       :root { color-scheme: light dark; --bg: #f8fafc; --card: #ffffff; --ink: #0f172a; --muted: #475569; --line: #e2e8f0; --brand: #1d7c5c; }
@@ -14,7 +17,7 @@
       * { box-sizing: border-box; }
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
       main { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 28px 24px; text-align: center; }
-      .mark { width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 12px; background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; }
+      .mark { display: block; width: 48px; height: 48px; margin: 0 auto 16px; }
       h1 { margin: 0 0 8px; font-size: 18px; }
       p { margin: 0 0 20px; color: var(--muted); font-size: 15px; }
       button { width: 100%; min-height: 44px; border: 0; border-radius: 10px; background: var(--brand); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
@@ -22,7 +25,11 @@
   </head>
   <body>
     <main>
-      <div class="mark" aria-hidden="true">M</div>
+      <svg class="mark" viewBox="12 12 232 232" aria-hidden="true" focusable="false">
+        <rect x="12" y="12" width="232" height="232" rx="56" fill="#0f3d2e"/>
+        <path fill="#fff" d="M30 178V78h24l22 48 22-48h24v100H98v-48l-22 48-22-48v48z"/>
+        <ellipse cx="180" cy="128" rx="34" ry="39" fill="none" stroke="#fff" stroke-width="24"/>
+      </svg>
       <h1>No connection</h1>
       <p>Matlock One needs the internet to show your latest work. It will load again as soon as this device is back online.</p>
       <button type="button" onclick="location.reload()">Try again</button>

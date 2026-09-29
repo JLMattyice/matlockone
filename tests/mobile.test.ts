@@ -21,6 +21,7 @@ vi.mock("next/headers", () => ({
 import { NextRequest } from "next/server";
 
 import manifest from "@/app/manifest";
+import { MARK_GREEN, MARK_M, MARK_O, MARK_OUTLINE } from "@/lib/brand-mark.mjs";
 import { isPhone } from "@/lib/device";
 import { directionsUrl } from "@/lib/utils";
 import { middleware } from "@/middleware";
@@ -200,7 +201,7 @@ function loadWorker(network: (request: unknown) => Promise<unknown>) {
     },
     caches: {
       open: async () => ({ add: async (req: { url: string }) => cache.set(req.url, OFFLINE) }),
-      keys: async () => ["matlock-one-offline-v1", "old-cache"],
+      keys: async () => ["matlock-one-offline-v2", "old-cache"],
       delete: async (key: string) => cache.delete(key),
       match: async (key: string) => cache.get(key),
     },
@@ -224,6 +225,19 @@ function loadWorker(network: (request: unknown) => Promise<unknown>) {
 }
 
 describe("with no signal", () => {
+  it("draws the same MO mark on the offline page as on the tab and sign-in", () => {
+    // Inlined there, since with no signal nothing else can be fetched.
+    const page = fs.readFileSync(path.join(ROOT, "public/offline.html"), "utf8");
+    const { x, y, size, radius } = MARK_OUTLINE;
+
+    expect(page).toContain(`viewBox="${x} ${y} ${size} ${size}"`);
+    expect(page).toContain(`rx="${radius}" fill="${MARK_GREEN}"`);
+    expect(page).toContain(`d="${MARK_M}"`);
+    expect(page).toContain(
+      `cx="${MARK_O.cx}" cy="${MARK_O.cy}" rx="${MARK_O.rx}" ry="${MARK_O.ry}" fill="none" stroke="#fff" stroke-width="${MARK_O.stroke}"`,
+    );
+  });
+
   it("shows the offline page for a page that cannot load", async () => {
     const worker = loadWorker(() => Promise.reject(new TypeError("Failed to fetch")));
     await worker.run("install", {});
