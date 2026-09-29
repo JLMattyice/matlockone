@@ -12,7 +12,6 @@ export default async function BrandingPage() {
   return (
     <BrandingForm
       values={{
-        orgName: org.name,
         primaryColor: org.primaryColor,
         accentColor: org.accentColor,
         logoUrl: org.logoUrl,

@@ -11,10 +11,9 @@ import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { BUSINESS_TYPES, vocabularyColumns } from "@/lib/business-types";
-import { DEFAULT_BRAND_COLOR, hexToRgbChannels, initials } from "@/lib/utils";
+import { DEFAULT_BRAND_COLOR, hexToRgbChannels } from "@/lib/utils";
 
 export type BrandingValues = {
-  orgName: string;
   primaryColor: string;
   accentColor: string;
   logoUrl: string | null;
@@ -159,9 +158,6 @@ export function BrandingForm({ values }: { values: BrandingValues }) {
               Preview
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-xs font-bold text-brand-ink">
-                {initials(values.orgName) || "WS"}
-              </span>
               <span className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-medium text-brand-ink">
                 Send invoice
               </span>

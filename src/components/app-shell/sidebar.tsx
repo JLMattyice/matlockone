@@ -7,13 +7,13 @@ import { Menu, X } from "lucide-react";
 
 import { NavIcon } from "./nav-icon";
 import { useUnreadMessages } from "./use-unread-messages";
+import { MatlockMark } from "@/components/ui/matlock-mark";
 import { MESSAGES_HREF, type ResolvedNavGroup } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 export type SidebarBrand = {
   name: string;
   logoUrl: string | null;
-  initials: string;
 };
 
 export function Sidebar({
@@ -77,9 +77,9 @@ export function Sidebar({
                 className="h-8 w-8 rounded-lg object-cover"
               />
             ) : (
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-xs font-bold text-brand-ink">
-                {brand.initials}
-              </span>
+              // Without a logo of its own, a business shows Matlock One's
+              // mark — the same one as the browser tab and sign-in.
+              <MatlockMark className="h-8 w-8 shrink-0" />
             )}
             <span className="truncate text-sm font-semibold text-ink">
               {brand.name}
