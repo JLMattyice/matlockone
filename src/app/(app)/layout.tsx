@@ -6,7 +6,7 @@ import { DemoBanner } from "@/components/app-shell/demo-banner";
 import { unreadMessageCount } from "@/lib/conversations";
 import { NAVIGATION, orgLabels, resolveNavigation } from "@/lib/navigation";
 import { can } from "@/lib/permissions";
-import { hexToRgbChannels, initials } from "@/lib/utils";
+import { hexToRgbChannels } from "@/lib/utils";
 
 export default async function AppLayout({
   children,
@@ -51,7 +51,6 @@ export default async function AppLayout({
         brand={{
           name: org.name,
           logoUrl: org.logoUrl,
-          initials: initials(org.name) || "WS",
         }}
         unreadMessages={unreadMessages}
       />
