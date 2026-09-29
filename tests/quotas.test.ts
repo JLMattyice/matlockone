@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,6 +52,7 @@ import { requireContext } from "@/lib/auth";
 import { entitlement, storageAllowance, type BillingFields } from "@/lib/billing/entitlement";
 import { PLANS } from "@/lib/checkout/plans";
 import { prisma } from "@/lib/db";
+import { issueLicense } from "@/lib/license/token";
 import { storageRoom, storageUsage, storageUsed } from "@/lib/quotas";
 import { SAVES_PER_USER } from "@/lib/rate-limit";
 import { createSession, SESSION_COOKIE } from "@/lib/session";
@@ -60,6 +61,30 @@ import { formatBytes } from "@/lib/storage-limits";
 const MB = 1024 ** 2;
 const GB = 1024 ** 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Keys signed here, as the licence suites do, rather than with the signing key
+// that is deliberately not in the repo.
+const signer = generateKeyPairSync("ed25519");
+
+function licenceKey(plan: "starter" | "business" | "pro") {
+  vi.stubEnv(
+    "LICENSE_PUBLIC_KEY",
+    signer.publicKey.export({ type: "spki", format: "pem" }).toString(),
+  );
+  const now = Math.floor(Date.now() / 1000);
+  return issueLicense(
+    {
+      id: `lic_${randomUUID()}`,
+      sub: "owner@example.test",
+      plan,
+      mode: "paid",
+      seats: 10,
+      iat: now - 60,
+      exp: now + 30 * 86_400,
+    },
+    signer.privateKey,
+  );
+}
 
 async function business(fields: Record<string, unknown> = {}) {
   const org = await prisma.organization.create({
@@ -142,6 +167,20 @@ describe("each plan's room for files", () => {
     expect(storageAllowance(entitlement({ ...paid("starter"), isDemo: true }))).toBeNull();
   });
 
+  it("holds a licence to the plan it was issued for", () => {
+    const licensed = (plan: "starter" | "pro"): BillingFields => ({
+      isDemo: false,
+      billingExempt: false,
+      licenseKey: licenceKey(plan),
+      subscriptionStatus: null,
+      subscriptionPlan: null,
+      paidThrough: null,
+    });
+
+    expect(storageAllowance(entitlement(licensed("starter")))).toEqual({ bytes: 10 * GB, planName: "Starter" });
+    expect(storageAllowance(entitlement(licensed("pro")))).toEqual({ bytes: 200 * GB, planName: "Pro" });
+  });
+
   it("reads in gigabytes once it gets there", () => {
     expect(formatBytes(50 * GB)).toBe("50 GB");
     expect(formatBytes(1.25 * GB)).toBe("1.3 GB");
@@ -190,6 +229,32 @@ describe("the room left", () => {
   it("has no cap on a desktop install that keeps files on its own disk", async () => {
     vi.stubEnv("STORAGE_PROVIDER", "local");
     const { org } = await business();
+    await alreadyStored(org.id, 11 * GB);
+
+    expect((await storageRoom(org)).take(15 * MB)).toBeNull();
+    expect((await storageUsage(org)).allowance).toBeNull();
+  });
+
+  it("turns away a hosted business on a licence once its plan's room is used", async () => {
+    const { org } = await business({
+      subscriptionPlan: null,
+      subscriptionStatus: null,
+      paidThrough: null,
+      licenseKey: licenceKey("starter"),
+    });
+    await alreadyStored(org.id, 10 * GB - MB);
+
+    expect((await storageRoom(org)).take(15 * MB)).toMatch(/Starter plan’s 10 GB/);
+  });
+
+  it("has no cap on a desktop install that runs on a licence", async () => {
+    vi.stubEnv("STORAGE_PROVIDER", "local");
+    const { org } = await business({
+      subscriptionPlan: null,
+      subscriptionStatus: null,
+      paidThrough: null,
+      licenseKey: licenceKey("starter"),
+    });
     await alreadyStored(org.id, 11 * GB);
 
     expect((await storageRoom(org)).take(15 * MB)).toBeNull();
