@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { logoutAction } from "@/app/(auth)/actions";
+import { MatlockMark } from "@/components/ui/matlock-mark";
 
 /**
  * The frame around the billing screen.
@@ -15,9 +16,7 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
     <div className="flex min-h-screen flex-col bg-surface-2">
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-xs font-bold text-brand-ink">
-            MO
-          </span>
+          <MatlockMark className="h-8 w-8 shrink-0" />
           <span className="text-base font-semibold tracking-tight text-ink">Matlock One</span>
         </Link>
         <form action={logoutAction}>

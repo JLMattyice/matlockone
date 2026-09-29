@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { MatlockMark } from "@/components/ui/matlock-mark";
+
 export default function AuthLayout({
   children,
 }: {
@@ -10,9 +12,7 @@ export default function AuthLayout({
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-100">
           <Link href="/" className="mb-8 flex items-center justify-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-ink">
-              MO
-            </span>
+            <MatlockMark className="h-9 w-9 shrink-0" />
             <span className="text-lg font-semibold tracking-tight text-ink">
               Matlock One
             </span>

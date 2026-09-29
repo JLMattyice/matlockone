@@ -3,6 +3,8 @@ import path from "node:path";
 
 import sharp from "sharp";
 
+import { markSvg } from "../src/lib/brand-mark.mjs";
+
 /**
  * Generates the application icons: the desktop app's, the browser tab's, and
  * the ones a phone puts on its home screen when Matlock One is added there.
@@ -11,7 +13,8 @@ import sharp from "sharp";
  * icon, replace that file and re-run (`npm run icons`). The picture may be any
  * shape; the middle square of it is used, so keep what matters there. The one
  * exception is the browser tab, which is a bold MO on the picture's green —
- * see tabIcon().
+ * see tabIcon(). That green is fixed in src/lib/brand-mark.mjs, so a picture
+ * of another colour means changing it there as well.
  *
  * Each size comes in one of two shapes:
  *
@@ -51,34 +54,16 @@ async function icon(size, { fullBleed } = { fullBleed: false }) {
 }
 
 /**
- * The browser tab's icon: a bold white MO on the picture's green, in the same
- * rounded outline as the others.
+ * The browser tab's icon: the bold white MO mark, which the sign-in and
+ * billing screens show beside the name too (src/lib/brand-mark.mjs).
  *
  * Not cut from the picture, because a tab shows it at 16 pixels, where the
  * wordmark shrinks to a grey smudge. Drawn as shapes rather than set in a
  * font, so it comes out the same on every machine that runs this — fonts
  * differ between them, and the Mac desktop build runs it too.
- *
- * On the 256 grid: both letters 100 tall on the middle line, 18 in from the
- * outline on either side. The M's diagonals meet on the baseline, as a bold
- * M's do, so it still reads as an M when it is five pixels wide.
  */
 async function tabIcon(size) {
-  // Taken from the picture's corner, so a new picture brings its colour here.
-  const [r, g, b] = await sharp(SOURCE)
-    .extract({ left: 0, top: 0, width: 1, height: 1 })
-    .removeAlpha()
-    .raw()
-    .toBuffer();
-
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 256 256">` +
-    `<rect x="12" y="12" width="232" height="232" rx="56" fill="rgb(${r},${g},${b})"/>` +
-    `<path fill="#fff" d="M30 178V78h24l22 48 22-48h24v100H98v-48l-22 48-22-48v48z"/>` +
-    `<ellipse cx="180" cy="128" rx="34" ry="39" fill="none" stroke="#fff" stroke-width="24"/>` +
-    `</svg>`;
-
-  return sharp(Buffer.from(svg))
+  return sharp(Buffer.from(markSvg(size)))
     .ensureAlpha()
     .png({ compressionLevel: 9, adaptiveFiltering: false })
     .toBuffer();
