@@ -20,8 +20,9 @@ export async function activateLicense(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  // Reachable unpaid: a desktop install with no licence is closed until it has
-  // one, and this is how it gets one — from the billing screen.
+  // Reachable unpaid: a business with no plan and no licence is closed until it
+  // has one, and this is how it gets one — from the billing screen, on a
+  // desktop install and the hosted app alike.
   const { org } = await requirePermission("settings:write", { unpaid: "allow" });
 
   const key = String(formData.get("licenseKey") ?? "")
@@ -39,6 +40,20 @@ export async function activateLicense(
 
   if (!result.ok) {
     return { ok: false, fieldErrors: { licenseKey: result.message } };
+  }
+
+  // Every hosted business shares one database, so without this a single key
+  // would open as many of them as it was pasted into. One key, one business.
+  // Which business already holds it is not said.
+  const taken = await prisma.organization.findFirst({
+    where: { licenseKey: key, id: { not: org.id } },
+    select: { id: true },
+  });
+  if (taken) {
+    return {
+      ok: false,
+      fieldErrors: { licenseKey: "This licence key is already in use by another business." },
+    };
   }
 
   await prisma.organization.update({

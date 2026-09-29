@@ -11,7 +11,7 @@ import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { BUSINESS_TYPES, vocabularyColumns } from "@/lib/business-types";
-import { hexToRgbChannels, initials } from "@/lib/utils";
+import { DEFAULT_BRAND_COLOR, hexToRgbChannels, initials } from "@/lib/utils";
 
 export type BrandingValues = {
   orgName: string;
@@ -310,7 +310,7 @@ function ColorInput({
   onChange?: (value: string) => void;
   disabled?: boolean;
 }) {
-  const [internal, setInternal] = useState(value ?? defaultValue ?? "#2563eb");
+  const [internal, setInternal] = useState(value ?? defaultValue ?? DEFAULT_BRAND_COLOR);
   const current = value ?? internal;
 
   function set(next: string) {
@@ -323,7 +323,7 @@ function ColorInput({
       <input
         type="color"
         aria-label={`${name} swatch`}
-        value={hexToRgbChannels(current) ? current : "#2563eb"}
+        value={hexToRgbChannels(current) ? current : DEFAULT_BRAND_COLOR}
         onChange={(e) => set(e.target.value)}
         disabled={disabled}
         className="h-9.5 w-12 shrink-0 cursor-pointer rounded-lg border border-line bg-surface p-1 disabled:cursor-not-allowed"

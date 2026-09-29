@@ -37,3 +37,6 @@ license-keys/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Windows writes one of these into any folder it customises
+desktop.ini

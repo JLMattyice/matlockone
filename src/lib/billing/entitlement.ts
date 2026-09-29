@@ -81,13 +81,19 @@ export function entitlement(org: BillingFields, now: Date = new Date()): Entitle
 
 /**
  * How much the business may keep in files and photos, or null for no cap —
- * the demo, an exempt business, and a licence, which only a desktop install
- * that stores files on its own disk carries.
+ * the demo and an exempt business.
+ *
+ * A licence is held to the plan it was issued for, the same as a
+ * subscription, because the hosted app takes keys too and its files sit in
+ * the store every business shares. A desktop install that keeps files on its
+ * own disk is never capped; the caller decides that, since this cannot see
+ * where the files live.
  */
 export function storageAllowance(
   access: Entitlement,
 ): { bytes: number; planName: string } | null {
-  if (!access.ok || access.via !== "subscription" || !access.plan) return null;
+  if (!access.ok || !access.plan) return null;
+  if (access.via !== "subscription" && access.via !== "licence") return null;
   const plan = PLANS[access.plan];
   return { bytes: plan.storageBytes, planName: plan.name };
 }

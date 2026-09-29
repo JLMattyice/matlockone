@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,6 +47,7 @@ vi.mock("next/navigation", () => ({
 
 import { NextRequest } from "next/server";
 
+import { activateLicense } from "@/app/(app)/settings/license/actions";
 import { cancelPlan, choosePlan } from "@/app/(billing)/billing/actions";
 import BillingPage from "@/app/(billing)/billing/page";
 import BillingReturnPage from "@/app/(billing)/billing/return/page";
@@ -54,8 +55,10 @@ import { POST as webhook } from "@/app/api/checkout/paypal/webhook/route";
 import { POST as uploadTicket } from "@/app/api/files/upload-ticket/route";
 import { requireContext, requirePermission } from "@/lib/auth";
 import { paidThroughFor, restartDate, syncSubscription } from "@/lib/billing/subscription";
+import { IDLE } from "@/lib/action-state";
 import { forgetAccessToken, type SubscriptionDetails } from "@/lib/checkout/paypal";
 import { prisma } from "@/lib/db";
+import { issueLicense } from "@/lib/license/token";
 import { createSession, SESSION_COOKIE } from "@/lib/session";
 
 // ------------------------------------------------------------ fake PayPal ---
@@ -401,6 +404,133 @@ describe("the billing page", () => {
     signInAs(b.owner);
 
     await expect(page()).rejects.toThrow("NEXT_REDIRECT /dashboard");
+  });
+});
+
+// ---------------------------------------------- a licence key instead ---
+
+describe("a licence key instead of a plan", () => {
+  // The test signs its own keys, as the licence suites do, rather than
+  // depending on the signing key that is deliberately not in the repo.
+  const keys = generateKeyPairSync("ed25519");
+  const stranger = generateKeyPairSync("ed25519");
+
+  const licence = (signer = keys.privateKey) => {
+    const now = Math.floor(Date.now() / 1000);
+    return issueLicense(
+      {
+        id: `lic_${randomUUID()}`,
+        sub: "owner@example.test",
+        plan: "business",
+        mode: "paid",
+        seats: 10,
+        iat: now - 60,
+        exp: now + 30 * 86_400,
+      },
+      signer,
+    );
+  };
+
+  const page = async () =>
+    renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
+
+  beforeEach(() => {
+    vi.stubEnv(
+      "LICENSE_PUBLIC_KEY",
+      keys.publicKey.export({ type: "spki", format: "pem" }).toString(),
+    );
+  });
+
+  it("offers an owner a place to enter one, beside the plans", async () => {
+    const b = await business();
+    signInAs(b.owner);
+
+    const html = await page();
+
+    expect(html).toContain("Already have a licence key?");
+    expect(html).toContain("Enter your licence key");
+    expect(html).toContain("Monthly");
+  });
+
+  it("offers it where this site cannot take payments, since a key needs no PayPal", async () => {
+    vi.stubEnv("PAYPAL_WEBHOOK_ID", "");
+    const b = await business();
+    signInAs(b.owner);
+
+    const html = await page();
+
+    expect(html).toContain("Payments aren’t set up on this site yet.");
+    expect(html).toContain("Enter your licence key");
+  });
+
+  it("offers nobody the form who cannot commit the business, and says a key would do", async () => {
+    const b = await business();
+    signInAs(b.employee);
+
+    const html = await page();
+
+    expect(html).not.toContain("Enter your licence key");
+    expect(html).toContain("or enter a licence key");
+  });
+
+  it("opens the business once a valid key is entered", async () => {
+    const b = await business();
+    signInAs(b.owner);
+
+    const result = await activateLicense(IDLE, form({ licenseKey: licence() }));
+
+    expect(result.ok).toBe(true);
+    expect((await requireContext()).org.id).toBe(b.orgId);
+
+    const html = await page();
+    expect(html).toContain("Harbor Glass Co runs on a licence key.");
+    expect(html).toContain("Replace your licence key");
+  });
+
+  it("refuses a key this app did not sign, and stays closed", async () => {
+    const b = await business();
+    signInAs(b.owner);
+
+    const result = await activateLicense(IDLE, form({ licenseKey: licence(stranger.privateKey) }));
+
+    expect(result.ok).toBe(false);
+    expect((await orgOf(b)).licenseKey).toBeNull();
+    await expect(requireContext()).rejects.toThrow("NEXT_REDIRECT /billing");
+  });
+
+  it("will not open a second business with a key another already holds", async () => {
+    const key = licence();
+    const first = await business();
+    signInAs(first.owner);
+    expect((await activateLicense(IDLE, form({ licenseKey: key }))).ok).toBe(true);
+
+    const second = await business();
+    signInAs(second.owner);
+    const result = await activateLicense(IDLE, form({ licenseKey: key }));
+
+    expect(result.ok).toBe(false);
+    expect(result.fieldErrors?.licenseKey).toBe(
+      "This licence key is already in use by another business.",
+    );
+    expect((await orgOf(second)).licenseKey).toBeNull();
+    await expect(requireContext()).rejects.toThrow("NEXT_REDIRECT /billing");
+  });
+
+  it("lets the business that holds a key enter it again", async () => {
+    const key = licence();
+    const b = await business();
+    signInAs(b.owner);
+
+    expect((await activateLicense(IDLE, form({ licenseKey: key }))).ok).toBe(true);
+    expect((await activateLicense(IDLE, form({ licenseKey: key }))).ok).toBe(true);
+  });
+
+  it("is not for someone who cannot commit the business", async () => {
+    const b = await business();
+    signInAs(b.employee);
+
+    await expect(activateLicense(IDLE, form({ licenseKey: licence() }))).rejects.toThrow();
+    expect((await orgOf(b)).licenseKey).toBeNull();
   });
 });
 

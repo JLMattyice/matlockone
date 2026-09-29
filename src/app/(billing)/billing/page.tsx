@@ -162,6 +162,12 @@ export default async function BillingPage({
         </Card>
       ) : null}
 
+      {access.ok && access.via === "licence" && !local && canPay ? (
+        // The hosted app has no licence settings page, so a key is renewed
+        // here — which is also where the expiry banner's link lands.
+        <LicenseForm licensed />
+      ) : null}
+
       {!access.ok && local ? (
         // A desktop install pays by licence key: the hosted app's PayPal
         // checkout cannot reach a computer on an office network.
@@ -181,8 +187,8 @@ export default async function BillingPage({
         <Card>
           <CardBody className="p-6 text-sm text-ink">
             {org.name} doesn’t have an active plan.{" "}
-            {owner ? `Ask ${owner.name} to choose one` : "Ask the owner to choose one"}, then
-            sign in again.
+            {owner ? `Ask ${owner.name} to choose one` : "Ask the owner to choose one"} or enter
+            a licence key, then sign in again.
           </CardBody>
         </Card>
       ) : null}
@@ -221,6 +227,20 @@ export default async function BillingPage({
             <CardBody className="p-6 text-sm text-ink">{ERRORS.setup}</CardBody>
           </Card>
         )
+      ) : null}
+
+      {!access.ok && !local && canPay ? (
+        // A business that already holds a key — one bought before plans
+        // were sold here, or issued by hand — opens with it rather than
+        // paying twice. Offered even where PayPal is not set up, since a key
+        // needs nothing from PayPal.
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-sm font-medium text-ink">Already have a licence key?</h2>
+            <p className="text-sm text-ink-muted">Enter it here instead of choosing a plan.</p>
+          </div>
+          <LicenseForm licensed={false} />
+        </section>
       ) : null}
     </div>
   );

@@ -35,7 +35,7 @@ model Organization {
 
   // branding
   logoUrl      String?
-  primaryColor String  @default("#2563eb")
+  primaryColor String  @default("#1d7c5c")
   accentColor  String  @default("#0f172a")
 
   // locale

@@ -10,7 +10,7 @@ import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
 import { effectiveEstimateStatus, isEstimateOpen } from "@/lib/documents";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
-import { formatPhone, hexToRgbChannels } from "@/lib/utils";
+import { DEFAULT_BRAND_COLOR, formatPhone, hexToRgbChannels } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Your estimate",
@@ -39,7 +39,7 @@ export default async function PublicEstimatePage({
   const org = estimate.organization;
   const status = effectiveEstimateStatus(estimate);
   const open = isEstimateOpen(status);
-  const brand = hexToRgbChannels(org.primaryColor) ? org.primaryColor : "#2563eb";
+  const brand = hexToRgbChannels(org.primaryColor) ? org.primaryColor : DEFAULT_BRAND_COLOR;
 
   return (
     <div
