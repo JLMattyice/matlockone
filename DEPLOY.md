@@ -311,9 +311,10 @@ can also be reset by an owner or administrator from the Team page.
 ## On a phone
 
 Matlock One can be added to a phone's home screen and opens there full screen,
-like an app (`src/app/manifest.ts`). Its icons are generated, not drawn:
-`npm run icons` rewrites `public/icons/`, `src/app/icon.png` and
-`src/app/apple-icon.png` from `scripts/make-icon.mjs`, and those are committed.
+like an app (`src/app/manifest.ts`). Its icons are all cut from one picture,
+`favicon/source.png`: replace it and run `npm run icons`, which rewrites
+`public/icons/`, `src/app/icon.png`, `src/app/apple-icon.png` and the desktop
+app's `build/icon.*` (`scripts/make-icon.mjs`). The first three are committed.
 
 `public/sw.js` does one thing: when a page cannot load for lack of signal, it
 shows `public/offline.html` instead of the browser's error. It caches nothing
