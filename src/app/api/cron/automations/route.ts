@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { MIN_CRON_SECRET } from "@/lib/config";
+import { draftDueInvoices } from "@/lib/recurring-invoices";
 import { sweepEveryBusiness } from "@/lib/workflows/run";
 
 /**
@@ -18,6 +19,9 @@ import { sweepEveryBusiness } from "@/lib/workflows/run";
  * way to make it slow for everyone. The sweep itself is safe to repeat — each
  * automation fires once per invoice or customer, however often it runs — so a
  * second call on the same morning does nothing but look.
+ *
+ * Repeating invoices ride the same run: their drafts are due on a date too,
+ * and each date is claimed once, so a second call makes no second draft.
  */
 
 export const dynamic = "force-dynamic";
@@ -48,11 +52,18 @@ export async function GET(request: Request) {
   }
 
   const result = await sweepEveryBusiness();
+  const repeating = await draftDueInvoices();
 
   console.info(
     `[automations] morning run: ${result.businesses} businesses, ${result.created} tasks raised` +
-      (result.failed.length > 0 ? `, ${result.failed.length} failed` : ""),
+      (result.failed.length > 0 ? `, ${result.failed.length} failed` : "") +
+      `; ${repeating.drafted.length} repeating invoices drafted` +
+      (repeating.failed.length > 0 ? `, ${repeating.failed.length} schedules failed` : ""),
   );
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    ...result,
+    drafted: repeating.drafted.length,
+    draftFailed: repeating.failed,
+  });
 }

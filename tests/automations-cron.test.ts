@@ -178,4 +178,25 @@ describe("the morning route", () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].title).toMatch(/^Chase Chasing Co Customer about INV-/);
   });
+
+  it("makes the repeating invoices that are due, once", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+
+    // The overdue invoice this file already made, set to repeat from today.
+    const invoice = await prisma.invoice.findFirstOrThrow({ where: { organizationId: chasing } });
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const schedule = await prisma.invoiceSchedule.create({
+      data: { organizationId: chasing, anchorDate: today, nextIssueDate: today },
+    });
+    await prisma.invoice.update({ where: { id: invoice.id }, data: { scheduleId: schedule.id } });
+
+    const first = await call(`Bearer ${SECRET}`);
+    expect((await first.json()).drafted).toBeGreaterThanOrEqual(1);
+    await call(`Bearer ${SECRET}`);
+
+    expect(
+      await prisma.invoice.count({ where: { scheduleId: schedule.id, status: "DRAFT" } }),
+    ).toBe(1);
+  });
 });

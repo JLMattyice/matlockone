@@ -7,6 +7,7 @@ import { FileText,
   Briefcase,
   Copy,
   Pencil,
+  Repeat,
   RotateCcw,
   Trash2,
   Wallet,
@@ -19,7 +20,8 @@ import {
   duplicateInvoice,
   setInvoiceCancelled,
 } from "../actions";
-import { getInvoice } from "../queries";
+import { getInvoice, getInvoiceSeries } from "../queries";
+import { RepeatCard } from "./repeat-card";
 import { CopyLink } from "../../estimates/[id]/estimate-actions";
 import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
@@ -73,6 +75,7 @@ export default async function InvoiceDetailPage({
   const { user, org } = await requirePermission("invoices:read");
   const { id } = await params;
   const invoice = await getInvoice(org.id, id);
+  const series = await getInvoiceSeries(org.id, invoice.scheduleId);
 
   const status = effectiveInvoiceStatus(invoice);
   const meta = INVOICE_STATUS_META[status];
@@ -139,6 +142,12 @@ export default async function InvoiceDetailPage({
                 >
                   {invoice.estimate.number}
                 </Link>
+              ) : null}
+              {series?.isActive ? (
+                <Badge tone="neutral">
+                  <Repeat className="h-3 w-3" strokeWidth={2} />
+                  Repeating
+                </Badge>
               ) : null}
             </div>
 
@@ -332,6 +341,14 @@ export default async function InvoiceDetailPage({
         </Card>
 
         <div className="space-y-6 no-print">
+          {series || (writable && !cancelled) ? (
+            <RepeatCard
+              invoice={invoice}
+              series={series}
+              canEdit={writable && !cancelled}
+            />
+          ) : null}
+
           <Card className="overflow-hidden">
             <CardHeader
               title="Payments"

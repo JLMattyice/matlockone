@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { format } from "date-fns";
-import { Plus, Receipt } from "lucide-react";
+import { Plus, Receipt, Repeat } from "lucide-react";
 
 import { invoiceSummary, listInvoices } from "./queries";
 import { reminderCandidateCount } from "./reminders";
@@ -194,6 +194,12 @@ export default async function InvoicesPage({
                         >
                           {invoice.number}
                         </Link>
+                        {invoice.scheduleId ? (
+                          <span title="Part of a repeating invoice" className="ml-1.5 inline-flex align-middle text-ink-subtle">
+                            <Repeat className="h-3 w-3" strokeWidth={2} aria-hidden />
+                            <span className="sr-only">Repeating</span>
+                          </span>
+                        ) : null}
                         {invoice.job ? (
                           <Link
                             href={`/jobs/${invoice.job.id}`}

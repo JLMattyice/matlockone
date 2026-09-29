@@ -82,6 +82,47 @@ function step(
 }
 
 /**
+ * The date after `cursor` in a series that began at `anchor`.
+ *
+ * Repeating invoices step one date at a time rather than expanding a whole
+ * run up front, since a schedule with no end has no list to expand. The
+ * anchor is what keeps a monthly series on its day: pushed to the 28th by
+ * February, it goes back to the 31st in March.
+ */
+export function nextInSeries(
+  cursor: Date,
+  frequency: RecurrenceFrequency,
+  interval: number,
+  anchor: Date,
+): Date {
+  return step(cursor, frequency, Math.max(1, Math.floor(interval || 1)), anchor);
+}
+
+/**
+ * The first date after `start` in its series that is not before `notBefore`.
+ *
+ * What a repeat set up from an invoice offers as its next date: one period
+ * on from the invoice, or — for an invoice issued long ago — the first date in
+ * the same rhythm that has not already gone by. Bounded, so an interval that
+ * somehow fails to advance cannot spin.
+ */
+export function nextNotBefore(
+  start: Date,
+  frequency: RecurrenceFrequency,
+  interval: number,
+  notBefore: Date,
+  anchor: Date = start,
+): Date {
+  let cursor = nextInSeries(start, frequency, interval, anchor);
+
+  for (let i = 0; cursor < notBefore && i < 5_000; i++) {
+    cursor = nextInSeries(cursor, frequency, interval, anchor);
+  }
+
+  return cursor;
+}
+
+/**
  * Weekly rules can name several weekdays ("every Tuesday and Thursday"), so
  * each qualifying week contributes more than one occurrence.
  */

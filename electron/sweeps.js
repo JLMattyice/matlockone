@@ -62,6 +62,7 @@ function startAutomationSweeps({
       log(
         `[automations] checked ${result.businesses ?? 0} business(es), raised ${result.created ?? 0} task(s)` +
           (result.failed && result.failed.length ? `, ${result.failed.length} failed` : "") +
+          (result.drafted ? `, drafted ${result.drafted} repeating invoice(s)` : "") +
           "\n",
       );
     } catch (error) {

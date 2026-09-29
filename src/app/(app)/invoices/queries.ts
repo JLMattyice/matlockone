@@ -195,6 +195,37 @@ export async function getInvoice(organizationId: string, id: string) {
 
 export type InvoiceDetail = Awaited<ReturnType<typeof getInvoice>>;
 
+/**
+ * The repeating schedule an invoice belongs to, with the latest of its
+ * series — what the invoice page's Repeat card shows.
+ */
+export async function getInvoiceSeries(organizationId: string, scheduleId: string | null) {
+  if (!scheduleId) return null;
+
+  return prisma.invoiceSchedule.findFirst({
+    where: { id: scheduleId, organizationId },
+    include: {
+      invoices: {
+        orderBy: [{ issueDate: "desc" }, { createdAt: "desc" }],
+        take: 6,
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          issueDate: true,
+          dueDate: true,
+          totalCents: true,
+          balanceCents: true,
+          amountPaidCents: true,
+        },
+      },
+      _count: { select: { invoices: true } },
+    },
+  });
+}
+
+export type InvoiceSeries = NonNullable<Awaited<ReturnType<typeof getInvoiceSeries>>>;
+
 /** The public view, addressed only by its unguessable token. */
 export async function getInvoiceByToken(token: string) {
   return prisma.invoice.findUnique({

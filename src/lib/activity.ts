@@ -50,6 +50,8 @@ export type ActivityAction =
   | "estimate.converted"
   | "invoice.sent"
   | "invoice.cancelled"
+  | "invoice.repeat"
+  | "invoice.drafted"
   | "payment.recorded"
   | "note.added"
   | "file.uploaded"
@@ -72,6 +74,8 @@ export const ACTIVITY_META: Record<
   "estimate.converted": { icon: "briefcase", tone: "success" },
   "invoice.sent": { icon: "send", tone: "brand" },
   "invoice.cancelled": { icon: "x", tone: "warning" },
+  "invoice.repeat": { icon: "repeat", tone: "neutral" },
+  "invoice.drafted": { icon: "repeat", tone: "brand" },
   "payment.recorded": { icon: "banknote", tone: "success" },
   "note.added": { icon: "note", tone: "neutral" },
   "file.uploaded": { icon: "paperclip", tone: "neutral" },
@@ -86,7 +90,8 @@ export type ActivityIcon =
   | "x"
   | "banknote"
   | "note"
-  | "paperclip";
+  | "paperclip"
+  | "repeat";
 
 export type ActivityInput = {
   organizationId: string;
@@ -278,7 +283,7 @@ export function hiddenActions(actor: Actor): ActivityAction[] {
     );
   }
   if (!can(actor, "invoices:read")) {
-    hidden.push("invoice.sent", "invoice.cancelled");
+    hidden.push("invoice.sent", "invoice.cancelled", "invoice.repeat", "invoice.drafted");
   }
   if (!can(actor, "payments:read")) {
     hidden.push("payment.recorded");

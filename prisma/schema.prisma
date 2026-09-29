@@ -121,6 +121,7 @@ model Organization {
   recurrences    RecurrenceRule[]
   estimates      Estimate[]
   invoices       Invoice[]
+  invoiceSchedules InvoiceSchedule[]
   payments       Payment[]
   expenses       Expense[]
   attachments    Attachment[]
@@ -183,6 +184,7 @@ model User {
   createdTasks     Task[]          @relation("TaskCreator")
   completedTasks   Task[]          @relation("TaskCompleter")
   createdWorkflows Workflow[]      @relation("WorkflowCreator")
+  createdInvoiceSchedules InvoiceSchedule[] @relation("InvoiceScheduleCreator")
   conversations    ConversationMember[]
   startedThreads   Conversation[]  @relation("ConversationCreator")
   messages         Message[]       @relation("MessageAuthor")
@@ -602,6 +604,10 @@ model Invoice {
   job        Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
   estimateId String?
   estimate   Estimate? @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  /// The repeating series this invoice belongs to, if any. Stopping or losing
+  /// the schedule leaves the invoice as it is.
+  scheduleId String?
+  schedule   InvoiceSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
 
   issueDate        DateTime  @default(now())
   dueDate          DateTime?
@@ -654,6 +660,48 @@ model Invoice {
   @@unique([organizationId, number])
   @@index([organizationId, status])
   @@index([organizationId, dueDate])
+  @@index([scheduleId])
+}
+
+/// An invoice that repeats.
+///
+/// Each period the morning run makes the next invoice in the series as a
+/// DRAFT, copied from the most recent one that was not cancelled, so a price
+/// changed on one carries forward. Nothing is emailed: a person checks each
+/// draft and sends it, the same as any other invoice.
+///
+/// The schedule holds no line items of its own. The series is the pattern,
+/// which is why deleting every invoice in it stops the schedule.
+model InvoiceSchedule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  frequency String @default("MONTHLY") // WEEKLY | MONTHLY | YEARLY
+  interval  Int    @default(1)
+  /// The date the current settings started from. A monthly schedule keeps
+  /// returning to this day of the month, so one that starts on the 31st
+  /// lands on the 30th in a short month and goes back to the 31st after it.
+  anchorDate    DateTime
+  /// The issue date of the next draft. Advanced in the same transaction that
+  /// makes the draft, and only if it still holds the value that was read, so
+  /// two runs at once cannot both make one.
+  nextIssueDate DateTime
+  /// No draft is made for a date after this one.
+  endDate       DateTime?
+  isActive      Boolean   @default(true)
+  lastRunAt     DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("InvoiceScheduleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+
+  @@index([isActive, nextIssueDate])
+  @@index([organizationId])
 }
 
 model InvoiceLineItem {
@@ -841,7 +889,7 @@ model Notification {
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  type       String // JOB_REMINDER | APPOINTMENT_REMINDER | SCHEDULE_CHANGE | JOB_ASSIGNED | INVOICE_DUE | INVOICE_OVERDUE | PAYMENT_RECEIVED
+  type       String // JOB_REMINDER | APPOINTMENT_REMINDER | SCHEDULE_CHANGE | JOB_ASSIGNED | INVOICE_DUE | INVOICE_OVERDUE | PAYMENT_RECEIVED | INVOICE_DRAFTED
   title      String
   body       String?
   entityType String?

@@ -321,6 +321,7 @@ export const NOTIFICATION_TYPES = [
   "INVOICE_DUE",
   "INVOICE_OVERDUE",
   "PAYMENT_RECEIVED",
+  "INVOICE_DRAFTED",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -342,6 +343,10 @@ export const RECURRENCE_FREQUENCIES = [
   "YEARLY",
 ] as const;
 export type RecurrenceFrequency = (typeof RECURRENCE_FREQUENCIES)[number];
+
+/** How often an invoice can repeat. Daily billing is not a thing anyone does. */
+export const INVOICE_REPEAT_FREQUENCIES = ["WEEKLY", "MONTHLY", "YEARLY"] as const;
+export type InvoiceRepeatFrequency = (typeof INVOICE_REPEAT_FREQUENCIES)[number];
 
 // ----------------------------------------------------------------- guards ---
 

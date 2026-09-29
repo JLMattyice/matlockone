@@ -4,6 +4,7 @@ import {
   Briefcase,
   Check,
   Paperclip,
+  Repeat,
   Send,
   StickyNote,
   UserPlus,
@@ -37,6 +38,7 @@ const ICONS: Record<ActivityIcon, typeof Check> = {
   banknote: Banknote,
   note: StickyNote,
   paperclip: Paperclip,
+  repeat: Repeat,
 };
 
 const TONES: Record<ActivityTone, string> = {
