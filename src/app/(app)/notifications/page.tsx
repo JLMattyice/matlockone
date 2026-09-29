@@ -22,6 +22,7 @@ const TYPE_LABELS: Record<string, string> = {
   INVOICE_OVERDUE: "Overdue",
   PAYMENT_RECEIVED: "Payment",
   INVOICE_DRAFTED: "Draft to check",
+  AUTOPAY: "Auto-pay",
 };
 
 export default async function NotificationsPage() {

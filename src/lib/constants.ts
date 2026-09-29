@@ -322,6 +322,7 @@ export const NOTIFICATION_TYPES = [
   "INVOICE_OVERDUE",
   "PAYMENT_RECEIVED",
   "INVOICE_DRAFTED",
+  "AUTOPAY",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

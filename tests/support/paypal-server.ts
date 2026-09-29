@@ -1,7 +1,7 @@
 import http from "node:http";
 
 /**
- * A stand-in for PayPal's Invoicing API.
+ * A stand-in for PayPal's Invoicing and Subscriptions APIs.
  *
  * Shaped from their documented request and response bodies, so the adapter is
  * exercised over real HTTP: the OAuth handshake, the Basic and Bearer headers,
@@ -51,7 +51,30 @@ export type FakePaypal = {
   tokenGrants: () => number;
   /** Simulates the customer paying, so a later poll finds it. */
   pay: (invoiceId: string, amount: string, paymentId: string) => void;
+  /** Subscriptions the adapter created, keyed by id. */
+  subscriptions: Map<string, PaypalSubscriptionRecord>;
+  /** Plans the adapter created, keyed by id. */
+  plans: Map<string, unknown>;
+  /** The customer approving a subscription on PayPal's pages. */
+  approve: (subscriptionId: string, payerEmail?: string) => void;
+  /** PayPal charging a subscription, so a later look finds the payment. */
+  charge: (subscriptionId: string, amount: string, transactionId: string, time: Date) => void;
+  /** Anything else happening at PayPal: suspension, a customer cancelling. */
+  setStatus: (subscriptionId: string, status: string) => void;
   close: () => Promise<void>;
+};
+
+export type PaypalSubscriptionRecord = {
+  id: string;
+  status: string;
+  body: Record<string, unknown>;
+  payerEmail: string | null;
+  transactions: {
+    id: string;
+    status: string;
+    amount_with_breakdown: { gross_amount: { value: string; currency_code: string } };
+    time: string;
+  }[];
 };
 
 type PaypalInvoiceRecord = {
@@ -84,6 +107,11 @@ export async function startFakePaypal(
 
   const requests: FakePaypal["requests"] = [];
   const invoices = new Map<string, PaypalInvoiceRecord>();
+  const subscriptions = new Map<string, PaypalSubscriptionRecord>();
+  const plans = new Map<string, unknown>();
+  const products = new Map<string, unknown>();
+  /** PayPal-Request-Id → the id first made for it, as PayPal replays them. */
+  const replays = new Map<string, string>();
   let tokenGrants = 0;
   let nextId = 1;
 
@@ -230,6 +258,90 @@ export async function startFakePaypal(
         });
       }
 
+      // --------------------------------------------------- subscriptions ---
+      const requestId = req.headers["paypal-request-id"] as string | undefined;
+
+      if (method === "POST" && path === "/v1/catalogs/products") {
+        const id = (requestId && replays.get(requestId)) ?? `PROD-TEST-${nextId++}`;
+        if (requestId) replays.set(requestId, id);
+        products.set(id, body);
+        return send(201, { id, name: body?.name });
+      }
+
+      if (method === "POST" && path === "/v1/billing/plans") {
+        if (!body?.product_id || !products.has(body.product_id)) {
+          return send(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INVALID_PRODUCT" }] });
+        }
+        const id = (requestId && replays.get(requestId)) ?? `P-TEST-${nextId++}`;
+        if (requestId) replays.set(requestId, id);
+        plans.set(id, body);
+        return send(201, { id, status: "ACTIVE" });
+      }
+
+      if (method === "POST" && path === "/v1/billing/subscriptions") {
+        if (!body?.plan_id || !plans.has(body.plan_id)) {
+          return send(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INVALID_PLAN" }] });
+        }
+        const id = `I-TEST${nextId++}`;
+        subscriptions.set(id, {
+          id,
+          status: "APPROVAL_PENDING",
+          body,
+          payerEmail: null,
+          transactions: [],
+        });
+        return send(201, {
+          id,
+          status: "APPROVAL_PENDING",
+          links: [
+            { rel: "approve", href: `https://www.paypal.com/webapps/billing/subscriptions?ba_token=BA-${id}` },
+            { rel: "self", href: `https://api-m.paypal.com/v1/billing/subscriptions/${id}` },
+          ],
+        });
+      }
+
+      const subMatch = /^\/v1\/billing\/subscriptions\/([^/?]+)(\/[a-z]+)?(\?.*)?$/.exec(path);
+      if (subMatch) {
+        const subscription = subscriptions.get(subMatch[1]);
+        if (!subscription) return send(404, { name: "RESOURCE_NOT_FOUND" });
+        const action = subMatch[2];
+
+        if (method === "GET" && !action) {
+          return send(200, {
+            id: subscription.id,
+            status: subscription.status,
+            plan_id: subscription.body.plan_id,
+            custom_id: subscription.body.custom_id,
+            ...(subscription.payerEmail
+              ? { subscriber: { email_address: subscription.payerEmail } }
+              : {}),
+          });
+        }
+
+        if (method === "GET" && action === "/transactions") {
+          const query = new URL(path, "http://fake").searchParams;
+          const from = new Date(query.get("start_time") ?? 0).getTime();
+          const until = new Date(query.get("end_time") ?? Date.now()).getTime();
+          return send(200, {
+            transactions: subscription.transactions.filter((transaction) => {
+              const at = new Date(transaction.time).getTime();
+              return at >= from && at <= until;
+            }),
+          });
+        }
+
+        if (method === "POST" && action === "/cancel") {
+          if (!["ACTIVE", "SUSPENDED", "APPROVED"].includes(subscription.status)) {
+            return send(422, {
+              name: "UNPROCESSABLE_ENTITY",
+              details: [{ issue: "SUBSCRIPTION_STATUS_INVALID" }],
+            });
+          }
+          subscription.status = "CANCELLED";
+          return send(204, null);
+        }
+      }
+
       return send(404, { name: "RESOURCE_NOT_FOUND", message: path });
     });
   });
@@ -256,6 +368,29 @@ export async function startFakePaypal(
         method: "PAYPAL",
       });
       invoice.status = "PAID";
+    },
+    subscriptions,
+    plans,
+    approve(subscriptionId, payerEmail = "payer@example.test") {
+      const subscription = subscriptions.get(subscriptionId);
+      if (!subscription) throw new Error(`No fake subscription ${subscriptionId}`);
+      subscription.status = "ACTIVE";
+      subscription.payerEmail = payerEmail;
+    },
+    charge(subscriptionId, amount, transactionId, time) {
+      const subscription = subscriptions.get(subscriptionId);
+      if (!subscription) throw new Error(`No fake subscription ${subscriptionId}`);
+      subscription.transactions.push({
+        id: transactionId,
+        status: "COMPLETED",
+        amount_with_breakdown: { gross_amount: { value: amount, currency_code: "USD" } },
+        time: time.toISOString(),
+      });
+    },
+    setStatus(subscriptionId, status) {
+      const subscription = subscriptions.get(subscriptionId);
+      if (!subscription) throw new Error(`No fake subscription ${subscriptionId}`);
+      subscription.status = status;
     },
     close: () =>
       new Promise<void>((resolve) => {

@@ -41,6 +41,16 @@ const TIMEOUT_MS = 20_000;
  */
 const INVOICING_SCOPE = "https://uri.paypal.com/services/invoicing";
 
+/**
+ * The same, for auto-pay. Subscriptions are a separate permission on the app,
+ * and an app set up only to invoice may not have been given it.
+ */
+const MISSING_SUBSCRIPTIONS = [
+  "That PayPal app is not permitted to use Subscriptions, which auto-pay needs.",
+  "Open developer.paypal.com → Apps & Credentials, open the app connected under Settings → Payments,",
+  "make sure Subscriptions is ticked under Features, save, then try again.",
+].join(" ");
+
 const MISSING_INVOICING = [
   "That PayPal app is not permitted to use Invoicing.",
   "Open developer.paypal.com → Apps & Credentials, switch to the same environment as above,",
@@ -93,7 +103,7 @@ type CachedToken = Token & { expiresAt: number };
  */
 const tokenCache = new Map<string, CachedToken>();
 
-async function accessToken(
+export async function accessToken(
   config: PaymentConfig,
   credentials: PaymentCredentials,
   options: { fresh?: boolean } = {},
@@ -186,11 +196,17 @@ type PaypalError = {
   details?: { issue?: string; description?: string }[];
 };
 
-async function call<T>(
+export async function call<T>(
   config: PaymentConfig,
   token: string,
   path: string,
-  init: { method: string; body?: unknown; requestId?: string } = {
+  init: {
+    method: string;
+    body?: unknown;
+    requestId?: string;
+    /** Which PayPal feature a refusal means is missing. Invoicing unless said. */
+    feature?: "invoicing" | "subscriptions";
+  } = {
     method: "GET",
   },
 ): Promise<ProviderResult<T>> {
@@ -218,14 +234,25 @@ async function call<T>(
   const body = text ? (JSON.parse(text) as unknown) : null;
 
   if (!response.ok) {
-    return { ok: false, error: describeApi(response.status, body as PaypalError) };
+    return {
+      ok: false,
+      error: describeApi(
+        response.status,
+        body as PaypalError,
+        init.feature === "subscriptions" ? MISSING_SUBSCRIPTIONS : MISSING_INVOICING,
+      ),
+    };
   }
 
   return { ok: true, value: body as T };
 }
 
 /** Turns PayPal's developer-facing errors into something actionable. */
-function describeApi(status: number, body: PaypalError | null) {
+function describeApi(
+  status: number,
+  body: PaypalError | null,
+  missingFeature: string = MISSING_INVOICING,
+) {
   const issue = body?.details?.[0]?.issue;
   const description = body?.details?.[0]?.description;
 
@@ -245,7 +272,7 @@ function describeApi(status: number, body: PaypalError | null) {
     );
 
     if (permission || !said) {
-      return said ? `${MISSING_INVOICING} PayPal said: ${said}` : MISSING_INVOICING;
+      return said ? `${missingFeature} PayPal said: ${said}` : missingFeature;
     }
     return `PayPal refused that request: ${said}`;
   }

@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { MIN_CRON_SECRET } from "@/lib/config";
+import { syncAutopay } from "@/lib/autopay";
 import { draftDueInvoices } from "@/lib/recurring-invoices";
 import { sweepEveryBusiness } from "@/lib/workflows/run";
 
@@ -22,6 +23,8 @@ import { sweepEveryBusiness } from "@/lib/workflows/run";
  *
  * Repeating invoices ride the same run: their drafts are due on a date too,
  * and each date is claimed once, so a second call makes no second draft.
+ * Auto-pay is checked after the drafts, so a payment PayPal took this
+ * morning finds this morning's invoice to land on.
  */
 
 export const dynamic = "force-dynamic";
@@ -53,17 +56,23 @@ export async function GET(request: Request) {
 
   const result = await sweepEveryBusiness();
   const repeating = await draftDueInvoices();
+  const autopay = await syncAutopay();
 
   console.info(
     `[automations] morning run: ${result.businesses} businesses, ${result.created} tasks raised` +
       (result.failed.length > 0 ? `, ${result.failed.length} failed` : "") +
       `; ${repeating.drafted.length} repeating invoices drafted` +
-      (repeating.failed.length > 0 ? `, ${repeating.failed.length} schedules failed` : ""),
+      (repeating.failed.length > 0 ? `, ${repeating.failed.length} schedules failed` : "") +
+      `; auto-pay: ${autopay.checked} checked, ${autopay.collected} payments recorded` +
+      (autopay.unmatched > 0 ? `, ${autopay.unmatched} waiting for their invoice` : "") +
+      (autopay.failed.length > 0 ? `, ${autopay.failed.length} failed` : ""),
   );
 
   return NextResponse.json({
     ...result,
     drafted: repeating.drafted.length,
     draftFailed: repeating.failed,
+    autopayCollected: autopay.collected,
+    autopayFailed: autopay.failed,
   });
 }

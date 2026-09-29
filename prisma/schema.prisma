@@ -122,6 +122,7 @@ model Organization {
   estimates      Estimate[]
   invoices       Invoice[]
   invoiceSchedules InvoiceSchedule[]
+  autopaySubscriptions AutopaySubscription[]
   payments       Payment[]
   expenses       Expense[]
   attachments    Attachment[]
@@ -692,16 +693,64 @@ model InvoiceSchedule {
   isActive      Boolean   @default(true)
   lastRunAt     DateTime?
 
+  /// Auto-pay: the customer approves once at PayPal and is charged each
+  /// period. The token is the whole credential in the invite link sent to the
+  /// customer, so it is 32 characters from a cryptographic source; clearing
+  /// it is what makes an old invite stop working.
+  autopayToken       String?   @unique
+  /// The PayPal plan offered: the amount and rhythm are fixed on it, so
+  /// changing either means offering auto-pay again.
+  autopayPlanId      String?
+  autopayAmountCents Int?
+  autopayOfferedAt   DateTime?
+
   createdById String?
   createdBy   User?   @relation("InvoiceScheduleCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  invoices Invoice[]
+  invoices             Invoice[]
+  autopaySubscriptions AutopaySubscription[]
 
   @@index([isActive, nextIssueDate])
   @@index([organizationId])
+}
+
+/// One PayPal subscription made for a repeating invoice's auto-pay.
+///
+/// A row per attempt rather than one per schedule. PayPal's approval link
+/// goes stale within hours, so a customer who opens the invite a day later is
+/// given a fresh subscription; every one made is kept and checked, so a second
+/// approval — two tabs, two clicks — is seen and cancelled instead of billing
+/// the customer twice.
+model AutopaySubscription {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  scheduleId     String
+  schedule       InvoiceSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  provider   String @default("PAYPAL")
+  /// The processor's id for the subscription (PayPal's I-…).
+  externalId String
+  status     String @default("APPROVAL_PENDING") // APPROVAL_PENDING | APPROVED | ACTIVE | SUSPENDED | CANCELLED | EXPIRED
+  /// Where the customer approves it, while that is still possible.
+  approveUrl String?
+
+  amountCents Int
+  currency    String
+  /// The first charge. Invoices issued before it are not auto-pay's to settle.
+  startsAt    DateTime
+  payerEmail  String?
+  checkedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, provider, externalId])
+  @@index([scheduleId])
+  @@index([status])
 }
 
 model InvoiceLineItem {
@@ -889,7 +938,7 @@ model Notification {
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  type       String // JOB_REMINDER | APPOINTMENT_REMINDER | SCHEDULE_CHANGE | JOB_ASSIGNED | INVOICE_DUE | INVOICE_OVERDUE | PAYMENT_RECEIVED | INVOICE_DRAFTED
+  type       String // JOB_REMINDER | APPOINTMENT_REMINDER | SCHEDULE_CHANGE | JOB_ASSIGNED | INVOICE_DUE | INVOICE_OVERDUE | PAYMENT_RECEIVED | INVOICE_DRAFTED | AUTOPAY
   title      String
   body       String?
   entityType String?

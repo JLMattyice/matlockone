@@ -207,29 +207,26 @@ async function draftNext(
 /**
  * Tells somebody the draft is waiting.
  *
- * Whoever set the repeat up, while they are still here and can still send
- * invoices. Otherwise everyone who can, so a draft never waits unseen because
- * the person who scheduled it left. Not whoever is making it happen right now
- * by saving the repeat — they are looking at the answer already.
+ * Whoever set the repeat up, or everyone who can send invoices once that
+ * person has gone, so a draft never waits unseen. Not whoever is making it
+ * happen right now by saving the repeat — they are looking at the answer
+ * already.
  */
 async function tellReviewers(
   schedule: Schedule,
   draft: { id: string; number: string; clientName: string },
   actorId?: string,
 ) {
-  const people = await prisma.user.findMany({
-    where: { organizationId: schedule.organizationId, isActive: true },
-    select: { id: true, role: true },
+  // Auto-pay collects it: there is nothing for anybody to send, and the
+  // payment landing is what they hear about instead.
+  const collecting = await prisma.autopaySubscription.count({
+    where: { scheduleId: schedule.id, status: { in: ["ACTIVE", "APPROVED"] } },
   });
-
-  const senders = people.filter(
-    (person) => isRole(person.role) && can({ role: person.role, id: person.id }, "invoices:send"),
-  );
-  const creator = senders.find((person) => person.id === schedule.createdById);
+  if (collecting > 0) return;
 
   await notify({
     organizationId: schedule.organizationId,
-    userIds: (creator ? [creator] : senders).map((person) => person.id),
+    userIds: await whoHandlesBilling(schedule.organizationId, schedule.createdById),
     type: "INVOICE_DRAFTED",
     title: `Invoice ${draft.number} for ${draft.clientName} is ready to check`,
     body: "Made by a repeating invoice. Nothing has been sent — look it over, then send it.",
@@ -238,6 +235,30 @@ async function tellReviewers(
     actionUrl: `/invoices/${draft.id}`,
     exceptUserId: actorId,
   });
+}
+
+/**
+ * The people to tell about a repeating invoice.
+ *
+ * Whoever set it up, while they are still here and can still send invoices;
+ * otherwise everyone who can, so nothing waits unseen because the person
+ * who scheduled it left.
+ */
+export async function whoHandlesBilling(
+  organizationId: string,
+  preferredUserId: string | null,
+): Promise<string[]> {
+  const people = await prisma.user.findMany({
+    where: { organizationId, isActive: true },
+    select: { id: true, role: true },
+  });
+
+  const senders = people.filter(
+    (person) => isRole(person.role) && can({ role: person.role, id: person.id }, "invoices:send"),
+  );
+  const preferred = senders.find((person) => person.id === preferredUserId);
+
+  return (preferred ? [preferred] : senders).map((person) => person.id);
 }
 
 /**

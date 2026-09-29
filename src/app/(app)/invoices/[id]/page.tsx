@@ -21,6 +21,7 @@ import {
   setInvoiceCancelled,
 } from "../actions";
 import { getInvoice, getInvoiceSeries } from "../queries";
+import { AutopayCard } from "./autopay-card";
 import { RepeatCard } from "./repeat-card";
 import { CopyLink } from "../../estimates/[id]/estimate-actions";
 import { DocumentView } from "@/components/documents/document-view";
@@ -49,6 +50,8 @@ import { resolveProcessor } from "@/lib/payments/account";
 import { PAYMENT_PROVIDER_META } from "@/lib/payments/catalog";
 import { currencySymbol, formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { autopayStatus } from "@/lib/autopay";
+import { describeRecurrence } from "@/lib/recurrence";
 
 export async function generateMetadata({
   params,
@@ -76,6 +79,8 @@ export default async function InvoiceDetailPage({
   const { id } = await params;
   const invoice = await getInvoice(org.id, id);
   const series = await getInvoiceSeries(org.id, invoice.scheduleId);
+  const autopay = series ? await autopayStatus(org.id, series) : null;
+  const autopayOn = autopay?.state === "on" || autopay?.state === "on-hold";
 
   const status = effectiveInvoiceStatus(invoice);
   const meta = INVOICE_STATUS_META[status];
@@ -346,6 +351,22 @@ export default async function InvoiceDetailPage({
               invoice={invoice}
               series={series}
               canEdit={writable && !cancelled}
+              autopayOn={autopayOn}
+            />
+          ) : null}
+
+          {series && autopay && (series.isActive || autopayOn) ? (
+            <AutopayCard
+              invoiceId={invoice.id}
+              clientName={invoice.client.displayName}
+              clientEmail={invoice.client.email}
+              status={autopay}
+              latestTotalCents={
+                series.invoices.find((item) => item.status !== "CANCELLED")?.totalCents ?? null
+              }
+              money={money}
+              rhythm={describeRecurrence(series).toLowerCase()}
+              can={{ write: writable, send: sendable, record: canRecord }}
             />
           ) : null}
 

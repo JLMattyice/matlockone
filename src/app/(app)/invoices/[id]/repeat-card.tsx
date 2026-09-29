@@ -47,10 +47,13 @@ export function RepeatCard({
   invoice,
   series,
   canEdit,
+  autopayOn,
 }: {
   invoice: { id: string; issueDate: Date };
   series: InvoiceSeries | null;
   canEdit: boolean;
+  /** PayPal is charging on this rhythm, so it cannot be changed or stopped here. */
+  autopayOn: boolean;
 }) {
   const today = startOfDay(new Date());
 
@@ -155,7 +158,13 @@ export function RepeatCard({
         </p>
       ) : null}
 
-      {canEdit ? (
+      {canEdit && autopayOn ? (
+        <p className="px-5 py-4 text-xs text-ink-muted">
+          PayPal is charging on this schedule. Turn auto-pay off below to change or stop it.
+        </p>
+      ) : null}
+
+      {canEdit && !autopayOn ? (
         <div className="px-5 py-4">
           <RepeatForm
             invoiceId={invoice.id}

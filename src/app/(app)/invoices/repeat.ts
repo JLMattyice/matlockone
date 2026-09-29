@@ -7,6 +7,7 @@ import { z } from "zod";
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
 import { record } from "@/lib/activity";
 import { requirePermission } from "@/lib/auth";
+import { COLLECTING_STATUSES, turnOffAutopay } from "@/lib/autopay";
 import { INVOICE_REPEAT_FREQUENCIES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { describeRecurrence } from "@/lib/recurrence";
@@ -88,6 +89,13 @@ export async function saveInvoiceRepeat(
     return failed("This invoice has been cancelled. Repeat one that is not.");
   }
 
+  // PayPal is charging on the rhythm it was given. Moving this one out from
+  // under it would bill on dates with no invoice, and invoice on dates with
+  // no payment.
+  if (invoice.scheduleId && (await collectingFor(invoice.scheduleId)) > 0) {
+    return failed("Auto-pay is on for this customer. Turn it off to change the repeat.");
+  }
+
   const settings = {
     frequency: input.frequency,
     interval: input.interval,
@@ -159,6 +167,11 @@ export async function saveInvoiceRepeat(
   );
 }
 
+const collectingFor = (scheduleId: string) =>
+  prisma.autopaySubscription.count({
+    where: { scheduleId, status: { in: COLLECTING_STATUSES } },
+  });
+
 export async function stopInvoiceRepeat(formData: FormData) {
   const { user, org } = await requirePermission("invoices:write");
 
@@ -170,6 +183,17 @@ export async function stopInvoiceRepeat(formData: FormData) {
     select: { id: true, number: true, scheduleId: true },
   });
   if (!invoice?.scheduleId) return;
+
+  // Auto-pay has to be turned off first, where a refusal from PayPal can be
+  // shown; the card offers no Stop while it is on. An invite not yet taken
+  // up is withdrawn along with the repeat.
+  if ((await collectingFor(invoice.scheduleId)) > 0) return;
+  await turnOffAutopay({
+    organizationId: org.id,
+    scheduleId: invoice.scheduleId,
+    actorId: user.id,
+    reason: "The repeat was stopped.",
+  });
 
   // The invoices already made stay exactly as they are; only the next one
   // is not made.
