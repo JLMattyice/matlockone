@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { CancelJob } from "./cancel-job";
-import { KindIcon } from "../kind-icon";
+import { CategoryMark } from "../category-mark";
 import { MaterialForm } from "./material-form";
 import { TimeForm } from "./time-form";
 import {
@@ -53,7 +53,6 @@ import {
   JOB_STATUS_FLOW,
   JOB_STATUS_META,
   JOB_STATUSES,
-  jobKindLabel,
   type ExpenseCategory,
   type JobStatus,
 } from "@/lib/constants";
@@ -61,6 +60,7 @@ import { inboxStamp } from "@/lib/chat";
 import { jobThreadSummary } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
 import { currencySymbol, formatMoney } from "@/lib/money";
+import { entryCategory } from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
 import { describeRecurrence } from "@/lib/recurrence";
 import { formatIn, toDateTimeLocal } from "@/lib/time-zone";
@@ -113,6 +113,7 @@ export default async function JobDetailPage({
   const status = asStatus(JOB_STATUSES, job.status, "SCHEDULED") as JobStatus;
   const meta = JOB_STATUS_META[status];
   const priority = asStatus(JOB_PRIORITIES, job.priority, "NORMAL");
+  const mark = entryCategory(job, org.labelJobSingular);
   const costs = jobCostTotals(job, expenses?.totalCents ?? 0);
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
 
@@ -147,10 +148,10 @@ export default async function JobDetailPage({
                   {JOB_PRIORITY_META[priority].label}
                 </Badge>
               ) : null}
-              {job.kind !== "JOB" ? (
+              {!mark.plain ? (
                 <Badge>
-                  <KindIcon kind={job.kind} />
-                  {jobKindLabel(job.kind, org.labelJobSingular)}
+                  <CategoryMark icon={mark.icon} />
+                  {mark.label}
                 </Badge>
               ) : null}
               {job.recurrenceRule ? (

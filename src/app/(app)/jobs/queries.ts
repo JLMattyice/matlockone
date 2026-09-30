@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import type { AppContext } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { categoryWhere } from "@/lib/job-categories";
 import { jobVisibilityWhere } from "@/lib/permissions";
 import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
@@ -36,7 +37,7 @@ function buildWhere(params: JobListParams): Prisma.JobWhereInput {
     organizationId: org.id,
     ...jobVisibilityWhere(user),
     ...(params.status ? { status: params.status } : {}),
-    ...(params.kind ? { kind: params.kind } : {}),
+    ...categoryWhere(params.kind),
     ...(params.clientId ? { clientId: params.clientId } : {}),
     ...(params.assignedTo
       ? { assignments: { some: { userId: params.assignedTo } } }
@@ -79,6 +80,7 @@ export async function listJobs(params: JobListParams) {
       include: {
         client: { select: { id: true, displayName: true } },
         address: { select: { line1: true, city: true, state: true } },
+        category: { select: { name: true, icon: true } },
         assignments: {
           select: { user: { select: { id: true, name: true } } },
         },
@@ -133,6 +135,7 @@ export async function getJob(ctx: AppContext, id: string) {
       },
       address: true,
       group: { select: { id: true, name: true } },
+      category: { select: { name: true, icon: true } },
       createdBy: { select: { name: true } },
       recurrenceRule: true,
       recurrenceParent: { select: { id: true, number: true } },
@@ -262,7 +265,7 @@ export async function scheduleEvents(
       organizationId: ctx.org.id,
       ...jobVisibilityWhere(ctx.user),
       ...(filters.status ? { status: filters.status } : {}),
-      ...(filters.kind ? { kind: filters.kind } : {}),
+      ...categoryWhere(filters.kind),
       ...(filters.assignedTo
         ? { assignments: { some: { userId: filters.assignedTo } } }
         : {}),
@@ -273,6 +276,7 @@ export async function scheduleEvents(
     include: {
       client: { select: { id: true, displayName: true } },
       address: { select: { line1: true, city: true } },
+      category: { select: { name: true, icon: true } },
       assignments: {
         select: { user: { select: { id: true, name: true } } },
       },
@@ -295,6 +299,7 @@ export async function unscheduledJobs(ctx: AppContext) {
     take: 25,
     include: {
       client: { select: { id: true, displayName: true } },
+      category: { select: { name: true, icon: true } },
       assignments: { select: { user: { select: { id: true, name: true } } } },
     },
   });

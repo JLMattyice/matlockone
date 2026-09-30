@@ -3,8 +3,9 @@ import Link from "next/link";
 import { isToday, isTomorrow, isYesterday } from "date-fns";
 import { Briefcase, CalendarDays, Plus, Repeat } from "lucide-react";
 
-import { KindIcon } from "./kind-icon";
+import { CategoryMark } from "./category-mark";
 import { activeCrew, jobStatusCounts, listJobs } from "./queries";
+import { jobCategories } from "../settings/calendar/queries";
 import { assignableGroups } from "../team/groups/queries";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
@@ -16,14 +17,16 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { requirePermission } from "@/lib/auth";
 import {
   asStatus,
-  JOB_KIND_META,
-  JOB_KINDS,
   JOB_PRIORITY_META,
   JOB_PRIORITIES,
   JOB_STATUS_META,
   JOB_STATUSES,
-  jobKindLabel,
 } from "@/lib/constants";
+import {
+  categoryOptions,
+  entryCategory,
+  parseHiddenKinds,
+} from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
 import { formatIn, inZone } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
@@ -47,7 +50,7 @@ export default async function JobsPage({
   const { user, org } = ctx;
   const params = await searchParams;
 
-  const [list, counts, crew, groups] = await Promise.all([
+  const [list, counts, crew, groups, categories] = await Promise.all([
     listJobs({
       ctx,
       q: params.q,
@@ -60,6 +63,7 @@ export default async function JobsPage({
     jobStatusCounts(ctx),
     can(user, "jobs:assign") ? activeCrew(org.id) : Promise.resolve([]),
     assignableGroups(org.id),
+    jobCategories(org.id),
   ]);
 
   const writable = can(user, "jobs:write");
@@ -106,12 +110,14 @@ export default async function JobsPage({
           },
           {
             name: "kind",
-            label: "types",
-            options: JOB_KINDS.map((kind) => ({
-              value: kind,
-              label:
-                kind === "JOB" ? org.labelJobPlural : JOB_KIND_META[kind].plural,
-            })),
+            label: "categories",
+            options: categoryOptions({
+              categories,
+              hiddenKinds: parseHiddenKinds(org.hiddenJobKinds),
+              jobLabel: org.labelJobSingular,
+              jobPlural: org.labelJobPlural,
+              keep: params.kind,
+            }).map((option) => ({ value: option.value, label: option.plural })),
           },
           ...(groups.length
             ? [
@@ -186,6 +192,7 @@ export default async function JobsPage({
                     job.priority,
                     "NORMAL",
                   );
+                  const mark = entryCategory(job, org.labelJobSingular);
 
                   return (
                     <Tr key={job.id}>
@@ -213,10 +220,10 @@ export default async function JobsPage({
                             ) : null}
                           </span>
                           <span className="flex items-center gap-1.5 text-xs text-ink-subtle">
-                            {job.kind !== "JOB" ? (
+                            {!mark.plain ? (
                               <span className="flex items-center gap-1">
-                                <KindIcon kind={job.kind} />
-                                {jobKindLabel(job.kind, org.labelJobSingular)}
+                                <CategoryMark icon={mark.icon} />
+                                {mark.label}
                               </span>
                             ) : job.address ? (
                               <span className="truncate">

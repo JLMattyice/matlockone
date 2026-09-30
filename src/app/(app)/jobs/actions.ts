@@ -7,17 +7,20 @@ import { z } from "zod";
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
 import { requirePermission } from "@/lib/auth";
 import {
+  asStatus,
   JOB_KINDS,
   JOB_PRIORITIES,
   JOB_STATUS_FLOW,
   JOB_STATUS_META,
   JOB_STATUSES,
   RECURRENCE_FREQUENCIES,
+  type JobKind,
   type JobStatus,
 } from "@/lib/constants";
 import { record } from "@/lib/activity";
 import { joinJobThread } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
+import { parseCategoryValue } from "@/lib/job-categories";
 import { parseMoneyToCents } from "@/lib/money";
 import { notify } from "@/lib/notifications";
 import { allocateNumber } from "@/lib/numbering";
@@ -30,7 +33,7 @@ import type { Prisma } from "@/generated/prisma/client";
 // ------------------------------------------------------------------ create ---
 
 const jobSchema = z.object({
-  kind: z.enum(JOB_KINDS),
+  category: z.string().trim(),
   title: z.string().trim().min(1, "Give it a title."),
   description: z.string().trim().nullish(),
   clientId: z.string().trim().nullish(),
@@ -51,7 +54,8 @@ const jobSchema = z.object({
 
 function parseJobForm(formData: FormData) {
   return jobSchema.safeParse({
-    kind: formData.get("kind") ?? "JOB",
+    // "kind" is what the form posted before a business could add its own.
+    category: formData.get("category") ?? formData.get("kind") ?? "JOB",
     title: formData.get("title"),
     description: text(formData, "description"),
     clientId: text(formData, "clientId"),
@@ -113,6 +117,35 @@ async function resolveAssignees(ids: string[], organizationId: string) {
 }
 
 /**
+ * The kind an entry is stored as, and its own category if it has one — or
+ * null when the choice names a category that is not this business's.
+ *
+ * The kind comes from the category, never from the form, so an entry filed
+ * under a category always behaves as that category says.
+ */
+async function resolveCategory(
+  value: string,
+  organizationId: string,
+): Promise<{ kind: JobKind; categoryId: string | null } | null> {
+  const choice = parseCategoryValue(value);
+  if (!choice) return null;
+  if (choice.kind !== null) return { kind: choice.kind, categoryId: null };
+
+  const category = await prisma.jobCategory.findFirst({
+    where: { id: choice.categoryId, organizationId },
+    select: { id: true, kind: true },
+  });
+  return category
+    ? { kind: asStatus(JOB_KINDS, category.kind, "OTHER"), categoryId: category.id }
+    : null;
+}
+
+const CATEGORY_GONE = {
+  ok: false,
+  fieldErrors: { category: "That category has been deleted. Pick another." },
+} satisfies ActionState;
+
+/**
  * The group this job belongs to, or null.
  *
  * Checked against the organization for the same reason assignees are: the id
@@ -148,6 +181,9 @@ export async function createJob(
   if (input.repeat && !start) {
     return { ok: false, fieldErrors: { scheduledStart: "A repeating job needs a start date." } };
   }
+
+  const category = await resolveCategory(input.category, org.id);
+  if (!category) return CATEGORY_GONE;
 
   const { clientId, addressId } = await resolveClientAndAddress(
     input.clientId,
@@ -203,7 +239,8 @@ export async function createJob(
           data: {
             organizationId: org.id,
             number,
-            kind: input.kind,
+            kind: category.kind,
+            categoryId: category.categoryId,
             title: input.title,
             description: input.description ?? null,
             clientId,
@@ -293,6 +330,9 @@ export async function updateJob(
   const zone = await viewerTimeZone();
   const start = parseDateTimeLocal(input.scheduledStart, zone);
 
+  const category = await resolveCategory(input.category, org.id);
+  if (!category) return CATEGORY_GONE;
+
   const { clientId, addressId } = await resolveClientAndAddress(
     input.clientId,
     input.addressId,
@@ -305,7 +345,8 @@ export async function updateJob(
     await tx.job.update({
       where: { id },
       data: {
-        kind: input.kind,
+        kind: category.kind,
+        categoryId: category.categoryId,
         title: input.title,
         description: input.description ?? null,
         clientId,

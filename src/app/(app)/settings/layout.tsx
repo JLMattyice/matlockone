@@ -18,6 +18,7 @@ export default async function SettingsLayout({
       { href: "/settings", label: "Business" },
       { href: "/settings/branding", label: "Branding" },
       { href: "/settings/documents", label: "Documents" },
+      { href: "/settings/calendar", label: "Calendar" },
       { href: "/settings/email", label: "Email" },
       { href: "/settings/payments", label: "Payments" },
       { href: "/settings/automations", label: "Automations" },
@@ -32,7 +33,7 @@ export default async function SettingsLayout({
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Business details, branding, document defaults, sending, payments and your licence."
+        description="Business details, branding, document defaults, calendar categories, sending, payments and your licence."
       />
       <SettingsNav tabs={tabs} />
       <div className="max-w-3xl">{children}</div>

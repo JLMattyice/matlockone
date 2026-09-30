@@ -13,11 +13,11 @@ import {
   INVOICE_STATUSES,
   JOB_STATUS_META,
   JOB_STATUSES,
-  jobKindLabel,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
   type PaymentMethod,
 } from "@/lib/constants";
+import { entryCategory } from "@/lib/job-categories";
 import { formatMoney } from "@/lib/money";
 import { formatIn } from "@/lib/time-zone";
 
@@ -38,6 +38,7 @@ export function JobsTable({
     number: string;
     title: string;
     kind: string;
+    category?: { name: string; icon: string } | null;
     status: string;
     scheduledStart: Date | null;
     completedAt: Date | null;
@@ -87,9 +88,9 @@ export function JobsTable({
                 >
                   {job.title}
                 </Link>
-                {job.kind !== "JOB" ? (
+                {!entryCategory(job, jobLabel).plain ? (
                   <span className="text-xs text-ink-subtle">
-                    {jobKindLabel(job.kind, jobLabel)}
+                    {entryCategory(job, jobLabel).label}
                   </span>
                 ) : job.address ? (
                   <span className="block truncate text-xs text-ink-subtle">

@@ -208,6 +208,7 @@ export async function clientJobs(
     take: opts.take,
     include: {
       address: { select: { line1: true, city: true } },
+      category: { select: { name: true, icon: true } },
       assignments: { select: { user: { select: { id: true, name: true } } } },
     },
   });

@@ -1,4 +1,7 @@
-import type { JobStatus } from "@/lib/constants";
+import type { CategoryIcon, JobStatus } from "@/lib/constants";
+
+/** What an entry is, when it is not a plain job: "Newsletter" and its mark. */
+export type EventMark = { label: string; icon: CategoryIcon } | null;
 
 /**
  * Calendar events cross into a client component, so times travel as ISO
@@ -10,7 +13,7 @@ export type CalendarEvent = {
   id: string;
   number: string;
   title: string;
-  kind: string;
+  mark: EventMark;
   status: JobStatus;
   startISO: string;
   endISO: string;
@@ -26,7 +29,7 @@ export type UnscheduledJob = {
   id: string;
   number: string;
   title: string;
-  kind: string;
+  mark: EventMark;
   status: JobStatus;
   clientName: string | null;
   durationMinutes: number;

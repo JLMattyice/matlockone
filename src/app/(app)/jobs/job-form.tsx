@@ -5,7 +5,7 @@ import { useActionState, useMemo, useState } from "react";
 import { Repeat } from "lucide-react";
 
 import { createJob, updateJob } from "./actions";
-import { KindIcon } from "./kind-icon";
+import { CategoryMark } from "./category-mark";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import {
@@ -20,19 +20,16 @@ import { useKeepTyped } from "@/components/ui/keep-typed";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import {
-  JOB_KIND_META,
-  JOB_KINDS,
   JOB_PRIORITIES,
   JOB_PRIORITY_META,
   JOB_STATUS_META,
   JOB_STATUSES,
   RECURRENCE_FREQUENCIES,
-  jobKindLabel,
-  type JobKind,
   type JobPriority,
   type JobStatus,
   type RecurrenceFrequency,
 } from "@/lib/constants";
+import type { CategoryOption } from "@/lib/job-categories";
 import { WEEKDAY_LABELS } from "@/lib/recurrence";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +63,8 @@ export type ClientPickerOption = {
 
 export type JobFormValues = {
   id?: string;
-  kind: JobKind;
+  /** A built-in kind, or "category:<id>" for one of the business's own. */
+  category: string;
   title: string;
   description: string;
   clientId: string;
@@ -88,15 +86,18 @@ export function JobForm({
   clients,
   crew,
   groups,
-  jobLabel,
+  categories,
   canAssign,
+  canManageCategories,
 }: {
   values: JobFormValues;
   clients: ClientPickerOption[];
   crew: CrewOption[];
   groups: GroupOption[];
-  jobLabel: string;
+  /** What the picker offers, built by categoryOptions() on the server. */
+  categories: CategoryOption[];
   canAssign: boolean;
+  canManageCategories: boolean;
 }) {
   const isEdit = Boolean(values.id);
   const [state, formAction] = useActionState<ActionState, FormData>(
@@ -108,10 +109,14 @@ export function JobForm({
   // back when the answer was a refusal.
   const keep = useKeepTyped(state);
 
-  const [kind, setKind] = useState<JobKind>(values.kind);
-  // "Create other" reads as a typo, so the catch-all is just an entry.
+  const [category, setCategory] = useState(values.category);
+  const chosen = categories.find((option) => option.value === category);
+  // "Create other" reads as a typo, and a business's own name may not survive
+  // lower-casing ("Create instagram reel"), so both are just an entry.
   const noun =
-    kind === "OTHER" ? "entry" : jobKindLabel(kind, jobLabel).toLowerCase();
+    !chosen || chosen.custom || chosen.value === "OTHER"
+      ? "entry"
+      : chosen.label.toLowerCase();
   const [clientId, setClientId] = useState(values.clientId);
   const [addressId, setAddressId] = useState(values.addressId);
   const [allDay, setAllDay] = useState(values.allDay);
@@ -178,7 +183,7 @@ export function JobForm({
   return (
     <form ref={keep} action={formAction} className="space-y-6">
       {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
-      <input type="hidden" name="kind" value={kind} />
+      <input type="hidden" name="category" value={category} />
       {assignees.map((id) => (
         <input key={id} type="hidden" name="assigneeIds" value={id} />
       ))}
@@ -194,31 +199,45 @@ export function JobForm({
 
         <CardBody className="space-y-5">
           <fieldset>
-            <legend className="mb-2 text-sm font-medium text-ink">Type</legend>
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <legend className="text-sm font-medium text-ink">Category</legend>
+              {canManageCategories ? (
+                <Link
+                  href="/settings/calendar"
+                  className="text-xs text-ink-subtle transition-colors hover:text-brand"
+                >
+                  Edit categories
+                </Link>
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-2">
-              {JOB_KINDS.map((option) => (
+              {categories.map((option) => (
                 <label
-                  key={option}
-                  title={kindHint(option)}
+                  key={option.value}
+                  title={option.hint}
                   className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-lg border px-3.5 py-2 text-sm transition-colors",
-                    kind === option
+                    "flex cursor-pointer items-center gap-2 rounded-lg border px-3.5 py-2 text-sm transition-colors has-focus-visible:ring-2 has-focus-visible:ring-brand/40",
+                    category === option.value
                       ? "border-brand bg-brand/8 font-medium text-brand"
                       : "border-line text-ink-muted hover:border-line-strong",
                   )}
                 >
                   <input
                     type="radio"
-                    checked={kind === option}
-                    onChange={() => setKind(option)}
+                    checked={category === option.value}
+                    onChange={() => setCategory(option.value)}
                     className="sr-only"
                   />
-                  <KindIcon kind={option} className="h-3.5 w-3.5" />
-                  {jobKindLabel(option, jobLabel)}
+                  <CategoryMark icon={option.icon} className="h-3.5 w-3.5" />
+                  {option.label}
                 </label>
               ))}
             </div>
-            <p className="mt-2 text-xs text-ink-subtle">{kindHint(kind)}</p>
+            {err("category") ? (
+              <p className="mt-2 text-xs text-danger">{err("category")}</p>
+            ) : chosen ? (
+              <p className="mt-2 text-xs text-ink-subtle">{chosen.hint}</p>
+            ) : null}
           </fieldset>
 
           <Field label="Title" htmlFor="title" required error={err("title")}>
@@ -581,10 +600,6 @@ export function JobForm({
       </Card>
     </form>
   );
-}
-
-function kindHint(kind: JobKind) {
-  return kind === "JOB" ? "Billable work at a site" : JOB_KIND_META[kind].hint;
 }
 
 function formatDuration(minutes: number) {

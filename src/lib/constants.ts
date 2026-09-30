@@ -192,6 +192,68 @@ export function jobKindLabel(kind: string, jobLabel: string) {
 }
 
 /**
+ * The marks a category can carry, by icon name. The built-ins use some of
+ * these too, so a business can give its own category the same rocket.
+ */
+export const CATEGORY_ICONS = [
+  "tag",
+  "star",
+  "heart",
+  "sparkles",
+  "camera",
+  "video",
+  "mic",
+  "music",
+  "mail",
+  "phone",
+  "newspaper",
+  "pen-line",
+  "megaphone",
+  "rocket",
+  "ticket",
+  "gift",
+  "shopping-bag",
+  "package",
+  "truck",
+  "wrench",
+  "scissors",
+  "palette",
+  "utensils",
+  "coffee",
+  "dumbbell",
+  "graduation-cap",
+  "plane",
+  "leaf",
+  "house",
+  "building",
+  "dollar-sign",
+  "users",
+  "flag",
+  "calendar-check",
+  "briefcase",
+  "bookmark",
+] as const;
+export type CategoryIcon = (typeof CATEGORY_ICONS)[number];
+
+export const JOB_KIND_ICONS: Record<JobKind, CategoryIcon> = {
+  JOB: "briefcase",
+  APPOINTMENT: "calendar-check",
+  MEETING: "users",
+  DEADLINE: "flag",
+  LAUNCH: "rocket",
+  SOCIAL_POST: "megaphone",
+  EVENT: "ticket",
+  OTHER: "bookmark",
+};
+
+/**
+ * How many categories a business may add. Every one is a chip in the picker
+ * on the job form, and past a couple of dozen that stops being a choice.
+ */
+export const MAX_JOB_CATEGORIES = 24;
+export const JOB_CATEGORY_NAME_MAX = 40;
+
+/**
  * The kinds that are work done for a client, and so count toward "jobs
  * completed". A launch or a social post going out is not finished work.
  */

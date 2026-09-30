@@ -4,9 +4,14 @@ import { ArrowLeft } from "lucide-react";
 
 import { JobForm } from "../job-form";
 import { activeCrew, clientOptions } from "../queries";
+import { jobCategories } from "../../settings/calendar/queries";
 import { assignableGroups } from "../../team/groups/queries";
 import { requirePermission } from "@/lib/auth";
-import { asStatus, JOB_KINDS } from "@/lib/constants";
+import {
+  categoryOptions,
+  parseCategoryValue,
+  parseHiddenKinds,
+} from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
 import { parseDateTimeLocal, toDateTimeLocal } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
@@ -21,16 +26,30 @@ export default async function NewJobPage({
   const { user, org } = await requirePermission("jobs:write");
   const params = await searchParams;
 
-  const [clients, crew, groups, zone] = await Promise.all([
+  const [clients, crew, groups, zone, categories] = await Promise.all([
     clientOptions(org.id),
     activeCrew(org.id),
     assignableGroups(org.id),
     viewerTimeZone(),
+    jobCategories(org.id),
   ]);
 
   // The calendar links here with ?date= when you click an empty slot: a time
   // on the clock of whoever clicked it.
   const scheduledStart = toDateTimeLocal(parseDateTimeLocal(params.date, zone), zone);
+
+  const options = categoryOptions({
+    categories,
+    hiddenKinds: parseHiddenKinds(org.hiddenJobKinds),
+    jobLabel: org.labelJobSingular,
+    jobPlural: org.labelJobPlural,
+  });
+  // ?kind= preselects a category when it is one the picker offers.
+  const category =
+    parseCategoryValue(params.kind) &&
+    options.some((option) => option.value === params.kind)
+      ? params.kind!
+      : "JOB";
 
   const client = params.clientId
     ? clients.find((c) => c.id === params.clientId)
@@ -55,10 +74,11 @@ export default async function NewJobPage({
         clients={clients}
         crew={crew}
         groups={groups}
-        jobLabel={org.labelJobSingular}
+        categories={options}
         canAssign={can(user, "jobs:assign")}
+        canManageCategories={can(user, "settings:write")}
         values={{
-          kind: asStatus(JOB_KINDS, params.kind, "JOB"),
+          category,
           title: "",
           description: "",
           clientId: client?.id ?? "",

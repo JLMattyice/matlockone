@@ -29,7 +29,7 @@ import {
   type UnscheduledJob,
 } from "./types";
 import { rescheduleJob } from "../jobs/actions";
-import { KindIcon } from "../jobs/kind-icon";
+import { CategoryMark } from "../jobs/category-mark";
 import { useTimeZone } from "@/components/app-shell/time-zone";
 import { JOB_STATUS_META } from "@/lib/constants";
 import { formatIn, inZone, instant } from "@/lib/time-zone";
@@ -218,8 +218,8 @@ function UnscheduledPanel({
                 {job.number}
               </span>
               <span className="flex items-center gap-1 text-xs font-medium text-ink">
-                {job.kind !== "JOB" ? (
-                  <KindIcon kind={job.kind} className="text-ink-subtle" />
+                {job.mark ? (
+                  <CategoryMark icon={job.mark.icon} className="text-ink-subtle" />
                 ) : null}
                 <span className="truncate">{job.title}</span>
               </span>
@@ -641,10 +641,10 @@ function EventBlock({
         canDrag && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
       )}
-      title={`${event.number} · ${event.title}`}
+      title={[event.number, event.mark?.label, event.title].filter(Boolean).join(" · ")}
     >
       <span className="tabular flex items-center gap-1 font-semibold">
-        {event.kind !== "JOB" ? <KindIcon kind={event.kind} /> : null}
+        {event.mark ? <CategoryMark icon={event.mark.icon} /> : null}
         {formatIn(event.startISO, "h:mm a", zone)}
       </span>
       <span className="block truncate font-medium">{event.title}</span>
@@ -683,9 +683,9 @@ function EventChip({
         canDrag && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
       )}
-      title={`${event.number} · ${event.title}`}
+      title={[event.number, event.mark?.label, event.title].filter(Boolean).join(" · ")}
     >
-      {event.kind !== "JOB" ? <KindIcon kind={event.kind} /> : null}
+      {event.mark ? <CategoryMark icon={event.mark.icon} /> : null}
       {!event.allDay ? (
         <span className="tabular shrink-0 font-semibold">
           {formatIn(event.startISO, "h:mm", zone)}

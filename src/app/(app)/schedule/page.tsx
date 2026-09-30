@@ -24,6 +24,7 @@ import {
   type UnscheduledJob,
 } from "./types";
 import { activeCrew, scheduleEvents, unscheduledJobs } from "../jobs/queries";
+import { jobCategories } from "../settings/calendar/queries";
 import { assignableGroups } from "../team/groups/queries";
 import { buttonClasses } from "@/components/ui/button";
 import { Select } from "@/components/ui/form";
@@ -31,12 +32,16 @@ import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
 import {
   asStatus,
-  JOB_KIND_META,
-  JOB_KINDS,
   JOB_STATUS_META,
   JOB_STATUSES,
   type JobStatus,
 } from "@/lib/constants";
+import {
+  categoryOptions,
+  entryCategory,
+  parseHiddenKinds,
+  type CategoryOption,
+} from "@/lib/job-categories";
 import { isPhone } from "@/lib/device";
 import { can } from "@/lib/permissions";
 import { inZone, instant, nowIn, parseDateTimeLocal, todayIn } from "@/lib/time-zone";
@@ -75,7 +80,7 @@ export default async function SchedulePage({
   const anchor = parseAnchor(params.date, zone);
   const { from, to } = rangeFor(view, anchor);
 
-  const [jobs, waiting, crew, groups] = await Promise.all([
+  const [jobs, waiting, crew, groups, categories] = await Promise.all([
     scheduleEvents(ctx, from, to, {
       assignedTo: params.assignedTo,
       groupId: params.group,
@@ -85,7 +90,13 @@ export default async function SchedulePage({
     unscheduledJobs(ctx),
     can(user, "jobs:assign") ? activeCrew(org.id) : Promise.resolve([]),
     assignableGroups(org.id),
+    jobCategories(org.id),
   ]);
+
+  const markOf = (job: Parameters<typeof entryCategory>[0]) => {
+    const mark = entryCategory(job, org.labelJobSingular);
+    return mark.plain ? null : { label: mark.label, icon: mark.icon };
+  };
 
   const events: CalendarEvent[] = jobs
     .filter((job) => job.scheduledStart)
@@ -93,7 +104,7 @@ export default async function SchedulePage({
       id: job.id,
       number: job.number,
       title: job.title,
-      kind: job.kind,
+      mark: markOf(job),
       status: asStatus(JOB_STATUSES, job.status, "SCHEDULED") as JobStatus,
       startISO: job.scheduledStart!.toISOString(),
       endISO: (
@@ -117,7 +128,7 @@ export default async function SchedulePage({
     id: job.id,
     number: job.number,
     title: job.title,
-    kind: job.kind,
+    mark: markOf(job),
     status: asStatus(JOB_STATUSES, job.status, "SCHEDULED") as JobStatus,
     clientName: job.client?.displayName ?? null,
     durationMinutes: job.estimatedMinutes ?? 60,
@@ -217,7 +228,13 @@ export default async function SchedulePage({
         <ScheduleFilters
           crew={crew}
           groups={groups}
-          jobLabel={org.labelJobPlural}
+          categories={categoryOptions({
+            categories,
+            hiddenKinds: parseHiddenKinds(org.hiddenJobKinds),
+            jobLabel: org.labelJobSingular,
+            jobPlural: org.labelJobPlural,
+            keep: params.kind,
+          })}
           view={params.view}
           date={params.date}
           group={params.group}
@@ -254,7 +271,7 @@ export default async function SchedulePage({
 function ScheduleFilters({
   crew,
   groups,
-  jobLabel,
+  categories,
   view,
   date,
   group,
@@ -265,7 +282,7 @@ function ScheduleFilters({
 }: {
   crew: { id: string; name: string }[];
   groups: { id: string; name: string }[];
-  jobLabel: string;
+  categories: CategoryOption[];
   view?: string;
   date?: string;
   group?: string;
@@ -280,13 +297,13 @@ function ScheduleFilters({
         <Select
           name="kind"
           defaultValue={kind ?? ""}
-          aria-label="Filter by type"
+          aria-label="Filter by category"
           className="w-40"
         >
-          <option value="">All types</option>
-          {JOB_KINDS.map((option) => (
-            <option key={option} value={option}>
-              {option === "JOB" ? jobLabel : JOB_KIND_META[option].plural}
+          <option value="">All categories</option>
+          {categories.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.plural}
             </option>
           ))}
         </Select>

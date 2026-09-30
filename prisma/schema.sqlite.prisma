@@ -61,6 +61,12 @@ model Organization {
   labelLeadSingular     String @default("Lead")
   labelLeadPlural       String @default("Leads")
 
+  // Built-in calendar categories this business has taken out of the picker,
+  // comma-separated (JOB_KINDS in src/lib/constants.ts). Entries already filed
+  // under one keep it; it is only no longer offered for new ones. A string
+  // rather than a list because SQLite has no lists.
+  hiddenJobKinds String @default("")
+
   // documents & numbering
   defaultTaxRateBp         Int     @default(0)
   invoicePrefix            String  @default("INV-")
@@ -109,6 +115,7 @@ model Organization {
   addresses      Address[]
   leads          Lead[]
   jobs           Job[]
+  jobCategories  JobCategory[]
   jobMaterials   JobMaterial[]
   timeEntries    TimeEntry[]
   recurrences    RecurrenceRule[]
@@ -376,6 +383,13 @@ model Job {
   number      String
   kind        String  @default("JOB") // JOB_KINDS in src/lib/constants.ts
   title       String
+
+  // A category the business made for itself. When set, it names the entry and
+  // picks its mark; `kind` still holds the built-in it behaves as (JOB counts
+  // toward work totals, OTHER does not), so an entry whose category is deleted
+  // falls back to that and nothing that counts jobs has to know about these.
+  categoryId String?
+  category   JobCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   description String?
 
   clientId  String?
@@ -427,8 +441,30 @@ model Job {
   @@unique([organizationId, number])
   @@index([organizationId, status])
   @@index([organizationId, scheduledStart])
+  @@index([categoryId])
   tasks Task[]
   conversation Conversation?
+}
+
+/// A calendar category a business adds beside the built-in ones — a
+/// newsletter, a trade show, a photo shoot. Managed on Settings → Calendar.
+model JobCategory {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name String
+  icon String @default("tag") // CATEGORY_ICONS in src/lib/constants.ts
+  // The built-in its entries are stored as: JOB when it is client work that
+  // belongs in the totals, OTHER when it only holds a place on the calendar.
+  kind String @default("OTHER")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs Job[]
+
+  @@index([organizationId])
 }
 
 model JobAssignment {

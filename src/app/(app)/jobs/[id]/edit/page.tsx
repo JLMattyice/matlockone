@@ -4,17 +4,21 @@ import { ArrowLeft } from "lucide-react";
 
 import { JobForm } from "../../job-form";
 import { activeCrew, clientOptions, getJob } from "../../queries";
+import { jobCategories } from "../../../settings/calendar/queries";
 import { assignableGroups } from "../../../team/groups/queries";
 import { requirePermission } from "@/lib/auth";
 import {
   asStatus,
-  JOB_KINDS,
   JOB_PRIORITIES,
   JOB_STATUSES,
-  type JobKind,
   type JobPriority,
   type JobStatus,
 } from "@/lib/constants";
+import {
+  categoryOptions,
+  categoryValue,
+  parseHiddenKinds,
+} from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
 import { toDateTimeLocal } from "@/lib/time-zone";
 import { durationMinutes } from "@/lib/utils";
@@ -30,13 +34,16 @@ export default async function EditJobPage({
   const ctx = await requirePermission("jobs:write");
   const { id } = await params;
 
-  const [job, clients, crew, groups, zone] = await Promise.all([
+  const [job, clients, crew, groups, zone, categories] = await Promise.all([
     getJob(ctx, id),
     clientOptions(ctx.org.id),
     activeCrew(ctx.org.id),
     assignableGroups(ctx.org.id),
     viewerTimeZone(),
+    jobCategories(ctx.org.id),
   ]);
+
+  const category = categoryValue(job);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -57,11 +64,19 @@ export default async function EditJobPage({
         clients={clients}
         crew={crew}
         groups={groups}
-        jobLabel={ctx.org.labelJobSingular}
+        categories={categoryOptions({
+          categories,
+          hiddenKinds: parseHiddenKinds(ctx.org.hiddenJobKinds),
+          jobLabel: ctx.org.labelJobSingular,
+          jobPlural: ctx.org.labelJobPlural,
+          // A hidden built-in stays on offer for the entry already using it.
+          keep: category,
+        })}
         canAssign={can(ctx.user, "jobs:assign")}
+        canManageCategories={can(ctx.user, "settings:write")}
         values={{
           id: job.id,
-          kind: asStatus(JOB_KINDS, job.kind, "JOB") as JobKind,
+          category,
           title: job.title,
           description: job.description ?? "",
           clientId: job.clientId ?? "",
