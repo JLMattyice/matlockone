@@ -5,6 +5,7 @@ import { Thread } from "@/components/messages/thread";
 import { requirePermission } from "@/lib/auth";
 import { getConversation, threadMessages } from "@/lib/conversations";
 import { can } from "@/lib/permissions";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Messages" };
 
@@ -17,9 +18,10 @@ export default async function ConversationPage({
   const { id } = await params;
 
   // Not being in a thread looks exactly like the thread not existing.
-  const [conversation, thread] = await Promise.all([
+  const [conversation, thread, zone] = await Promise.all([
     getConversation(org.id, user, id),
     threadMessages({ organizationId: org.id, viewer: user, conversationId: id }),
+    viewerTimeZone(),
   ]);
   if (!conversation || !thread) notFound();
 
@@ -32,7 +34,7 @@ export default async function ConversationPage({
       viewerId={user.id}
       initialMessages={thread.messages}
       initialHasEarlier={thread.hasEarlier}
-      timeZone={org.timeZone}
+      timeZone={zone}
       canSendPhotos={can(user, "files:write")}
     />
   );

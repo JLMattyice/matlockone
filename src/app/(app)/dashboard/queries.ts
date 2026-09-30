@@ -13,21 +13,26 @@ import type { AppContext } from "@/lib/auth";
 import { INVOICE_OPEN_STATUSES, WORK_KINDS } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { can, jobVisibilityWhere } from "@/lib/permissions";
+import { inZone, instant, nowIn } from "@/lib/time-zone";
 import { leadPipelineSummary } from "../leads/queries";
 
 /**
  * Every query here is scoped to `organizationId` and, for employees, further
  * narrowed to their own assigned work. Financial figures are skipped entirely
  * for roles without `invoices:read` rather than being fetched and hidden.
+ *
+ * Today and this month begin and end on the viewer's clock, in `zone`.
  */
-export async function loadDashboard(ctx: AppContext) {
+export async function loadDashboard(ctx: AppContext, zone: string) {
   const orgId = ctx.org.id;
-  const now = new Date();
+  const now = nowIn(zone);
   const scope = { organizationId: orgId };
   const jobScope = { ...scope, ...jobVisibilityWhere(ctx.user) };
 
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
+  const todayStart = instant(startOfDay(now));
+  const monthStart = instant(startOfMonth(now));
+  const monthEnd = instant(endOfMonth(now));
+  const sixMonthsStart = instant(startOfMonth(subMonths(now, 5)));
   const seesMoney = can(ctx.user, "invoices:read");
   // A separate permission from invoices, and checked separately — a role that
   // can see what came in does not automatically get to see what went out.
@@ -54,8 +59,8 @@ export async function loadDashboard(ctx: AppContext) {
         ...jobScope,
         status: { in: ["SCHEDULED", "CONFIRMED"] },
         scheduledStart: {
-          gte: startOfDay(now),
-          lte: endOfDay(addDays(now, 7)),
+          gte: todayStart,
+          lte: instant(endOfDay(addDays(now, 7))),
         },
       },
       orderBy: { scheduledStart: "asc" },
@@ -110,7 +115,7 @@ export async function loadDashboard(ctx: AppContext) {
           where: {
             ...scope,
             status: { in: INVOICE_OPEN_STATUSES },
-            dueDate: { lt: startOfDay(now) },
+            dueDate: { lt: todayStart },
           },
           orderBy: { dueDate: "asc" },
           take: 5,
@@ -127,7 +132,7 @@ export async function loadDashboard(ctx: AppContext) {
             ...scope,
             status: { in: INVOICE_OPEN_STATUSES },
             balanceCents: { gt: 0 },
-            dueDate: { lt: startOfDay(now) },
+            dueDate: { lt: todayStart },
           },
           _sum: { balanceCents: true },
           _count: true,
@@ -148,7 +153,7 @@ export async function loadDashboard(ctx: AppContext) {
 
     seesMoney
       ? prisma.payment.findMany({
-          where: { ...scope, receivedAt: { gte: startOfMonth(subMonths(now, 5)) } },
+          where: { ...scope, receivedAt: { gte: sixMonthsStart } },
           select: { amountCents: true, receivedAt: true },
         })
       : [],
@@ -163,7 +168,7 @@ export async function loadDashboard(ctx: AppContext) {
 
     seesExpenses
       ? prisma.expense.findMany({
-          where: { ...scope, spentAt: { gte: startOfMonth(subMonths(now, 5)) } },
+          where: { ...scope, spentAt: { gte: sixMonthsStart } },
           select: { amountCents: true, spentAt: true },
         })
       : [],
@@ -232,7 +237,7 @@ export async function loadDashboard(ctx: AppContext) {
     reimbursementsOwed,
     reimbursementsOwedCents: reimbursementTotals?._sum.amountCents ?? 0,
     reimbursementsOwedCount: reimbursementTotals?._count ?? 0,
-    monthlyCashFlow: bucketByMonth(revenueRows, expenseRows, now, 6),
+    monthlyCashFlow: bucketByMonth(revenueRows, expenseRows, now, 6, zone),
   };
 }
 
@@ -251,10 +256,16 @@ function bucketByMonth(
   expenses: { amountCents: number; spentAt: Date }[],
   now: Date,
   months: number,
+  zone: string,
 ) {
+  const monthKey = (date: Date) => {
+    const local = inZone(date, zone);
+    return `${local.getFullYear()}-${local.getMonth()}`;
+  };
+
   const buckets = Array.from({ length: months }, (_, i) => {
-    const date = startOfMonth(subMonths(now, months - 1 - i));
-    return { date, key: monthKey(date), inCents: 0, outCents: 0 };
+    const date = startOfMonth(subMonths(inZone(now, zone), months - 1 - i));
+    return { date: instant(date), key: monthKey(date), inCents: 0, outCents: 0 };
   });
 
   const index = new Map(buckets.map((b) => [b.key, b]));
@@ -270,8 +281,4 @@ function bucketByMonth(
   }
 
   return buckets;
-}
-
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${date.getMonth()}`;
 }

@@ -27,6 +27,8 @@ let tech: { id: string; role: "EMPLOYEE" };
 let clientId: string;
 let jobId: string;
 
+const zone = "America/New_York";
+
 const hoursFromNow = (hours: number) =>
   new Date(Date.now() + hours * 60 * 60 * 1000);
 
@@ -102,7 +104,7 @@ describe("who sees what", () => {
     await addTask({ title: "Somebody else's", assignedToId: owner.id });
     await addTask({ title: "Nobody's" });
 
-    const list = await listTasks({ organizationId, actor: tech, view: "open" });
+    const list = await listTasks({ organizationId, actor: tech, view: "open", zone });
 
     // A task you wrote and handed to somebody else is still yours to chase,
     // which is why created-by counts as well as assigned-to.
@@ -116,7 +118,7 @@ describe("who sees what", () => {
     await addTask({ title: "Assigned to the tech", assignedToId: tech.id });
     await addTask({ title: "Nobody's" });
 
-    const list = await listTasks({ organizationId, actor: owner, view: "open" });
+    const list = await listTasks({ organizationId, actor: owner, view: "open", zone });
 
     expect(list.total).toBe(2);
   });
@@ -127,7 +129,7 @@ describe("who sees what", () => {
       organizationId: otherOrganizationId,
     });
 
-    const list = await listTasks({ organizationId, actor: owner, view: "open" });
+    const list = await listTasks({ organizationId, actor: owner, view: "open", zone });
     expect(list.total).toBe(0);
   });
 
@@ -159,7 +161,8 @@ describe("the views", () => {
    */
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 8, 20, 12, 0, 0));
+    // Noon in New York, whatever zone the machine running the tests is in.
+    vi.setSystemTime(new Date("2026-09-20T16:00:00Z"));
   });
 
   afterEach(() => {
@@ -175,7 +178,7 @@ describe("the views", () => {
   });
 
   it("counts overdue as open work whose date has passed", async () => {
-    const list = await listTasks({ organizationId, actor: owner, view: "overdue" });
+    const list = await listTasks({ organizationId, actor: owner, view: "overdue", zone });
 
     // Not the finished one, however late it was.
     expect(list.rows.map((r) => r.title)).toEqual(["Late"]);
@@ -183,26 +186,39 @@ describe("the views", () => {
 
   it("treats a dateless task as never overdue", async () => {
     // It was never promised for a day, so it cannot be late.
-    const overdue = await listTasks({ organizationId, actor: owner, view: "overdue" });
+    const overdue = await listTasks({ organizationId, actor: owner, view: "overdue", zone });
     expect(overdue.rows.some((r) => r.title === "Someday")).toBe(false);
   });
 
   it("counts anything due by tonight as due today", async () => {
-    const list = await listTasks({ organizationId, actor: owner, view: "today" });
+    const list = await listTasks({ organizationId, actor: owner, view: "today", zone });
 
     // Includes what is already late: it is still outstanding today.
     expect(list.rows.map((r) => r.title).sort()).toEqual(["Late", "Later today"]);
   });
 
   it("puts dated work first and undated at the bottom", async () => {
-    const list = await listTasks({ organizationId, actor: owner, view: "open" });
+    const list = await listTasks({ organizationId, actor: owner, view: "open", zone });
 
     expect(list.rows[0].title).toBe("Late");
     expect(list.rows[list.rows.length - 1].title).toBe("Someday");
   });
 
+  it("ends today at midnight on the viewer's clock, not the server's", async () => {
+    // 9 PM in New York is already tomorrow in UTC. Tomorrow morning's task is
+    // not due today for somebody in New York, though it is on a UTC clock.
+    vi.setSystemTime(new Date("2026-09-21T01:00:00Z"));
+    await addTask({ title: "Tomorrow morning", dueAt: new Date("2026-09-21T14:00:00Z") });
+
+    const here = await listTasks({ organizationId, actor: owner, view: "today", zone });
+    expect(here.rows.some((r) => r.title === "Tomorrow morning")).toBe(false);
+
+    const utc = await listTasks({ organizationId, actor: owner, view: "today", zone: "UTC" });
+    expect(utc.rows.some((r) => r.title === "Tomorrow morning")).toBe(true);
+  });
+
   it("counts each tab", async () => {
-    const counts = await taskCounts(organizationId, owner);
+    const counts = await taskCounts(organizationId, owner, zone);
 
     expect(counts).toEqual({ open: 4, overdue: 1, today: 2, done: 1 });
   });
@@ -213,8 +229,8 @@ describe("taskSummary", () => {
     await addTask({ title: "Mine, late", dueAt: hoursFromNow(-3), assignedToId: tech.id });
     await addTask({ title: "Theirs, late", dueAt: hoursFromNow(-3), assignedToId: owner.id });
 
-    const mine = await taskSummary(organizationId, tech);
-    const everyones = await taskSummary(organizationId, owner);
+    const mine = await taskSummary(organizationId, tech, zone);
+    const everyones = await taskSummary(organizationId, owner, zone);
 
     // A technician's tile counts their own list, not the company's.
     expect(mine).toEqual({ dueToday: 1, overdue: 1 });
@@ -224,7 +240,7 @@ describe("taskSummary", () => {
   it("says nothing is due when nothing has a date", async () => {
     await addTask({ title: "Someday", dueAt: null });
 
-    expect(await taskSummary(organizationId, owner)).toEqual({
+    expect(await taskSummary(organizationId, owner, zone)).toEqual({
       dueToday: 0,
       overdue: 0,
     });

@@ -7,11 +7,13 @@ import {
   setWorkflowActive,
   updateWorkflowSettings,
 } from "./actions";
+import { useTimeZone } from "@/components/app-shell/time-zone";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
+import { formatIn } from "@/lib/time-zone";
 import type { WorkflowConfig, WorkflowTemplate } from "@/lib/workflows/templates";
 import { cn } from "@/lib/utils";
 
@@ -112,6 +114,7 @@ export function AutomationsForm({
 }
 
 function Automation({ row, readOnly }: { row: AutomationRow; readOnly: boolean }) {
+  const zone = useTimeZone();
   const [state, save] = useActionState<ActionState, FormData>(
     updateWorkflowSettings,
     IDLE,
@@ -136,7 +139,7 @@ function Automation({ row, readOnly }: { row: AutomationRow; readOnly: boolean }
           <p className="mt-1 text-sm text-ink-muted">{template.description}</p>
           {row.scheduled && row.lastRunAt ? (
             <p className="mt-2 text-xs text-ink-subtle">
-              Last checked {new Date(row.lastRunAt).toLocaleString()}
+              Last checked {formatIn(row.lastRunAt, "MMM d, yyyy 'at' h:mm a", zone)}
             </p>
           ) : null}
         </div>

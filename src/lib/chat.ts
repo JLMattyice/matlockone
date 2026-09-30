@@ -6,6 +6,8 @@
  * time it is.
  */
 
+import { usableTimeZone } from "./time-zone";
+
 /** Long enough for directions to a site and a list of parts; not an essay. */
 export const MESSAGE_MAX_LENGTH = 4000;
 export const GROUP_TITLE_MAX_LENGTH = 80;
@@ -49,25 +51,15 @@ export function mergeMessages(a: MessageView[], b: MessageView[]) {
 // -------------------------------------------------------------------- time ---
 
 /*
- * Every stamp is formatted in the business's own time zone rather than the
- * machine's, for two reasons. The hosted app renders on servers that run in
- * UTC, which would put a message sent at 2pm in North Carolina at "6:00 PM".
- * And the server and the browser must produce the same characters, or React
- * throws away the server's HTML on hydration.
+ * Every stamp is formatted in a zone passed in — the viewer's, from
+ * @/lib/viewer-time-zone — rather than the runtime's, for two reasons. The
+ * hosted app renders on servers that run in UTC, which would put a message
+ * sent at 2pm in North Carolina at "6:00 PM". And the server and the browser
+ * must produce the same characters, or React throws away the server's HTML on
+ * hydration.
  */
 
 const LOCALE = "en-US";
-
-/** The zone if this runtime knows it, otherwise the runtime's own. */
-export function usableTimeZone(timeZone: string | null | undefined) {
-  if (!timeZone) return undefined;
-  try {
-    new Intl.DateTimeFormat(LOCALE, { timeZone });
-    return timeZone;
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * Newer ICU builds put a narrow no-break space before "PM". Node and the

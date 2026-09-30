@@ -4,10 +4,12 @@ import {
   addWeeks,
   addYears,
   getDate,
+  set,
   setDate,
 } from "date-fns";
 
 import type { RecurrenceFrequency } from "./constants";
+import { inZone, instant } from "./time-zone";
 
 /**
  * Recurring appointments.
@@ -32,23 +34,28 @@ export type RecurrenceInput = {
 /**
  * Expands a rule into occurrence start times, always including `start` itself.
  * Returns at most `MAX_OCCURRENCES` dates.
+ *
+ * Stepped on the clock of `zone` when one is given, so "every Tuesday at 9"
+ * stays Tuesday at 9 there — across a change to daylight saving time, and for
+ * a 9 PM start that is already Wednesday on the server's UTC clock.
  */
-export function expandRecurrence(rule: RecurrenceInput, start: Date): Date[] {
+export function expandRecurrence(rule: RecurrenceInput, start: Date, zone?: string): Date[] {
   const interval = Math.max(1, Math.floor(rule.interval || 1));
   const limit = Math.min(rule.count ?? MAX_OCCURRENCES, MAX_OCCURRENCES);
   const until = rule.until ?? null;
+  const origin = zone ? inZone(start, zone) : start;
 
   if (rule.frequency === "WEEKLY" && rule.byWeekday?.length) {
-    return expandWeekly(start, interval, rule.byWeekday, limit, until);
+    return expandWeekly(origin, interval, rule.byWeekday, limit, until).map(instant);
   }
 
   const dates: Date[] = [];
-  let cursor = new Date(start);
+  let cursor = origin;
 
   while (dates.length < limit) {
     if (until && cursor > until) break;
-    dates.push(new Date(cursor));
-    cursor = step(cursor, rule.frequency, interval, start);
+    dates.push(instant(cursor));
+    cursor = step(cursor, rule.frequency, interval, origin);
   }
 
   return dates;
@@ -159,14 +166,12 @@ function expandWeekly(
 }
 
 function withTimeOf(date: Date, source: Date) {
-  const out = new Date(date);
-  out.setHours(
-    source.getHours(),
-    source.getMinutes(),
-    source.getSeconds(),
-    source.getMilliseconds(),
-  );
-  return out;
+  return set(date, {
+    hours: source.getHours(),
+    minutes: source.getMinutes(),
+    seconds: source.getSeconds(),
+    milliseconds: source.getMilliseconds(),
+  });
 }
 
 export function parseWeekdays(json: string | null | undefined): number[] {

@@ -39,7 +39,9 @@ import {
 } from "@/lib/constants";
 import { isPhone } from "@/lib/device";
 import { can } from "@/lib/permissions";
+import { inZone, instant, nowIn, parseDateTimeLocal, todayIn } from "@/lib/time-zone";
 import { durationMinutes } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Schedule" };
 
@@ -60,6 +62,7 @@ export default async function SchedulePage({
   const ctx = await requirePermission("schedule:read");
   const { user, org } = ctx;
   const params = await searchParams;
+  const zone = await viewerTimeZone();
 
   // A week squeezed onto a phone reads "11:00 AM D…" in every box, so a phone
   // starts on the day. Choosing a view in the bar overrides it either way.
@@ -68,7 +71,8 @@ export default async function SchedulePage({
     : (await isPhone())
       ? "day"
       : "week";
-  const anchor = parseAnchor(params.date);
+  // A TZDate: every day boundary below is on the viewer's clock.
+  const anchor = parseAnchor(params.date, zone);
   const { from, to } = rangeFor(view, anchor);
 
   const [jobs, waiting, crew, groups] = await Promise.all([
@@ -186,7 +190,7 @@ export default async function SchedulePage({
             <ChevronRight className="h-4 w-4" strokeWidth={2} />
           </Link>
           <Link
-            href={href({ date: format(new Date(), "yyyy-MM-dd") })}
+            href={href({ date: todayIn(zone) })}
             className={buttonClasses("outline", "md", "ml-1")}
           >
             Today
@@ -226,7 +230,7 @@ export default async function SchedulePage({
 
       <ScheduleCalendar
         view={view}
-        anchorISO={anchor.toISOString()}
+        anchorISO={instant(anchor).toISOString()}
         events={events}
         unscheduled={unscheduled}
         canDrag={can(user, "schedule:write")}
@@ -341,25 +345,25 @@ function ScheduleFilters({
   );
 }
 
-function parseAnchor(value: string | undefined) {
-  if (!value) return new Date();
-  const parsed = new Date(`${value}T12:00:00`);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+/** Noon on the day asked for, or now, on the viewer's clock. */
+function parseAnchor(value: string | undefined, zone: string) {
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value ?? "")
+    ? parseDateTimeLocal(`${value}T12:00`, zone)
+    : null;
+  return parsed ? inZone(parsed, zone) : nowIn(zone);
 }
 
 function rangeFor(view: CalendarView, anchor: Date) {
+  const range = (from: Date, to: Date) => ({ from: instant(from), to: instant(to) });
   if (view === "day") {
-    return { from: startOfDay(anchor), to: endOfDay(anchor) };
+    return range(startOfDay(anchor), endOfDay(anchor));
   }
   if (view === "week") {
-    return { from: startOfWeek(anchor), to: endOfWeek(anchor) };
+    return range(startOfWeek(anchor), endOfWeek(anchor));
   }
   // Month view shows leading and trailing days from the neighbouring months,
   // so the query has to cover the whole visible grid, not just the month.
-  return {
-    from: startOfWeek(startOfMonth(anchor)),
-    to: endOfWeek(endOfMonth(anchor)),
-  };
+  return range(startOfWeek(startOfMonth(anchor)), endOfWeek(endOfMonth(anchor)));
 }
 
 function rangeLabel(view: CalendarView, anchor: Date) {

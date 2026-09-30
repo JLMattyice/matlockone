@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import { Pin, StickyNote, Trash2 } from "lucide-react";
 
 import { NoteComposer } from "./note-composer";
@@ -6,6 +5,7 @@ import { deleteNote, toggleNotePin } from "@/app/(app)/notes/actions";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/page-header";
 import type { NoteEntityType } from "@/lib/note-entities";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
 export type NoteRow = {
@@ -22,6 +22,7 @@ export function NotesPanel({
   entityType,
   entityId,
   canWrite,
+  zone,
   placeholder,
   emptyDescription,
 }: {
@@ -29,6 +30,8 @@ export function NotesPanel({
   entityType: NoteEntityType;
   entityId: string;
   canWrite: boolean;
+  /** The viewer's time zone, from viewerTimeZone(). */
+  zone: string;
   placeholder?: string;
   emptyDescription?: string;
 }) {
@@ -62,7 +65,7 @@ export function NotesPanel({
                   {note.author?.name ?? "Removed user"}
                 </span>
                 <span className="text-xs text-ink-subtle">
-                  {format(note.createdAt, "MMM d, yyyy 'at' h:mm a")}
+                  {formatIn(note.createdAt, "MMM d, yyyy 'at' h:mm a", zone)}
                 </span>
 
                 {note.pinned ? (

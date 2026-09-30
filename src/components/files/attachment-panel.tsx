@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import { Download, FileText, ImageIcon, Paperclip, Trash2 } from "lucide-react";
 
 import { UploadForm } from "./upload-form";
@@ -7,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/page-header";
 import type { AttachmentEntityType } from "@/lib/attachment-entities";
 import { formatBytes, isImageMime } from "@/lib/storage-limits";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
 export type AttachmentRow = {
@@ -26,12 +26,15 @@ export function AttachmentPanel({
   entityType,
   entityId,
   canWrite,
+  zone,
   allowPhotoStage = false,
 }: {
   attachments: AttachmentRow[];
   entityType: AttachmentEntityType;
   entityId: string;
   canWrite: boolean;
+  /** The viewer's time zone, from viewerTimeZone(). */
+  zone: string;
   allowPhotoStage?: boolean;
 }) {
   const photos = attachments.filter((a) => isImageMime(a.mimeType));
@@ -125,7 +128,7 @@ export function AttachmentPanel({
                       </span>
                       <span className="block truncate text-xs text-ink-subtle">
                         {formatBytes(file.sizeBytes)} ·{" "}
-                        {format(file.createdAt, "MMM d, yyyy")}
+                        {formatIn(file.createdAt, "MMM d, yyyy", zone)}
                         {file.uploadedBy ? ` · ${file.uploadedBy.name}` : ""}
                         {file.caption ? ` · ${file.caption}` : ""}
                       </span>

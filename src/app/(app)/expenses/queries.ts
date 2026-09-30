@@ -6,6 +6,7 @@ import { endOfDay, startOfDay, startOfMonth, startOfYear, subDays } from "date-f
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { like } from "@/lib/search";
+import { instant, nowIn } from "@/lib/time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 const PAGE_SIZE = 25;
@@ -28,16 +29,18 @@ export function asExpensePeriod(value: string | undefined): ExpensePeriod {
     : "90d";
 }
 
-function periodStart(period: ExpensePeriod, now = new Date()): Date | null {
+/** Where a period begins: midnight on the clock of `zone`, the viewer's. */
+function periodStart(period: ExpensePeriod, zone: string): Date | null {
+  const now = nowIn(zone);
   switch (period) {
     case "30d":
-      return startOfDay(subDays(now, 29));
+      return instant(startOfDay(subDays(now, 29)));
     case "90d":
-      return startOfDay(subDays(now, 89));
+      return instant(startOfDay(subDays(now, 89)));
     case "month":
-      return startOfMonth(now);
+      return instant(startOfMonth(now));
     case "year":
-      return startOfYear(now);
+      return instant(startOfYear(now));
     case "all":
       return null;
   }
@@ -48,6 +51,8 @@ export type ExpenseListParams = {
   q?: string;
   category?: string;
   period?: ExpensePeriod;
+  /** The viewer's time zone, which the period's days are counted in. */
+  zone: string;
   jobId?: string;
   clientId?: string;
   /** "billable" | "reimbursable" | "unreimbursed" */
@@ -57,14 +62,16 @@ export type ExpenseListParams = {
 
 function buildWhere(params: ExpenseListParams): Prisma.ExpenseWhereInput {
   const q = params.q?.trim();
-  const from = periodStart(params.period ?? "all");
+  const from = periodStart(params.period ?? "all", params.zone);
 
   return {
     organizationId: params.organizationId,
     ...(params.category ? { category: params.category } : {}),
     ...(params.jobId ? { jobId: params.jobId } : {}),
     ...(params.clientId ? { clientId: params.clientId } : {}),
-    ...(from ? { spentAt: { gte: from, lte: endOfDay(new Date()) } } : {}),
+    ...(from
+      ? { spentAt: { gte: from, lte: instant(endOfDay(nowIn(params.zone))) } }
+      : {}),
     ...(params.flag === "billable" ? { billable: true } : {}),
     ...(params.flag === "reimbursable" ? { reimbursable: true } : {}),
     ...(params.flag === "unreimbursed"

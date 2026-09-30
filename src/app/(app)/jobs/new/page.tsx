@@ -8,7 +8,8 @@ import { assignableGroups } from "../../team/groups/queries";
 import { requirePermission } from "@/lib/auth";
 import { asStatus, JOB_KINDS } from "@/lib/constants";
 import { can } from "@/lib/permissions";
-import { toDateTimeLocal } from "@/lib/utils";
+import { parseDateTimeLocal, toDateTimeLocal } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "New job" };
 
@@ -20,18 +21,16 @@ export default async function NewJobPage({
   const { user, org } = await requirePermission("jobs:write");
   const params = await searchParams;
 
-  const [clients, crew, groups] = await Promise.all([
+  const [clients, crew, groups, zone] = await Promise.all([
     clientOptions(org.id),
     activeCrew(org.id),
     assignableGroups(org.id),
+    viewerTimeZone(),
   ]);
 
-  // The calendar links here with ?date= when you click an empty slot.
-  const prefillDate = params.date ? new Date(params.date) : null;
-  const scheduledStart =
-    prefillDate && !Number.isNaN(prefillDate.getTime())
-      ? toDateTimeLocal(prefillDate)
-      : "";
+  // The calendar links here with ?date= when you click an empty slot: a time
+  // on the clock of whoever clicked it.
+  const scheduledStart = toDateTimeLocal(parseDateTimeLocal(params.date, zone), zone);
 
   const client = params.clientId
     ? clients.find((c) => c.id === params.clientId)

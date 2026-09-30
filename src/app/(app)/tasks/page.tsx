@@ -9,6 +9,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Tasks" };
 
@@ -25,17 +26,19 @@ export default async function TasksPage({
   const { user, org } = await requirePermission("tasks:read");
   const params = await searchParams;
   const view = asTaskView(params.view);
+  const zone = await viewerTimeZone();
 
   const [list, counts, people] = await Promise.all([
     listTasks({
       organizationId: org.id,
       actor: user,
       view,
+      zone,
       assignee: params.assignee,
       q: params.q,
       page: Number(params.page) || 1,
     }),
-    taskCounts(org.id, user),
+    taskCounts(org.id, user, zone),
     prisma.user.findMany({
       where: { organizationId: org.id, isActive: true },
       orderBy: { name: "asc" },

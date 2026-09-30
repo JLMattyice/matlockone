@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,6 +31,8 @@ import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import { publicUrl } from "@/lib/messaging";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export async function generateMetadata({
   params,
@@ -56,6 +57,7 @@ export default async function EstimateDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { user, org } = await requirePermission("estimates:read");
+  const zone = await viewerTimeZone();
   const { id } = await params;
   const estimate = await getEstimate(org.id, id);
 
@@ -105,7 +107,7 @@ export default async function EstimateDetailPage({
               {estimate.title ?? `Estimate for ${estimate.client.displayName}`}
             </h1>
 
-            <Timeline estimate={estimate} />
+            <Timeline estimate={estimate} zone={zone} />
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -250,7 +252,7 @@ export default async function EstimateDetailPage({
                 </Link>
               </Row>
               <Row label="Created">
-                {format(estimate.createdAt, "MMM d, yyyy")}
+                {formatIn(estimate.createdAt, "MMM d, yyyy", zone)}
                 {estimate.createdBy ? ` by ${estimate.createdBy.name}` : ""}
               </Row>
               <Row label="Lines">{estimate.lineItems.length}</Row>
@@ -264,6 +266,7 @@ export default async function EstimateDetailPage({
             <CardHeader title="Internal notes" />
             <NotesPanel
               notes={estimate.notes_}
+              zone={zone}
               entityType="estimate"
               entityId={estimate.id}
               canWrite={writable}
@@ -279,6 +282,7 @@ export default async function EstimateDetailPage({
 
 function Timeline({
   estimate,
+  zone,
 }: {
   estimate: {
     sentAt: Date | null;
@@ -286,6 +290,7 @@ function Timeline({
     acceptedAt: Date | null;
     declinedAt: Date | null;
   };
+  zone: string;
 }) {
   const events = [
     estimate.sentAt && { icon: Send, label: "Sent", at: estimate.sentAt },
@@ -314,7 +319,7 @@ function Timeline({
           className="inline-flex items-center gap-1.5 text-xs text-ink-muted"
         >
           <Icon className="h-3.5 w-3.5 text-ink-subtle" strokeWidth={1.75} />
-          {label} {format(at, "MMM d, h:mm a")}
+          {label} {formatIn(at, "MMM d, h:mm a", zone)}
         </span>
       ))}
     </div>

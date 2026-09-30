@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
   CalendarClock,
@@ -34,7 +34,9 @@ import {
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { can, canManageRole, permissionsFor } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
 import { formatPhone } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export async function generateMetadata({
   params,
@@ -59,11 +61,12 @@ export default async function TeamMemberPage({
   params: Promise<{ id: string }>;
 }) {
   const { user, org } = await requirePermission("employees:read");
+  const zone = await viewerTimeZone();
   const { id } = await params;
 
   const [member, workload] = await Promise.all([
     getTeamMember(org.id, id),
-    memberWorkload(org.id, id),
+    memberWorkload(org.id, id, zone),
   ]);
 
   const role = asStatus(ROLES, member.role, "EMPLOYEE") as Role;
@@ -185,7 +188,7 @@ export default async function TeamMemberPage({
           <Figure
             label="Hours this month"
             value={hours ? `${hours}h` : "—"}
-            sub={format(new Date(), "MMMM")}
+            sub={formatIn(new Date(), "MMMM", zone)}
           />
           <Figure
             label={seesMoney ? "Hourly rate" : "Last seen"}
@@ -223,7 +226,7 @@ export default async function TeamMemberPage({
             ) : (
               <ul className="divide-y divide-line">
                 {workload.upcoming.map((job) => (
-                  <JobRow key={job.id} job={job} />
+                  <JobRow zone={zone} key={job.id} job={job} />
                 ))}
               </ul>
             )}
@@ -239,7 +242,7 @@ export default async function TeamMemberPage({
             ) : (
               <ul className="divide-y divide-line">
                 {workload.recent.map((job) => (
-                  <JobRow key={job.id} job={job} completed />
+                  <JobRow zone={zone} key={job.id} job={job} completed />
                 ))}
               </ul>
             )}
@@ -250,7 +253,7 @@ export default async function TeamMemberPage({
           <Card>
             <CardHeader title="Account" />
             <dl className="divide-y divide-line text-sm">
-              <Row label="Added">{format(member.createdAt, "MMM d, yyyy")}</Row>
+              <Row label="Added">{formatIn(member.createdAt, "MMM d, yyyy", zone)}</Row>
               <Row label="Last signed in">
                 {member.lastLoginAt
                   ? `${formatDistanceToNow(member.lastLoginAt)} ago`
@@ -293,6 +296,7 @@ export default async function TeamMemberPage({
 function JobRow({
   job,
   completed,
+  zone,
 }: {
   job: {
     id: string;
@@ -304,6 +308,7 @@ function JobRow({
     client: { id: string; displayName: string } | null;
   };
   completed?: boolean;
+  zone: string;
 }) {
   const meta = JOB_STATUS_META[asStatus(JOB_STATUSES, job.status, "SCHEDULED")];
   const when = completed ? job.completedAt : job.scheduledStart;
@@ -320,7 +325,7 @@ function JobRow({
         <p className="truncate text-xs text-ink-subtle">
           {job.number}
           {job.client ? ` · ${job.client.displayName}` : ""}
-          {when ? ` · ${format(when, "MMM d, yyyy")}` : ""}
+          {when ? ` · ${formatIn(when, "MMM d, yyyy", zone)}` : ""}
         </p>
       </div>
       <Badge tone={meta.tone}>{meta.label}</Badge>

@@ -32,6 +32,8 @@ const PER_KIND = 6;
 export async function globalSearch(
   ctx: AppContext,
   rawQuery: string,
+  /** The viewer's time zone, for the dates on job results. */
+  zone: string,
 ): Promise<SearchResults> {
   const q = rawQuery.trim();
   if (q.length < 2) return { groups: [], total: 0 };
@@ -197,7 +199,7 @@ export async function globalSearch(
         title: `${j.number} · ${j.title}`,
         subtitle: j.client?.displayName ?? null,
         meta: j.scheduledStart
-          ? j.scheduledStart.toLocaleDateString(org.locale)
+          ? j.scheduledStart.toLocaleDateString(org.locale, { timeZone: zone })
           : "unscheduled",
         href: `/jobs/${j.id}`,
       })),

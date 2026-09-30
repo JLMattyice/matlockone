@@ -23,6 +23,8 @@ import { notify } from "@/lib/notifications";
 import { allocateNumber } from "@/lib/numbering";
 import { can } from "@/lib/permissions";
 import { expandRecurrence, MAX_OCCURRENCES } from "@/lib/recurrence";
+import { formatIn, parseDateTimeLocal } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 // ------------------------------------------------------------------ create ---
@@ -72,11 +74,9 @@ function parseJobForm(formData: FormData) {
   });
 }
 
-/** "2026-08-26T14:30" from a datetime-local input, read as local time. */
-function parseLocalDateTime(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+/** "Tue, Sep 29 at 9:00 PM" — a start time as a notification says it. */
+function when(date: Date, zone: string) {
+  return formatIn(date, "EEE, MMM d 'at' h:mm a", zone);
 }
 
 /** Only accept a client and address that belong to the caller's organization. */
@@ -141,7 +141,9 @@ export async function createJob(
   if (!parsed.success) return invalid(parsed.error);
 
   const input = parsed.data;
-  const start = parseLocalDateTime(input.scheduledStart);
+  // The time was typed on the clock of the machine it was typed on.
+  const zone = await viewerTimeZone();
+  const start = parseDateTimeLocal(input.scheduledStart, zone);
 
   if (input.repeat && !start) {
     return { ok: false, fieldErrors: { scheduledStart: "A repeating job needs a start date." } };
@@ -164,6 +166,7 @@ export async function createJob(
           count: input.occurrences,
         },
         start,
+        zone,
       )
     : [start];
 
@@ -243,9 +246,7 @@ export async function createJob(
     exceptUserId: user.id,
     type: "JOB_ASSIGNED",
     title: `Assigned: ${input.title}`,
-    body: start
-      ? `Scheduled for ${start.toLocaleString()}`
-      : "Not scheduled yet",
+    body: start ? `Scheduled for ${when(start, zone)}` : "Not scheduled yet",
     entityType: "job",
     entityId: firstJobId,
     actionUrl: `/jobs/${firstJobId}`,
@@ -289,7 +290,8 @@ export async function updateJob(
   if (!parsed.success) return invalid(parsed.error);
 
   const input = parsed.data;
-  const start = parseLocalDateTime(input.scheduledStart);
+  const zone = await viewerTimeZone();
+  const start = parseDateTimeLocal(input.scheduledStart, zone);
 
   const { clientId, addressId } = await resolveClientAndAddress(
     input.clientId,
@@ -345,7 +347,7 @@ export async function updateJob(
     exceptUserId: user.id,
     type: "JOB_ASSIGNED",
     title: `Assigned: ${input.title}`,
-    body: start ? `Scheduled for ${start.toLocaleString()}` : "Not scheduled yet",
+    body: start ? `Scheduled for ${when(start, zone)}` : "Not scheduled yet",
     entityType: "job",
     entityId: id,
     actionUrl: `/jobs/${id}`,
@@ -362,7 +364,7 @@ export async function updateJob(
       exceptUserId: user.id,
       type: "SCHEDULE_CHANGE",
       title: `Rescheduled: ${input.title}`,
-      body: start ? `Now ${start.toLocaleString()}` : "Moved to unscheduled",
+      body: start ? `Now ${when(start, zone)}` : "Moved to unscheduled",
       entityType: "job",
       entityId: id,
       actionUrl: `/jobs/${id}`,
@@ -480,7 +482,7 @@ export async function rescheduleJob(input: {
     exceptUserId: user.id,
     type: "SCHEDULE_CHANGE",
     title: `Rescheduled: ${job.title}`,
-    body: `Now ${start.toLocaleString()}`,
+    body: `Now ${when(start, await viewerTimeZone())}`,
     entityType: "job",
     entityId: input.id,
     actionUrl: `/jobs/${input.id}`,
@@ -639,7 +641,7 @@ export async function addTimeEntry(
   });
   if (!crew) return failed("That team member no longer exists.");
 
-  const startedAt = parseLocalDateTime(input.startedAt);
+  const startedAt = parseDateTimeLocal(input.startedAt, await viewerTimeZone());
   if (!startedAt) return { ok: false, fieldErrors: { startedAt: "Invalid date." } };
 
   await prisma.timeEntry.create({

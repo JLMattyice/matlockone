@@ -1,5 +1,8 @@
+import { endOfDay } from "date-fns";
+
 import { prisma } from "@/lib/db";
 import { taskVisibilityWhere, type Actor } from "@/lib/permissions";
+import { inZone, instant } from "@/lib/time-zone";
 
 /**
  * Reads for the task list.
@@ -18,14 +21,12 @@ export function asTaskView(value: string | undefined): TaskView {
   return TASK_VIEWS.includes(value as TaskView) ? (value as TaskView) : "open";
 }
 
-/** Midnight tonight, in the server's zone — the boundary "today" ends on. */
-function endOfToday(now = new Date()) {
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-  return end;
+/** Midnight tonight on the viewer's clock — the boundary "today" ends on. */
+function endOfToday(now: Date, zone: string) {
+  return instant(endOfDay(inZone(now, zone)));
 }
 
-function viewWhere(view: TaskView, now: Date) {
+function viewWhere(view: TaskView, now: Date, zone: string) {
   switch (view) {
     case "done":
       return { status: "DONE" };
@@ -34,7 +35,7 @@ function viewWhere(view: TaskView, now: Date) {
       // never be overdue — it was never promised for a day.
       return { status: "OPEN", dueAt: { lt: now } };
     case "today":
-      return { status: "OPEN", dueAt: { lte: endOfToday(now) } };
+      return { status: "OPEN", dueAt: { lte: endOfToday(now, zone) } };
     default:
       return { status: "OPEN" };
   }
@@ -44,6 +45,8 @@ type TaskQuery = {
   organizationId: string;
   actor: Actor;
   view: TaskView;
+  /** Whose "today" the today view means: the viewer's time zone. */
+  zone: string;
   /** Narrow to one person, "me", or leave open for everyone. */
   assignee?: string;
   q?: string;
@@ -58,7 +61,7 @@ function where(query: TaskQuery, now: Date) {
   return {
     organizationId: query.organizationId,
     ...taskVisibilityWhere(query.actor),
-    ...viewWhere(query.view, now),
+    ...viewWhere(query.view, now, query.zone),
     ...(assignee
       ? assignee === "unassigned"
         ? { assignedToId: null }
@@ -112,7 +115,7 @@ export async function listTasks(query: TaskQuery) {
 }
 
 /** The counts on the tabs, so each says how much is behind it. */
-export async function taskCounts(organizationId: string, actor: Actor) {
+export async function taskCounts(organizationId: string, actor: Actor, zone: string) {
   const now = new Date();
   const scope = { organizationId, ...taskVisibilityWhere(actor) };
 
@@ -120,7 +123,7 @@ export async function taskCounts(organizationId: string, actor: Actor) {
     prisma.task.count({ where: { ...scope, status: "OPEN" } }),
     prisma.task.count({ where: { ...scope, status: "OPEN", dueAt: { lt: now } } }),
     prisma.task.count({
-      where: { ...scope, status: "OPEN", dueAt: { lte: endOfToday(now) } },
+      where: { ...scope, status: "OPEN", dueAt: { lte: endOfToday(now, zone) } },
     }),
     prisma.task.count({ where: { ...scope, status: "DONE" } }),
   ]);
@@ -161,7 +164,7 @@ export async function tasksFor(
  * Scoped to the person looking, so a technician's tile counts their own list
  * rather than the whole company's.
  */
-export async function taskSummary(organizationId: string, actor: Actor) {
+export async function taskSummary(organizationId: string, actor: Actor, zone: string) {
   const now = new Date();
   const scope = {
     organizationId,
@@ -170,7 +173,7 @@ export async function taskSummary(organizationId: string, actor: Actor) {
   };
 
   const [dueToday, overdue] = await Promise.all([
-    prisma.task.count({ where: { ...scope, dueAt: { lte: endOfToday(now) } } }),
+    prisma.task.count({ where: { ...scope, dueAt: { lte: endOfToday(now, zone) } } }),
     prisma.task.count({ where: { ...scope, dueAt: { lt: now } } }),
   ]);
 

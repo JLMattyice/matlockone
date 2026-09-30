@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -34,7 +33,9 @@ import { requirePermission } from "@/lib/auth";
 import { LEAD_SOURCE_LABELS, LEAD_SOURCES, type LeadSource } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Reports" };
 
@@ -54,7 +55,8 @@ export default async function ReportsPage({
   const period: ReportPeriod = isReportPeriod(params.period)
     ? params.period
     : "month";
-  const { current, previous, granularity } = resolveRange(period);
+  const zone = await viewerTimeZone();
+  const { current, previous, granularity } = resolveRange(period, zone);
 
   const [
     totals,
@@ -77,7 +79,7 @@ export default async function ReportsPage({
     revenueByEmployee(org.id, current),
     leadSourcePerformance(org.id, current),
     topClients(org.id, current),
-    receivablesSnapshot(org.id),
+    receivablesSnapshot(org.id, zone),
     showSpend ? expenseTotals(org.id, current) : null,
     showSpend ? expenseTotals(org.id, previous) : null,
     showSpend ? spendByCategory(org.id, current) : [],
@@ -96,7 +98,7 @@ export default async function ReportsPage({
     <div className="space-y-6">
       <PageHeader
         title="Reports"
-        description={`${format(current.from, "MMM d, yyyy")} – ${format(current.to, "MMM d, yyyy")}`}
+        description={`${formatIn(current.from, "MMM d, yyyy", zone)} – ${formatIn(current.to, "MMM d, yyyy", zone)}`}
         actions={
           <a
             href={`/reports/export?period=${period}`}
@@ -200,6 +202,7 @@ export default async function ReportsPage({
         <div className="p-5">
           <TrendChart
             buckets={series}
+            zone={zone}
             currency={org.currency}
             locale={org.locale}
             showSpend={Boolean(spend)}

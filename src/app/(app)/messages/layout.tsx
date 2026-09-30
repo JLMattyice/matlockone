@@ -2,6 +2,7 @@ import { ConversationList } from "@/components/messages/conversation-list";
 import { MessagesShell } from "@/components/messages/messages-shell";
 import { requirePermission } from "@/lib/auth";
 import { listConversations } from "@/lib/conversations";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 /**
  * The inbox stays mounted while threads change beside it. It is re-rendered
@@ -14,10 +15,13 @@ export default async function MessagesLayout({
   children: React.ReactNode;
 }) {
   const { user, org } = await requirePermission("messages:use");
-  const rows = await listConversations(org.id, user);
+  const [rows, zone] = await Promise.all([
+    listConversations(org.id, user),
+    viewerTimeZone(),
+  ]);
 
   return (
-    <MessagesShell list={<ConversationList rows={rows} timeZone={org.timeZone} />}>
+    <MessagesShell list={<ConversationList rows={rows} timeZone={zone} />}>
       {children}
     </MessagesShell>
   );

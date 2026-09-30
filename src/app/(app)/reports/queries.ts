@@ -26,6 +26,7 @@ import {
   type ExpenseCategory,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { inZone, instant, nowIn } from "@/lib/time-zone";
 
 export const REPORT_PERIODS = [
   "week",
@@ -51,31 +52,45 @@ export const PERIOD_LABELS: Record<ReportPeriod, string> = {
   all: "Last 12 months",
 };
 
-export type DateRange = { from: Date; to: Date; label: string };
+export type DateRange = {
+  from: Date;
+  to: Date;
+  label: string;
+  /** The zone the range was cut in, and its days and months are bucketed in. */
+  zone: string;
+};
 
 /**
  * Resolves a named period into a concrete range, plus the previous range of the
  * same length so every figure can be shown against a comparable baseline.
+ *
+ * Weeks, months and years begin on the clock of `zone` — the viewer's — not
+ * the server's.
  */
-export function resolveRange(period: ReportPeriod): {
+export function resolveRange(
+  period: ReportPeriod,
+  zone: string,
+): {
   current: DateRange;
   previous: DateRange;
   /** How the revenue series should be bucketed for this span. */
   granularity: "day" | "week" | "month";
 } {
-  const now = new Date();
+  const now = nowIn(zone);
+  const range = (from: Date, to: Date, label: string): DateRange => ({
+    from: instant(from),
+    to: instant(to),
+    label,
+    zone,
+  });
 
   switch (period) {
     case "week": {
       const from = startOfWeek(now);
       const to = endOfWeek(now);
       return {
-        current: { from, to, label: PERIOD_LABELS.week },
-        previous: {
-          from: subDays(from, 7),
-          to: subDays(to, 7),
-          label: "Previous week",
-        },
+        current: range(from, to, PERIOD_LABELS.week),
+        previous: range(subDays(from, 7), subDays(to, 7), "Previous week"),
         granularity: "day",
       };
     }
@@ -83,12 +98,8 @@ export function resolveRange(period: ReportPeriod): {
       const from = startOfMonth(subMonths(now, 2));
       const to = endOfDay(now);
       return {
-        current: { from, to, label: PERIOD_LABELS.quarter },
-        previous: {
-          from: subMonths(from, 3),
-          to: subMonths(to, 3),
-          label: "Previous 3 months",
-        },
+        current: range(from, to, PERIOD_LABELS.quarter),
+        previous: range(subMonths(from, 3), subMonths(to, 3), "Previous 3 months"),
         granularity: "week",
       };
     }
@@ -96,12 +107,12 @@ export function resolveRange(period: ReportPeriod): {
       const from = startOfYear(now);
       const to = endOfYear(now);
       return {
-        current: { from, to, label: PERIOD_LABELS.year },
-        previous: {
-          from: startOfYear(subYears(now, 1)),
-          to: endOfYear(subYears(now, 1)),
-          label: "Last year",
-        },
+        current: range(from, to, PERIOD_LABELS.year),
+        previous: range(
+          startOfYear(subYears(now, 1)),
+          endOfYear(subYears(now, 1)),
+          "Last year",
+        ),
         granularity: "month",
       };
     }
@@ -109,12 +120,8 @@ export function resolveRange(period: ReportPeriod): {
       const from = startOfMonth(subMonths(now, 11));
       const to = endOfDay(now);
       return {
-        current: { from, to, label: PERIOD_LABELS.all },
-        previous: {
-          from: subMonths(from, 12),
-          to: subMonths(to, 12),
-          label: "Previous 12 months",
-        },
+        current: range(from, to, PERIOD_LABELS.all),
+        previous: range(subMonths(from, 12), subMonths(to, 12), "Previous 12 months"),
         granularity: "month",
       };
     }
@@ -123,12 +130,12 @@ export function resolveRange(period: ReportPeriod): {
       const from = startOfMonth(now);
       const to = endOfMonth(now);
       return {
-        current: { from, to, label: PERIOD_LABELS.month },
-        previous: {
-          from: startOfMonth(subMonths(now, 1)),
-          to: endOfMonth(subMonths(now, 1)),
-          label: "Previous month",
-        },
+        current: range(from, to, PERIOD_LABELS.month),
+        previous: range(
+          startOfMonth(subMonths(now, 1)),
+          endOfMonth(subMonths(now, 1)),
+          "Previous month",
+        ),
         granularity: "day",
       };
     }
@@ -223,19 +230,23 @@ export type PeriodTotals = Awaited<ReturnType<typeof periodTotals>>;
  * answer on both.
  */
 function bucketsFor(range: DateRange, granularity: "day" | "week" | "month") {
+  // TZDates, so each bucket starts at midnight on the viewer's clock.
+  const interval = { start: inZone(range.from, range.zone), end: inZone(range.to, range.zone) };
   const starts =
     granularity === "day"
-      ? eachDayOfInterval({ start: range.from, end: range.to })
+      ? eachDayOfInterval(interval)
       : granularity === "week"
-        ? eachWeekOfInterval({ start: range.from, end: range.to })
-        : eachMonthOfInterval({ start: range.from, end: range.to });
+        ? eachWeekOfInterval(interval)
+        : eachMonthOfInterval(interval);
 
-  const keyFor = (date: Date) =>
-    granularity === "day"
+  const keyFor = (value: Date) => {
+    const date = inZone(value, range.zone);
+    return granularity === "day"
       ? format(date, "yyyy-MM-dd")
       : granularity === "week"
         ? format(startOfWeek(date), "yyyy-MM-dd")
         : format(startOfMonth(date), "yyyy-MM");
+  };
 
   const labelFor = (date: Date) =>
     granularity === "day"
@@ -245,7 +256,7 @@ function bucketsFor(range: DateRange, granularity: "day" | "week" | "month") {
         : format(date, "MMM");
 
   const buckets = starts.map((date) => ({
-    date,
+    date: instant(date),
     key: keyFor(date),
     label: labelFor(date),
     inCents: 0,
@@ -557,9 +568,9 @@ export async function spendByVendor(
   }));
 }
 
-/** Receivables position — as of now, not the selected range. */
-export async function receivablesSnapshot(organizationId: string) {
-  const now = new Date();
+/** Receivables position — as of now, not the selected range; today on the viewer's clock. */
+export async function receivablesSnapshot(organizationId: string, zone: string) {
+  const todayStart = instant(startOfDay(nowIn(zone)));
 
   const open = await prisma.invoice.findMany({
     where: {
@@ -576,7 +587,7 @@ export async function receivablesSnapshot(organizationId: string) {
 
   for (const invoice of open) {
     outstandingCents += invoice.balanceCents;
-    if (invoice.dueDate && invoice.dueDate < startOfDay(now)) {
+    if (invoice.dueDate && invoice.dueDate < todayStart) {
       overdueCents += invoice.balanceCents;
       overdueCount++;
     }

@@ -17,14 +17,16 @@ import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { can, permissionsFor } from "@/lib/permissions";
 import { formatPhone } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Team" };
 
 export default async function TeamPage() {
   const { user, org } = await requirePermission("employees:read");
+  const zone = await viewerTimeZone();
 
   const [members, groupCount] = await Promise.all([
-    listTeam(org.id),
+    listTeam(org.id, zone),
     prisma.group.count({ where: { organizationId: org.id } }),
   ]);
 

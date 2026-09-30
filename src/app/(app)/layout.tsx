@@ -3,10 +3,12 @@ import { Topbar } from "@/components/app-shell/topbar";
 import { requireContext } from "@/lib/auth";
 import { BillingBanner } from "@/components/app-shell/billing-banner";
 import { DemoBanner } from "@/components/app-shell/demo-banner";
+import { TimeZoneProvider } from "@/components/app-shell/time-zone";
 import { unreadMessageCount } from "@/lib/conversations";
 import { NAVIGATION, orgLabels, resolveNavigation } from "@/lib/navigation";
 import { can } from "@/lib/permissions";
 import { hexToRgbChannels } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export default async function AppLayout({
   children,
@@ -14,6 +16,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const { user, org } = await requireContext();
+  const zone = await viewerTimeZone();
 
   // Navigation is filtered by role here, and every page re-checks its own
   // permission — hiding a link is presentation, not access control.
@@ -45,41 +48,43 @@ export default async function AppLayout({
   } as React.CSSProperties;
 
   return (
-    <div style={themeVars} className="min-h-screen">
-      <Sidebar
-        groups={groups}
-        brand={{
-          name: org.name,
-          logoUrl: org.logoUrl,
-        }}
-        unreadMessages={unreadMessages}
-      />
-
-      <div className="lg:pl-64 print:pl-0">
-        <Topbar
-          user={{
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            avatarUrl: user.avatarUrl,
+    <TimeZoneProvider zone={zone}>
+      <div style={themeVars} className="min-h-screen">
+        <Sidebar
+          groups={groups}
+          brand={{
+            name: org.name,
+            logoUrl: org.logoUrl,
           }}
-          canOpenSettings={can(user, "settings:read")}
-          searchPlaceholder={`Search ${org.labelClientPlural.toLowerCase()}, ${org.labelJobPlural.toLowerCase()}, invoices…`}
+          unreadMessages={unreadMessages}
         />
 
-        {/* In the demo, what matters is that nothing is kept; its licence
-            state is nobody's business. */}
-        {org.isDemo ? (
-          <DemoBanner />
-        ) : (
-          <BillingBanner org={org} canManage={can(user, "settings:write")} />
-        )}
+        <div className="lg:pl-64 print:pl-0">
+          <Topbar
+            user={{
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              avatarUrl: user.avatarUrl,
+            }}
+            canOpenSettings={can(user, "settings:read")}
+            searchPlaceholder={`Search ${org.labelClientPlural.toLowerCase()}, ${org.labelJobPlural.toLowerCase()}, invoices…`}
+          />
 
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 lg:px-6 lg:py-8">
-          {children}
-        </main>
+          {/* In the demo, what matters is that nothing is kept; its licence
+              state is nobody's business. */}
+          {org.isDemo ? (
+            <DemoBanner />
+          ) : (
+            <BillingBanner org={org} canManage={can(user, "settings:write")} />
+          )}
+
+          <main className="mx-auto w-full max-w-7xl px-4 py-6 lg:px-6 lg:py-8">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </TimeZoneProvider>
   );
 }

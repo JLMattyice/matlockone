@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import {
   ArrowLeft,
   ArrowRight,
@@ -64,7 +63,9 @@ import { prisma } from "@/lib/db";
 import { currencySymbol, formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { describeRecurrence } from "@/lib/recurrence";
-import { directionsUrl, formatPhone, toDateTimeLocal } from "@/lib/utils";
+import { formatIn, toDateTimeLocal } from "@/lib/time-zone";
+import { directionsUrl, formatPhone } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export async function generateMetadata({
   params,
@@ -90,6 +91,7 @@ export default async function JobDetailPage({
 }) {
   const ctx = await requirePermission("jobs:read");
   const { user, org } = ctx;
+  const zone = await viewerTimeZone();
   const { id } = await params;
 
   const job = await getJob(ctx, id);
@@ -357,9 +359,7 @@ export default async function JobDetailPage({
                   }
                   currentUserId={user.id}
                   canLogForOthers={can(user, "jobs:assign")}
-                  defaultStart={toDateTimeLocal(
-                    job.scheduledStart ?? new Date(),
-                  )}
+                  defaultStart={toDateTimeLocal(job.scheduledStart ?? new Date(), zone)}
                 />
               </div>
             ) : null}
@@ -390,7 +390,7 @@ export default async function JobDetailPage({
                         ) : null}
                       </Td>
                       <Td className="tabular whitespace-nowrap text-ink-muted">
-                        {format(entry.startedAt, "MMM d, h:mm a")}
+                        {formatIn(entry.startedAt, "MMM d, h:mm a", zone)}
                       </Td>
                       <Td align="right" className="tabular whitespace-nowrap">
                         {formatMinutes(entry.minutes)}
@@ -519,7 +519,7 @@ export default async function JobDetailPage({
                             align="right"
                             className="tabular whitespace-nowrap text-ink-muted"
                           >
-                            {format(expense.spentAt, "MMM d, yyyy")}
+                            {formatIn(expense.spentAt, "MMM d, yyyy", zone)}
                           </Td>
                           <Td
                             align="right"
@@ -555,6 +555,7 @@ export default async function JobDetailPage({
               />
               <AttachmentPanel
                 attachments={job.attachments}
+                zone={zone}
                 entityType="job"
                 entityId={job.id}
                 canWrite={can(user, "files:write")}
@@ -586,6 +587,7 @@ export default async function JobDetailPage({
             <CardHeader title="Notes" />
             <NotesPanel
               notes={job.notes}
+              zone={zone}
               entityType="job"
               entityId={job.id}
               canWrite={canLogTime}
@@ -599,6 +601,7 @@ export default async function JobDetailPage({
             jobId={job.id}
             viewer={user}
             jobLabel={org.labelJobSingular}
+            zone={zone}
           />
         </div>
 
@@ -617,14 +620,14 @@ export default async function JobDetailPage({
                   />
                   <div>
                     <p className="text-sm font-medium text-ink">
-                      {format(job.scheduledStart, "EEEE, MMMM d, yyyy")}
+                      {formatIn(job.scheduledStart, "EEEE, MMMM d, yyyy", zone)}
                     </p>
                     <p className="tabular text-sm text-ink-muted">
                       {job.allDay
                         ? "All day"
-                        : `${format(job.scheduledStart, "h:mm a")}${
+                        : `${formatIn(job.scheduledStart, "h:mm a", zone)}${
                             job.scheduledEnd
-                              ? ` – ${format(job.scheduledEnd, "h:mm a")}`
+                              ? ` – ${formatIn(job.scheduledEnd, "h:mm a", zone)}`
                               : ""
                           }`}
                     </p>
@@ -636,12 +639,12 @@ export default async function JobDetailPage({
 
               {job.startedAt ? (
                 <p className="text-xs text-ink-subtle">
-                  Started {format(job.startedAt, "MMM d 'at' h:mm a")}
+                  Started {formatIn(job.startedAt, "MMM d 'at' h:mm a", zone)}
                 </p>
               ) : null}
               {job.completedAt ? (
                 <p className="text-xs text-success">
-                  Completed {format(job.completedAt, "MMM d 'at' h:mm a")}
+                  Completed {formatIn(job.completedAt, "MMM d 'at' h:mm a", zone)}
                 </p>
               ) : null}
             </div>
@@ -756,7 +759,7 @@ export default async function JobDetailPage({
                           {message.author?.name ?? "Former teammate"}
                         </span>
                         <span className="tabular shrink-0">
-                          {inboxStamp(new Date(message.createdAt), org.timeZone)}
+                          {inboxStamp(new Date(message.createdAt), zone)}
                         </span>
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-sm text-ink">

@@ -6,6 +6,7 @@ import { CopyLink } from "../../estimates/[id]/estimate-actions";
 import { Card, CardHeader } from "@/components/ui/card";
 import type { AutopayStatus } from "@/lib/autopay";
 import { publicUrl } from "@/lib/messaging";
+import { formatIn } from "@/lib/time-zone";
 
 /**
  * The Auto-pay card, under Repeat on an invoice in a series.
@@ -25,6 +26,7 @@ export function AutopayCard({
   money,
   rhythm,
   can,
+  zone,
 }: {
   invoiceId: string;
   clientName: string;
@@ -35,6 +37,8 @@ export function AutopayCard({
   money: (cents: number) => string;
   rhythm: string;
   can: { write: boolean; send: boolean; record: boolean };
+  /** The viewer's time zone, from viewerTimeZone(). */
+  zone: string;
 }) {
   const description =
     status.state === "on"
@@ -116,7 +120,7 @@ export function AutopayCard({
               <div className="flex justify-between gap-3">
                 <dt className="text-ink-muted">Last checked</dt>
                 <dd className="text-ink">
-                  {status.checkedAt ? format(status.checkedAt, "MMM d, h:mm a") : "Not yet"}
+                  {status.checkedAt ? formatIn(status.checkedAt, "MMM d, h:mm a", zone) : "Not yet"}
                 </dd>
               </div>
             </dl>

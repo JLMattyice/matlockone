@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { Plus, Users } from "lucide-react";
 
 import { clientStatusCounts, listClients, type ClientSort } from "./queries";
@@ -20,7 +19,9 @@ import {
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
 import { formatPhone } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Clients" };
 
@@ -38,6 +39,7 @@ export default async function ClientsPage({
   searchParams: SearchParams;
 }) {
   const { user, org } = await requirePermission("clients:read");
+  const zone = await viewerTimeZone();
   const params = await searchParams;
 
   const sort = (["name", "newest", "activity"] as const).includes(
@@ -221,7 +223,7 @@ export default async function ClientsPage({
 
                       <Td className="tabular hidden text-ink-muted xl:table-cell">
                         {client.lastJobAt
-                          ? format(client.lastJobAt, "MMM d, yyyy")
+                          ? formatIn(client.lastJobAt, "MMM d, yyyy", zone)
                           : "—"}
                       </Td>
 

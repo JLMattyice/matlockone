@@ -1,10 +1,12 @@
 import "server-only";
 
 import { notFound } from "next/navigation";
+import { startOfMonth } from "date-fns";
 
 import { prisma } from "@/lib/db";
 import { ageingBucket } from "@/lib/documents";
 import { like } from "@/lib/search";
+import { instant, nowIn } from "@/lib/time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const INVOICES_PAGE_SIZE = 25;
@@ -114,7 +116,7 @@ export type InvoiceListRow = Awaited<ReturnType<typeof listInvoices>>["rows"][nu
  * because "days past due" is relative to now and the same expression would have
  * to be written differently for SQLite and Postgres.
  */
-export async function invoiceSummary(organizationId: string) {
+export async function invoiceSummary(organizationId: string, zone: string) {
   const now = new Date();
 
   const [open, paidThisMonth, draftCount, cancelledCount] = await Promise.all([
@@ -129,9 +131,8 @@ export async function invoiceSummary(organizationId: string) {
     prisma.payment.aggregate({
       where: {
         organizationId,
-        receivedAt: {
-          gte: new Date(now.getFullYear(), now.getMonth(), 1),
-        },
+        // This month on the viewer's clock.
+        receivedAt: { gte: instant(startOfMonth(nowIn(zone))) },
       },
       _sum: { amountCents: true },
     }),

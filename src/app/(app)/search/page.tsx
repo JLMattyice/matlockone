@@ -13,6 +13,7 @@ import { globalSearch, type SearchHit } from "./queries";
 import { Card } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { requireContext } from "@/lib/auth";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Search" };
 
@@ -33,7 +34,7 @@ export default async function SearchPage({
   const { q } = await searchParams;
   const query = (q ?? "").trim();
 
-  const results = await globalSearch(ctx, query);
+  const results = await globalSearch(ctx, query, await viewerTimeZone());
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { FileText,
   ArrowLeft,
   Ban,
@@ -52,6 +51,8 @@ import { currencySymbol, formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { autopayStatus } from "@/lib/autopay";
 import { describeRecurrence } from "@/lib/recurrence";
+import { formatIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export async function generateMetadata({
   params,
@@ -76,6 +77,7 @@ export default async function InvoiceDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { user, org } = await requirePermission("invoices:read");
+  const zone = await viewerTimeZone();
   const { id } = await params;
   const invoice = await getInvoice(org.id, id);
   const series = await getInvoiceSeries(org.id, invoice.scheduleId);
@@ -162,16 +164,16 @@ export default async function InvoiceDetailPage({
 
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
               {invoice.sentAt ? (
-                <span>Sent {format(invoice.sentAt, "MMM d, h:mm a")}</span>
+                <span>Sent {formatIn(invoice.sentAt, "MMM d, h:mm a", zone)}</span>
               ) : (
                 <span>Not sent yet</span>
               )}
               {invoice.viewedAt ? (
-                <span>Viewed {format(invoice.viewedAt, "MMM d, h:mm a")}</span>
+                <span>Viewed {formatIn(invoice.viewedAt, "MMM d, h:mm a", zone)}</span>
               ) : null}
               {invoice.paidAt ? (
                 <span className="text-success">
-                  Paid {format(invoice.paidAt, "MMM d, yyyy")}
+                  Paid {formatIn(invoice.paidAt, "MMM d, yyyy", zone)}
                 </span>
               ) : null}
             </div>
@@ -274,7 +276,7 @@ export default async function InvoiceDetailPage({
           />
           <Figure
             label="Due"
-            value={invoice.dueDate ? format(invoice.dueDate, "MMM d, yyyy") : "—"}
+            value={invoice.dueDate ? formatIn(invoice.dueDate, "MMM d, yyyy", zone) : "—"}
             tone={status === "OVERDUE" ? "danger" : undefined}
           />
         </div>
@@ -352,12 +354,14 @@ export default async function InvoiceDetailPage({
               series={series}
               canEdit={writable && !cancelled}
               autopayOn={autopayOn}
+              zone={zone}
             />
           ) : null}
 
           {series && autopay && (series.isActive || autopayOn) ? (
             <AutopayCard
               invoiceId={invoice.id}
+              zone={zone}
               clientName={invoice.client.displayName}
               clientEmail={invoice.client.email}
               status={autopay}
@@ -386,7 +390,7 @@ export default async function InvoiceDetailPage({
                   invoiceId={invoice.id}
                   balanceCents={invoice.balanceCents}
                   currencySymbol={currencySymbol(org.currency, org.locale)}
-                  today={format(new Date(), "yyyy-MM-dd")}
+                  today={formatIn(new Date(), "yyyy-MM-dd", zone)}
                 />
               </div>
             ) : null}
@@ -423,7 +427,7 @@ export default async function InvoiceDetailPage({
                             ) as PaymentMethod
                           ]
                         }{" "}
-                        · {format(payment.receivedAt, "MMM d, yyyy")}
+                        · {formatIn(payment.receivedAt, "MMM d, yyyy", zone)}
                       </p>
                       {payment.reference ? (
                         <p className="truncate text-xs text-ink-subtle">
@@ -460,6 +464,7 @@ export default async function InvoiceDetailPage({
             <CardHeader title="Internal notes" />
             <NotesPanel
               notes={invoice.notes_}
+              zone={zone}
               entityType="invoice"
               entityId={invoice.id}
               canWrite={writable}

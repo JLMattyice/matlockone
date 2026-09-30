@@ -27,6 +27,9 @@ let otherOrganizationId: string;
 let jobId: string;
 let payerId: string;
 
+// daysAgo() builds dates on this machine's clock, so the queries read on it too.
+const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 const daysAgo = (days: number) => {
   const date = new Date();
   date.setHours(12, 0, 0, 0);
@@ -131,7 +134,7 @@ afterEach(async () => {
 
 describe("listExpenses", () => {
   it("totals only the caller's own organization", async () => {
-    const list = await listExpenses({ organizationId, period: "all" });
+    const list = await listExpenses({ organizationId, zone, period: "all" });
 
     expect(list.total).toBe(4);
     expect(list.totalCents).toBe(70_500);
@@ -142,7 +145,7 @@ describe("listExpenses", () => {
   });
 
   it("returns the newest spend first", async () => {
-    const list = await listExpenses({ organizationId, period: "all" });
+    const list = await listExpenses({ organizationId, zone, period: "all" });
 
     expect(list.rows.map((row) => row.description)).toEqual([
       "Parking while on site",
@@ -153,7 +156,7 @@ describe("listExpenses", () => {
   });
 
   it("drops rows outside the period", async () => {
-    const list = await listExpenses({ organizationId, period: "30d" });
+    const list = await listExpenses({ organizationId, zone, period: "30d" });
 
     expect(list.total).toBe(3);
     expect(list.totalCents).toBe(52_500);
@@ -161,41 +164,41 @@ describe("listExpenses", () => {
 
   it("filters by category, job and flag", async () => {
     await expect(
-      listExpenses({ organizationId, period: "all", category: "MATERIALS" }),
+      listExpenses({ organizationId, zone, period: "all", category: "MATERIALS" }),
     ).resolves.toMatchObject({ total: 2, totalCents: 60_000 });
 
     await expect(
-      listExpenses({ organizationId, period: "all", jobId }),
+      listExpenses({ organizationId, zone, period: "all", jobId }),
     ).resolves.toMatchObject({ total: 2, totalCents: 60_000 });
 
     await expect(
-      listExpenses({ organizationId, period: "all", flag: "billable" }),
+      listExpenses({ organizationId, zone, period: "all", flag: "billable" }),
     ).resolves.toMatchObject({ total: 1, totalCents: 42_000 });
 
     // "Owed back" is the unsettled subset of reimbursable, not all of it.
     await expect(
-      listExpenses({ organizationId, period: "all", flag: "reimbursable" }),
+      listExpenses({ organizationId, zone, period: "all", flag: "reimbursable" }),
     ).resolves.toMatchObject({ total: 2 });
 
     await expect(
-      listExpenses({ organizationId, period: "all", flag: "unreimbursed" }),
+      listExpenses({ organizationId, zone, period: "all", flag: "unreimbursed" }),
     ).resolves.toMatchObject({ total: 1, totalCents: 9_000 });
   });
 
   it("searches description, vendor and the job it is booked to", async () => {
     await expect(
-      listExpenses({ organizationId, period: "all", q: "Ferguson" }),
+      listExpenses({ organizationId, zone, period: "all", q: "Ferguson" }),
     ).resolves.toMatchObject({ total: 1 });
 
     await expect(
-      listExpenses({ organizationId, period: "all", q: "panel" }),
+      listExpenses({ organizationId, zone, period: "all", q: "panel" }),
     ).resolves.toMatchObject({ total: 2 });
   });
 });
 
 describe("expenseSummary", () => {
   it("ranks categories by spend", async () => {
-    const summary = await expenseSummary({ organizationId, period: "all" });
+    const summary = await expenseSummary({ organizationId, zone, period: "all" });
 
     expect(summary.categories.map((row) => row.category)).toEqual([
       "MATERIALS",
@@ -208,8 +211,8 @@ describe("expenseSummary", () => {
   it("counts what is owed back regardless of the period filter", async () => {
     // The 30-day window excludes nothing reimbursable here, but the guarantee
     // is that money owed to a teammate does not disappear when the range moves.
-    const narrow = await expenseSummary({ organizationId, period: "30d" });
-    const wide = await expenseSummary({ organizationId, period: "all" });
+    const narrow = await expenseSummary({ organizationId, zone, period: "30d" });
+    const wide = await expenseSummary({ organizationId, zone, period: "all" });
 
     expect(narrow.unreimbursedCents).toBe(9_000);
     expect(narrow.unreimbursedCount).toBe(1);
@@ -320,6 +323,7 @@ describe("reports", () => {
     from: daysAgo(30),
     to: daysAgo(-1),
     label: "Test range",
+    zone,
   });
 
   it("splits job costs from overhead by what was booked to a job", async () => {
@@ -344,6 +348,7 @@ describe("reports", () => {
       from: daysAgo(1),
       to: daysAgo(-1),
       label: "Yesterday on",
+      zone,
     };
 
     const totals = await expenseTotals(organizationId, narrow);

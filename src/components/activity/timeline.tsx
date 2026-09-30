@@ -20,6 +20,7 @@ import {
   type ActivityIcon,
   type ActivityTone,
 } from "@/lib/activity";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
 /**
@@ -51,10 +52,13 @@ const TONES: Record<ActivityTone, string> = {
 
 export function ActivityTimeline({
   events,
+  zone,
   emptyTitle = "Nothing yet",
   emptyDescription = "Work, documents and payments will appear here as they happen.",
 }: {
   events: ActivityEvent[];
+  /** The viewer's time zone, from viewerTimeZone(). */
+  zone: string;
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
@@ -68,7 +72,7 @@ export function ActivityTimeline({
     );
   }
 
-  const days = groupByDay(events);
+  const days = groupByDay(events, zone);
 
   return (
     <div className="px-5 py-4">
@@ -80,7 +84,7 @@ export function ActivityTimeline({
 
           <ol className="space-y-0.5">
             {day.events.map((event) => (
-              <Event key={event.id} event={event} />
+              <Event key={event.id} event={event} zone={zone} />
             ))}
           </ol>
         </section>
@@ -89,7 +93,7 @@ export function ActivityTimeline({
   );
 }
 
-function Event({ event }: { event: ActivityEvent }) {
+function Event({ event, zone }: { event: ActivityEvent; zone: string }) {
   const meta = activityMeta(event.action);
   const Icon = ICONS[meta.icon];
   const href = activityHref(event.entityType, event.entityId);
@@ -108,10 +112,7 @@ function Event({ event }: { event: ActivityEvent }) {
       <span className="min-w-0 flex-1">
         <span className="block text-sm text-ink">{event.summary}</span>
         <span className="mt-0.5 block text-xs text-ink-subtle">
-          {event.createdAt.toLocaleTimeString(undefined, {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
+          {formatIn(event.createdAt, "h:mm a", zone)}
           {event.actor ? ` · ${event.actor}` : ""}
         </span>
       </span>

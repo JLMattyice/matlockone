@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useActionState } from "react";
 
 import { createTask, deleteTask, setTaskDone } from "@/app/(app)/tasks/actions";
+import { useTimeZone } from "@/components/app-shell/time-zone";
 import { buttonClasses } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { EmptyState } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit";
 import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
 /**
@@ -141,6 +143,7 @@ function TaskRow({
   canWrite: boolean;
   showContext: boolean;
 }) {
+  const zone = useTimeZone();
   const done = task.status === "DONE";
   const overdue = !done && task.dueAt !== null && task.dueAt < new Date();
 
@@ -179,10 +182,7 @@ function TaskRow({
           {task.dueAt ? (
             <span className={overdue ? "font-medium text-danger" : "text-ink-subtle"}>
               {overdue ? "Overdue · " : "Due "}
-              {task.dueAt.toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
+              {formatIn(task.dueAt, "MMM d", zone)}
             </span>
           ) : null}
 

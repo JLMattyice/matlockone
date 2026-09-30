@@ -20,6 +20,10 @@ let org: Organization;
 let otherOrg: Organization;
 let payer: { id: string };
 
+// The helpers below build dates on this machine's clock, so the dashboard is
+// read on it too.
+const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 const dayInMonth = (day: number) => {
   const date = new Date();
   date.setDate(1);
@@ -133,7 +137,7 @@ afterEach(async () => {
 
 describe("loadDashboard", () => {
   it("totals this month's spend for this business only", async () => {
-    const data = await loadDashboard(contextFor("OWNER", org));
+    const data = await loadDashboard(contextFor("OWNER", org), zone);
 
     expect(data.seesExpenses).toBe(true);
     // 30,000 + 5,000 + 1,200 — the four-month-old expense is out of the month.
@@ -142,7 +146,7 @@ describe("loadDashboard", () => {
   });
 
   it("counts money owed back regardless of when it was spent", async () => {
-    const data = await loadDashboard(contextFor("OWNER", org));
+    const data = await loadDashboard(contextFor("OWNER", org), zone);
 
     // Diesel this month plus parking from four months ago. The coffee run is
     // settled and the other business's expense is not ours.
@@ -157,7 +161,7 @@ describe("loadDashboard", () => {
   });
 
   it("fetches no spend at all for a role without the permission", async () => {
-    const data = await loadDashboard(contextFor("EMPLOYEE", org));
+    const data = await loadDashboard(contextFor("EMPLOYEE", org), zone);
 
     expect(data.seesExpenses).toBe(false);
     expect(data.spentThisMonthCents).toBe(0);
@@ -192,7 +196,7 @@ describe("loadDashboard", () => {
       },
     });
 
-    const data = await loadDashboard(contextFor("OWNER", org));
+    const data = await loadDashboard(contextFor("OWNER", org), zone);
 
     expect(data.monthlyCashFlow).toHaveLength(6);
 

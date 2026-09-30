@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { Wallet } from "lucide-react";
 
 import { listPayments } from "../invoices/queries";
@@ -17,6 +16,8 @@ import {
   type PaymentMethod,
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
+import { formatIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Payments" };
 
@@ -31,6 +32,7 @@ export default async function PaymentsPage({
   }>;
 }) {
   const { org } = await requirePermission("payments:read");
+  const zone = await viewerTimeZone();
   const params = await searchParams;
 
   const list = await listPayments({
@@ -93,7 +95,7 @@ export default async function PaymentsPage({
                 {list.rows.map((payment) => (
                   <Tr key={payment.id}>
                     <Td className="tabular whitespace-nowrap text-ink-muted">
-                      {format(payment.receivedAt, "MMM d, yyyy")}
+                      {formatIn(payment.receivedAt, "MMM d, yyyy", zone)}
                     </Td>
 
                     <Td>

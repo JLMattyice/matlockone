@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { endOfWeek, startOfWeek } from "date-fns";
 
 import { prisma } from "@/lib/db";
+import { instant, nowIn } from "@/lib/time-zone";
 
 /**
  * Groups are a saved set of people, not an org chart.
@@ -12,7 +13,8 @@ import { prisma } from "@/lib/db";
  * members and no work is a group somebody made and forgot, and it should be
  * obvious at a glance which ones those are.
  */
-export async function listGroups(organizationId: string) {
+/** `zone` is the viewer's: "this week" starts on Sunday on their clock. */
+export async function listGroups(organizationId: string, zone: string) {
   const groups = await prisma.group.findMany({
     where: { organizationId },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
@@ -28,7 +30,7 @@ export async function listGroups(organizationId: string) {
 
   if (groups.length === 0) return [];
 
-  const now = new Date();
+  const now = nowIn(zone);
   const ids = groups.map((group) => group.id);
 
   // One grouped query rather than one per row.
@@ -47,7 +49,7 @@ export async function listGroups(organizationId: string) {
       where: {
         organizationId,
         groupId: { in: ids },
-        scheduledStart: { gte: startOfWeek(now), lte: endOfWeek(now) },
+        scheduledStart: { gte: instant(startOfWeek(now)), lte: instant(endOfWeek(now)) },
       },
       _count: true,
     }),
@@ -102,8 +104,8 @@ export async function getGroup(organizationId: string, id: string) {
 export type GroupDetail = Awaited<ReturnType<typeof getGroup>>;
 
 /** Upcoming work carrying this group's name, for the group's own page. */
-export async function groupWorkload(organizationId: string, groupId: string) {
-  const now = new Date();
+export async function groupWorkload(organizationId: string, groupId: string, zone: string) {
+  const now = nowIn(zone);
 
   const [upcoming, thisWeek, completed] = await Promise.all([
     prisma.job.findMany({
@@ -127,7 +129,7 @@ export async function groupWorkload(organizationId: string, groupId: string) {
       where: {
         organizationId,
         groupId,
-        scheduledStart: { gte: startOfWeek(now), lte: endOfWeek(now) },
+        scheduledStart: { gte: instant(startOfWeek(now)), lte: instant(endOfWeek(now)) },
       },
     }),
     prisma.job.count({

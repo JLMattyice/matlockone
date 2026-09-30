@@ -21,12 +21,15 @@ export async function JobActivity({
   jobId,
   viewer,
   jobLabel,
+  zone,
 }: {
   organizationId: string;
   jobId: string;
   viewer: Actor;
   /** The business's own word for a job, as on the rest of the page. */
   jobLabel: string;
+  /** The viewer's time zone, from viewerTimeZone(). */
+  zone: string;
 }) {
   const events = await jobTimeline(organizationId, jobId, viewer);
 
@@ -35,6 +38,7 @@ export async function JobActivity({
       <CardHeader title="Activity" />
       <ActivityTimeline
         events={events}
+        zone={zone}
         emptyTitle="Nothing has happened yet"
         emptyDescription={`Changes, notes, photos and finished tasks on this ${jobLabel.toLowerCase()} will appear here.`}
       />

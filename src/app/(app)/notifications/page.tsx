@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { Bell, Check } from "lucide-react";
 
 import { clearReadNotifications, markAllNotificationsRead } from "./actions";
@@ -9,7 +8,9 @@ import { Card } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { requireContext } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Notifications" };
 
@@ -27,6 +28,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default async function NotificationsPage() {
   const { user } = await requireContext();
+  const zone = await viewerTimeZone();
 
   const notifications = await prisma.notification.findMany({
     where: { userId: user.id },
@@ -106,7 +108,7 @@ export default async function NotificationsPage() {
                       </p>
                     ) : null}
                     <p className="mt-1 text-xs text-ink-subtle">
-                      {format(notification.createdAt, "MMM d, yyyy 'at' h:mm a")}
+                      {formatIn(notification.createdAt, "MMM d, yyyy 'at' h:mm a", zone)}
                     </p>
                   </div>
                 </div>

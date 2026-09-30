@@ -290,35 +290,55 @@ describe("groupByDay", () => {
     actor: null,
   });
 
-  it("names today and yesterday rather than dating them", () => {
-    const now = new Date(2026, 8, 20, 14, 0);
-    const yesterday = new Date(2026, 8, 19, 9, 0);
+  const zone = "America/New_York";
 
-    const groups = groupByDay([event("a", now), event("b", yesterday)], now);
+  it("names today and yesterday rather than dating them", () => {
+    const now = new Date("2026-09-20T18:00:00Z");
+    const yesterday = new Date("2026-09-19T13:00:00Z");
+
+    const groups = groupByDay([event("a", now), event("b", yesterday)], zone, now);
 
     expect(groups.map((g) => g.label)).toEqual(["Today", "Yesterday"]);
   });
 
   it("keeps several events from one day together", () => {
-    const now = new Date(2026, 8, 20, 14, 0);
-    const earlier = new Date(2026, 8, 20, 9, 0);
+    const now = new Date("2026-09-20T18:00:00Z");
+    const earlier = new Date("2026-09-20T13:00:00Z");
 
-    const groups = groupByDay([event("a", now), event("b", earlier)], now);
+    const groups = groupByDay([event("a", now), event("b", earlier)], zone, now);
 
     expect(groups).toHaveLength(1);
     expect(groups[0].events).toHaveLength(2);
   });
 
   it("dates anything older, and names the year only when it is not this one", () => {
-    const now = new Date(2026, 8, 20, 14, 0);
-    const lastMonth = new Date(2026, 7, 3, 9, 0);
-    const lastYear = new Date(2025, 7, 3, 9, 0);
+    const now = new Date("2026-09-20T18:00:00Z");
+    const lastMonth = new Date("2026-08-03T13:00:00Z");
+    const lastYear = new Date("2025-08-03T13:00:00Z");
 
-    const groups = groupByDay([event("a", lastMonth), event("b", lastYear)], now);
+    const groups = groupByDay([event("a", lastMonth), event("b", lastYear)], zone, now);
 
-    expect(groups[0].label).toContain("Aug");
-    expect(groups[0].label).not.toContain("2026");
-    expect(groups[1].label).toContain("2025");
+    expect(groups[0].label).toBe("Mon, Aug 3");
+    expect(groups[1].label).toBe("Sun, Aug 3, 2025");
+  });
+
+  it("goes by the viewer's clock, not the server's", () => {
+    // 9:05 PM in New York is already tomorrow in UTC, where the server runs.
+    const now = new Date("2026-09-30T01:30:00Z");
+    const evening = new Date("2026-09-30T01:05:00Z");
+    const morning = new Date("2026-09-29T13:00:00Z");
+
+    const groups = groupByDay([event("a", evening), event("b", morning)], zone, now);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe("Today");
+
+    const west = groupByDay([event("a", evening)], "America/Los_Angeles", now);
+    expect(west[0].label).toBe("Today");
+    const east = groupByDay([event("a", evening)], "Europe/London", now);
+    expect(east[0].label).toBe("Today");
+    const eastYesterday = groupByDay([event("b", morning)], "Europe/London", now);
+    expect(eastYesterday[0].label).toBe("Yesterday");
   });
 });
 

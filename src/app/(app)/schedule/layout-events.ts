@@ -1,5 +1,6 @@
 import type { CalendarEvent } from "./types";
 import { GRID_START_HOUR, HOUR_HEIGHT } from "./types";
+import { inZone } from "@/lib/time-zone";
 
 export type PositionedEvent = {
   event: CalendarEvent;
@@ -17,8 +18,10 @@ export type PositionedEvent = {
  * time; the number of lanes in a cluster of mutually overlapping events sets
  * how wide each one is. This is the same approach a calendar app uses — without
  * it, two jobs at 9am would sit exactly on top of each other.
+ *
+ * Placed by the hour on the clock of `zone`, the viewer's.
  */
-export function layoutDay(events: CalendarEvent[]): PositionedEvent[] {
+export function layoutDay(events: CalendarEvent[], zone: string): PositionedEvent[] {
   const timed = events
     .filter((event) => !event.allDay)
     .slice()
@@ -63,7 +66,7 @@ export function layoutDay(events: CalendarEvent[]): PositionedEvent[] {
       const lane = laneOf.get(event.id) ?? 0;
       positioned.push({
         event,
-        topPx: minutesFromGridStart(event.startISO) * (HOUR_HEIGHT / 60),
+        topPx: minutesFromGridStart(event.startISO, zone) * (HOUR_HEIGHT / 60),
         heightPx: Math.max(
           (event.durationMinutes * HOUR_HEIGHT) / 60,
           HOUR_HEIGHT / 3,
@@ -89,7 +92,7 @@ export function layoutDay(events: CalendarEvent[]): PositionedEvent[] {
   return positioned;
 }
 
-export function minutesFromGridStart(iso: string) {
-  const date = new Date(iso);
+export function minutesFromGridStart(iso: string, zone: string) {
+  const date = inZone(iso, zone);
   return date.getHours() * 60 + date.getMinutes() - GRID_START_HOUR * 60;
 }

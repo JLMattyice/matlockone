@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format, isToday, isTomorrow } from "date-fns";
+import { isToday, isTomorrow } from "date-fns";
 import {
   Banknote,
   Briefcase,
@@ -42,15 +42,18 @@ import {
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { formatIn, inZone, nowIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const ctx = await requireContext();
   const { user, org } = ctx;
-  const data = await loadDashboard(ctx);
-  const tasks = await taskSummary(org.id, user);
+  const zone = await viewerTimeZone();
+  const data = await loadDashboard(ctx, zone);
+  const tasks = await taskSummary(org.id, user, zone);
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
   const firstName = user.name.split(" ")[0];
@@ -73,13 +76,13 @@ export default async function DashboardPage() {
     tasksOverdue: tasks.overdue,
     labels: { jobPlural: org.labelJobPlural, leadPlural: org.labelLeadPlural },
     money,
-    monthLabel: format(new Date(), "MMMM yyyy"),
+    monthLabel: formatIn(Date.now(), "MMMM yyyy", zone),
   });
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Good ${partOfDay()}, ${firstName}`}
+        title={`Good ${partOfDay(zone)}, ${firstName}`}
         description={`Here is where ${org.name} stands today.`}
         actions={<QuickActions ctx={ctx} />}
       />
@@ -119,13 +122,13 @@ export default async function DashboardPage() {
                 >
                   <div className="w-15 shrink-0 text-center">
                     <p className="text-[0.6875rem] font-medium tracking-wide text-ink-subtle uppercase">
-                      {job.scheduledStart ? whenLabel(job.scheduledStart) : "—"}
+                      {job.scheduledStart ? whenLabel(job.scheduledStart, zone) : "—"}
                     </p>
                     <p className="tabular text-sm font-semibold text-ink">
                       {job.scheduledStart
                         ? job.allDay
                           ? "All day"
-                          : format(job.scheduledStart, "h:mm a")
+                          : formatIn(job.scheduledStart, "h:mm a", zone)
                         : ""}
                     </p>
                   </div>
@@ -187,7 +190,7 @@ export default async function DashboardPage() {
                   </p>
                   <p className="mt-1 text-xs text-ink-subtle">
                     {job.startedAt
-                      ? `Started ${format(job.startedAt, "h:mm a")}`
+                      ? `Started ${formatIn(job.startedAt, "h:mm a", zone)}`
                       : "Not started"}
                     {job.assignments.length
                       ? ` · ${job.assignments.map((a) => a.user.name).join(", ")}`
@@ -214,6 +217,7 @@ export default async function DashboardPage() {
             <div className="p-5">
               <CashFlowChart
                 buckets={data.monthlyCashFlow}
+                zone={zone}
                 currency={org.currency}
                 locale={org.locale}
                 showSpend={data.seesExpenses}
@@ -249,7 +253,7 @@ export default async function DashboardPage() {
                       <p className="truncate text-xs text-ink-subtle">
                         {payment.invoice?.number ?? "—"} ·{" "}
                         {methodLabel(payment.method)} ·{" "}
-                        {format(payment.receivedAt, "MMM d")}
+                        {formatIn(payment.receivedAt, "MMM d", zone)}
                       </p>
                     </div>
                     <span className="tabular shrink-0 text-sm font-semibold text-success">
@@ -273,6 +277,7 @@ export default async function DashboardPage() {
           />
           <ActivityTimeline
             events={await recentActivity(org.id, user, 8)}
+            zone={zone}
             emptyTitle="Nothing has happened yet"
             emptyDescription="Sent documents, payments, finished work and completed tasks will show up here."
           />
@@ -319,7 +324,7 @@ export default async function DashboardPage() {
                   </Link>
                   <p className="truncate text-xs text-ink-subtle">
                     {expense.paidBy?.name ?? "Unassigned"} ·{" "}
-                    {format(expense.spentAt, "MMM d, yyyy")}
+                    {formatIn(expense.spentAt, "MMM d, yyyy", zone)}
                     {expense.vendor ? ` · ${expense.vendor}` : ""}
                   </p>
                 </div>
@@ -354,7 +359,7 @@ export default async function DashboardPage() {
                     {invoice.number} · {invoice.client.displayName}
                   </p>
                   <p className="text-xs text-danger">
-                    Due {invoice.dueDate ? format(invoice.dueDate, "MMM d, yyyy") : "—"}
+                    Due {invoice.dueDate ? formatIn(invoice.dueDate, "MMM d, yyyy", zone) : "—"}
                     {invoice.dueDate ? ` · ${daysLate(invoice.dueDate)} days late` : ""}
                   </p>
                 </div>
@@ -419,10 +424,11 @@ function methodLabel(method: string) {
   ];
 }
 
-function whenLabel(date: Date) {
-  if (isToday(date)) return "Today";
-  if (isTomorrow(date)) return "Tomorrow";
-  return format(date, "EEE d");
+function whenLabel(date: Date, zone: string) {
+  const local = inZone(date, zone);
+  if (isToday(local)) return "Today";
+  if (isTomorrow(local)) return "Tomorrow";
+  return formatIn(date, "EEE d", zone);
 }
 
 function daysLate(dueDate: Date) {
@@ -436,8 +442,9 @@ function plural(count: number, word: string) {
   return count === 1 ? word : `${word}s`;
 }
 
-function partOfDay() {
-  const hour = new Date().getHours();
+/** Morning where the person is, not where the server is. */
+function partOfDay(zone: string) {
+  const hour = nowIn(zone).getHours();
   if (hour < 12) return "morning";
   if (hour < 18) return "afternoon";
   return "evening";

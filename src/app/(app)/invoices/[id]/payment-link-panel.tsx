@@ -7,9 +7,11 @@ import {
   createPaymentLink,
   removePaymentLink,
 } from "../payment-link";
+import { useTimeZone } from "@/components/app-shell/time-zone";
 import { Button } from "@/components/ui/button";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
+import { formatIn } from "@/lib/time-zone";
 
 export type PaymentLinkPanelProps = {
   invoiceId: string;
@@ -34,6 +36,7 @@ export function PaymentLinkPanel({
   settled,
   canRecord,
 }: PaymentLinkPanelProps) {
+  const zone = useTimeZone();
   const [createState, createAction] = useActionState<ActionState, FormData>(
     createPaymentLink,
     IDLE,
@@ -102,7 +105,7 @@ export function PaymentLinkPanel({
         </p>
       ) : paymentCheckedAt ? (
         <p className="text-xs text-ink-subtle">
-          Last checked {new Date(paymentCheckedAt).toLocaleString()}.
+          Last checked {formatIn(paymentCheckedAt, "MMM d, yyyy 'at' h:mm a", zone)}.
         </p>
       ) : null}
     </div>

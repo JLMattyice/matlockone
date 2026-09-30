@@ -64,20 +64,6 @@ export function truncate(text: string, max: number) {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
-/**
- * Formats a Date as the "YYYY-MM-DDTHH:mm" a datetime-local input expects.
- * Built from local parts on purpose — toISOString() would shift the value by
- * the timezone offset and show the user the wrong time.
- */
-export function toDateTimeLocal(date: Date | null | undefined): string {
-  if (!date) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}
-
 /** Minutes between two dates, or a fallback when either is missing. */
 export function durationMinutes(
   start: Date | null | undefined,

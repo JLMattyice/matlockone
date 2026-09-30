@@ -26,6 +26,7 @@ import {
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Expenses" };
 
@@ -51,6 +52,7 @@ export default async function ExpensesPage({
     q: params.q,
     category: params.category,
     period,
+    zone: await viewerTimeZone(),
     flag: params.flag,
     jobId: params.jobId,
     clientId: params.clientId,

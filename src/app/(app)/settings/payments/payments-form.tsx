@@ -7,6 +7,7 @@ import {
   savePaymentProcessor,
   testPaymentProcessor,
 } from "./actions";
+import { useTimeZone } from "@/components/app-shell/time-zone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import {
   type CredentialField,
   type PaymentProviderId,
 } from "@/lib/payments/catalog";
+import { formatIn } from "@/lib/time-zone";
 
 export type PaymentSettingsValues = {
   connected: boolean;
@@ -252,6 +254,7 @@ function TestCard({ readOnly }: { readOnly: boolean }) {
 }
 
 function StatusBanner({ values }: { values: PaymentSettingsValues }) {
+  const zone = useTimeZone();
   const meta = PAYMENT_PROVIDER_META[values.provider];
 
   if (!values.canEncrypt) {
@@ -286,7 +289,7 @@ function StatusBanner({ values }: { values: PaymentSettingsValues }) {
     return (
       <Note tone="success">
         <Badge tone="success">Connected</Badge> {meta.label}, checked{" "}
-        {new Date(values.lastTestedAt!).toLocaleString()}.
+        {formatIn(values.lastTestedAt!, "MMM d, yyyy 'at' h:mm a", zone)}.
       </Note>
     );
   }

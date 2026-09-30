@@ -14,6 +14,8 @@ import { effectiveEstimateStatus } from "@/lib/documents";
 import { publicUrl, sendMessage } from "@/lib/messaging";
 import { computeTotals, formatMoney } from "@/lib/money";
 import { allocateNumber } from "@/lib/numbering";
+import { parseDateTimeLocal } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 // ------------------------------------------------------------------ schema ---
@@ -462,12 +464,10 @@ export async function convertEstimateToJob(formData: FormData) {
 
   if (estimate.convertedJobId) redirect(`/jobs/${estimate.convertedJobId}`);
 
-  const scheduledStartRaw = text(formData, "scheduledStart");
-  const scheduledStart = scheduledStartRaw ? new Date(scheduledStartRaw) : null;
-  const validStart =
-    scheduledStart && !Number.isNaN(scheduledStart.getTime())
-      ? scheduledStart
-      : null;
+  const validStart = parseDateTimeLocal(
+    text(formData, "scheduledStart"),
+    await viewerTimeZone(),
+  );
 
   const minutes = Number(formData.get("durationMinutes")) || 120;
 

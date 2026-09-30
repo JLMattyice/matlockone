@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { Plus, Receipt, Repeat } from "lucide-react";
 
 import { invoiceSummary, listInvoices } from "./queries";
@@ -23,7 +22,9 @@ import {
   SelectInvoice,
 } from "./selection";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Invoices" };
 
@@ -38,6 +39,7 @@ export default async function InvoicesPage({
   }>;
 }) {
   const { user, org } = await requirePermission("invoices:read");
+  const zone = await viewerTimeZone();
   const params = await searchParams;
 
   const [list, summary, chaseCount] = await Promise.all([
@@ -48,7 +50,7 @@ export default async function InvoicesPage({
       clientId: params.clientId,
       page: Number(params.page) || 1,
     }),
-    invoiceSummary(org.id),
+    invoiceSummary(org.id, zone),
     can(user, "invoices:send") ? reminderCandidateCount() : Promise.resolve(0),
   ]);
 
@@ -92,7 +94,7 @@ export default async function InvoicesPage({
         <Stat
           label="Collected this month"
           value={money(summary.collectedThisMonthCents)}
-          sub={format(new Date(), "MMMM yyyy")}
+          sub={formatIn(new Date(), "MMMM yyyy", zone)}
           tone="success"
         />
         <Stat label="Drafts" value={String(summary.draftCount)} sub="Not sent yet" />
@@ -220,7 +222,7 @@ export default async function InvoicesPage({
                       </Td>
 
                       <Td className="tabular hidden whitespace-nowrap text-ink-muted lg:table-cell">
-                        {format(invoice.issueDate, "MMM d, yyyy")}
+                        {formatIn(invoice.issueDate, "MMM d, yyyy", zone)}
                       </Td>
 
                       <Td
@@ -230,7 +232,7 @@ export default async function InvoicesPage({
                         )}
                       >
                         {invoice.dueDate
-                          ? format(invoice.dueDate, "MMM d, yyyy")
+                          ? formatIn(invoice.dueDate, "MMM d, yyyy", zone)
                           : "—"}
                       </Td>
 

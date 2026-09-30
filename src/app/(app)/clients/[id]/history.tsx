@@ -19,6 +19,7 @@ import {
   type PaymentMethod,
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
+import { formatIn } from "@/lib/time-zone";
 
 /**
  * Read-only history for a client. Every row links through to the record it
@@ -30,6 +31,7 @@ type Money = { currency: string; locale: string };
 export function JobsTable({
   jobs,
   jobLabel,
+  zone,
 }: {
   jobs: {
     id: string;
@@ -43,6 +45,8 @@ export function JobsTable({
     assignments: { user: { id: string; name: string } }[];
   }[];
   jobLabel: string;
+  /** The viewer's time zone, from viewerTimeZone(). */
+  zone: string;
 }) {
   if (jobs.length === 0) {
     return (
@@ -97,7 +101,7 @@ export function JobsTable({
               </Td>
               <Td className="tabular hidden whitespace-nowrap text-ink-muted md:table-cell">
                 {job.scheduledStart
-                  ? format(job.scheduledStart, "MMM d, yyyy · h:mm a")
+                  ? formatIn(job.scheduledStart, "MMM d, yyyy · h:mm a", zone)
                   : "—"}
               </Td>
               <Td className="hidden text-ink-muted lg:table-cell">
@@ -282,7 +286,10 @@ export function PaymentsTable({
   payments,
   currency,
   locale,
+  zone,
 }: {
+  /** The viewer's time zone: a payment taken by a card processor is a moment, not a date. */
+  zone: string;
   payments: {
     id: string;
     amountCents: number;
@@ -315,7 +322,7 @@ export function PaymentsTable({
         {payments.map((payment) => (
           <Tr key={payment.id}>
             <Td className="tabular whitespace-nowrap text-ink-muted">
-              {format(payment.receivedAt, "MMM d, yyyy")}
+              {formatIn(payment.receivedAt, "MMM d, yyyy", zone)}
             </Td>
             <Td className="tabular font-medium whitespace-nowrap">
               {payment.invoice?.number ?? "—"}

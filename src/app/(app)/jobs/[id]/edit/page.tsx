@@ -16,7 +16,9 @@ import {
   type JobStatus,
 } from "@/lib/constants";
 import { can } from "@/lib/permissions";
-import { durationMinutes, toDateTimeLocal } from "@/lib/utils";
+import { toDateTimeLocal } from "@/lib/time-zone";
+import { durationMinutes } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Edit job" };
 
@@ -28,11 +30,12 @@ export default async function EditJobPage({
   const ctx = await requirePermission("jobs:write");
   const { id } = await params;
 
-  const [job, clients, crew, groups] = await Promise.all([
+  const [job, clients, crew, groups, zone] = await Promise.all([
     getJob(ctx, id),
     clientOptions(ctx.org.id),
     activeCrew(ctx.org.id),
     assignableGroups(ctx.org.id),
+    viewerTimeZone(),
   ]);
 
   return (
@@ -69,7 +72,7 @@ export default async function EditJobPage({
             job.priority,
             "NORMAL",
           ) as JobPriority,
-          scheduledStart: toDateTimeLocal(job.scheduledStart),
+          scheduledStart: toDateTimeLocal(job.scheduledStart, zone),
           durationMinutes: durationMinutes(
             job.scheduledStart,
             job.scheduledEnd,

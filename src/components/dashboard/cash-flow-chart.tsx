@@ -1,6 +1,5 @@
-import { format } from "date-fns";
-
 import { formatMoney, formatMoneyCompact } from "@/lib/money";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
 export type CashFlowBucket = {
@@ -19,11 +18,14 @@ export type CashFlowBucket = {
  */
 export function CashFlowChart({
   buckets,
+  zone,
   currency,
   locale,
   showSpend = false,
 }: {
   buckets: CashFlowBucket[];
+  /** The zone the buckets' months were cut in. */
+  zone: string;
   currency: string;
   locale: string;
   showSpend?: boolean;
@@ -93,11 +95,11 @@ export function CashFlowChart({
               </div>
 
               <span className="text-[0.6875rem] text-ink-subtle">
-                {format(bucket.date, "MMM")}
+                {formatIn(bucket.date, "MMM", zone)}
               </span>
 
               <span className="sr-only">
-                {format(bucket.date, "MMMM yyyy")}: {money(bucket.inCents)}{" "}
+                {formatIn(bucket.date, "MMMM yyyy", zone)}: {money(bucket.inCents)}{" "}
                 collected
                 {showSpend ? `, ${money(bucket.outCents)} spent` : ""}
               </span>

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { Download, FileText, FolderClosed, Trash2 } from "lucide-react";
 
 import { deleteAttachment } from "./actions";
@@ -16,6 +15,8 @@ import { can } from "@/lib/permissions";
 import { storageUsage } from "@/lib/quotas";
 import { like } from "@/lib/search";
 import { formatBytes, isImageMime } from "@/lib/storage-limits";
+import { formatIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const metadata: Metadata = { title: "Files" };
@@ -28,6 +29,7 @@ export default async function FilesPage({
   searchParams: Promise<{ q?: string; kind?: string; page?: string }>;
 }) {
   const { user, org } = await requirePermission("files:read");
+  const zone = await viewerTimeZone();
   const params = await searchParams;
   const page = Math.max(Number(params.page) || 1, 1);
   const q = params.q?.trim();
@@ -187,7 +189,7 @@ export default async function FilesPage({
                       </Td>
 
                       <Td className="tabular hidden whitespace-nowrap text-ink-muted lg:table-cell">
-                        {format(file.createdAt, "MMM d, yyyy")}
+                        {formatIn(file.createdAt, "MMM d, yyyy", zone)}
                         <span className="block text-xs text-ink-subtle">
                           {file.uploadedBy?.name ?? "—"}
                         </span>

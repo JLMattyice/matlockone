@@ -17,9 +17,8 @@ import {
 } from "@/lib/constants";
 import { effectiveInvoiceStatus } from "@/lib/documents";
 import { describeRecurrence, nextNotBefore } from "@/lib/recurrence";
+import { formatIn, instant, nowIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
-
-const day = (date: Date) => format(date, "yyyy-MM-dd");
 
 /** "Every month · next draft Oct 28, 2026", or what stopped it. */
 export function repeatSummary(series: InvoiceSeries): string {
@@ -48,14 +47,18 @@ export function RepeatCard({
   series,
   canEdit,
   autopayOn,
+  zone,
 }: {
   invoice: { id: string; issueDate: Date };
   series: InvoiceSeries | null;
   canEdit: boolean;
   /** PayPal is charging on this rhythm, so it cannot be changed or stopped here. */
   autopayOn: boolean;
+  /** The viewer's time zone: "today" in the form is their today. */
+  zone: string;
 }) {
-  const today = startOfDay(new Date());
+  const day = (date: Date) => formatIn(date, "yyyy-MM-dd", zone);
+  const today = instant(startOfDay(nowIn(zone)));
 
   const frequency = asStatus(
     INVOICE_REPEAT_FREQUENCIES,

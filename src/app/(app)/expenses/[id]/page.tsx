@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { ArrowLeft, Check, Pencil, Undo2 } from "lucide-react";
 
 import {
@@ -28,6 +27,8 @@ import {
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export async function generateMetadata({
   params,
@@ -52,6 +53,7 @@ export default async function ExpenseDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { user, org } = await requirePermission("expenses:read");
+  const zone = await viewerTimeZone();
   const { id } = await params;
   const expense = await getExpense(org.id, id);
 
@@ -103,7 +105,7 @@ export default async function ExpenseDetailPage({
 
             <p className="mt-1 text-sm text-ink-muted">
               {expense.vendor ? `${expense.vendor} · ` : ""}
-              {format(expense.spentAt, "EEEE, MMMM d, yyyy")}
+              {formatIn(expense.spentAt, "EEEE, MMMM d, yyyy", zone)}
             </p>
           </div>
 
@@ -187,6 +189,7 @@ export default async function ExpenseDetailPage({
             />
             <AttachmentPanel
               attachments={expense.attachments}
+              zone={zone}
               entityType="expense"
               entityId={expense.id}
               canWrite={canAttach}
@@ -197,6 +200,7 @@ export default async function ExpenseDetailPage({
             <CardHeader title="Notes" />
             <NotesPanel
               notes={expense.notes}
+              zone={zone}
               entityType="expense"
               entityId={expense.id}
               canWrite={writable}
@@ -245,12 +249,12 @@ export default async function ExpenseDetailPage({
 
             {expense.reimbursedAt ? (
               <Detail label="Reimbursed">
-                {format(expense.reimbursedAt, "MMM d, yyyy")}
+                {formatIn(expense.reimbursedAt, "MMM d, yyyy", zone)}
               </Detail>
             ) : null}
 
             <Detail label="Recorded">
-              {format(expense.createdAt, "MMM d, yyyy")}
+              {formatIn(expense.createdAt, "MMM d, yyyy", zone)}
               {expense.createdBy ? ` by ${expense.createdBy.name}` : ""}
             </Detail>
           </dl>

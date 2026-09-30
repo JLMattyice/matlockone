@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { format } from "date-fns";
 
 import {
   cashFlowSeries,
@@ -19,6 +18,8 @@ import {
 import { getContext } from "@/lib/auth";
 import { LEAD_SOURCE_LABELS, LEAD_SOURCES, type LeadSource } from "@/lib/constants";
 import { can } from "@/lib/permissions";
+import { formatIn, todayIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 /**
  * The report as a CSV any spreadsheet can open.
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest) {
     ? periodParam
     : "month";
 
-  const { current, previous, granularity } = resolveRange(period);
+  const zone = await viewerTimeZone();
+  const { current, previous, granularity } = resolveRange(period, zone);
   const orgId = ctx.org.id;
 
   // Spend is a separate permission, and the export must honour it as the page
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
     revenueByEmployee(orgId, current),
     leadSourcePerformance(orgId, current),
     topClients(orgId, current, 25),
-    receivablesSnapshot(orgId),
+    receivablesSnapshot(orgId, zone),
     showSpend ? expenseTotals(orgId, current) : null,
     showSpend ? expenseTotals(orgId, previous) : null,
     showSpend ? spendByCategory(orgId, current, 100) : [],
@@ -78,8 +80,8 @@ export async function GET(request: NextRequest) {
   rows.push([ctx.org.name, "Report", current.label]);
   rows.push([
     "Period",
-    format(current.from, "yyyy-MM-dd"),
-    format(current.to, "yyyy-MM-dd"),
+    formatIn(current.from, "yyyy-MM-dd", zone),
+    formatIn(current.to, "yyyy-MM-dd", zone),
   ]);
   rows.push([]);
 
@@ -139,7 +141,7 @@ export async function GET(request: NextRequest) {
   rows.push([spend ? "Money in and out over time" : "Revenue over time"]);
   rows.push(spend ? ["Date", "Collected", "Spent"] : ["Date", "Collected"]);
   for (const bucket of series) {
-    const row = [format(bucket.date, "yyyy-MM-dd"), money(bucket.inCents)];
+    const row = [formatIn(bucket.date, "yyyy-MM-dd", zone), money(bucket.inCents)];
     if (spend) row.push(money(bucket.outCents));
     rows.push(row);
   }
@@ -211,7 +213,7 @@ export async function GET(request: NextRequest) {
   }
 
   const csv = rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const filename = `${slug(ctx.org.name)}-report-${period}-${format(new Date(), "yyyy-MM-dd")}.csv`;
+  const filename = `${slug(ctx.org.name)}-report-${period}-${todayIn(zone)}.csv`;
 
   return new NextResponse(csv, {
     headers: {

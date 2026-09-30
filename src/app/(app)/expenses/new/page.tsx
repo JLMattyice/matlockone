@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { ArrowLeft } from "lucide-react";
 
 import { ExpenseForm } from "../expense-form";
 import { clientOptions, jobOptions, payerOptions } from "../queries";
 import { requirePermission } from "@/lib/auth";
 import { currencySymbol } from "@/lib/money";
+import { todayIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Record expense" };
 
@@ -61,7 +62,7 @@ export default async function NewExpensePage({
           tax: "",
           method: "CARD",
           reference: "",
-          spentAt: format(new Date(), "yyyy-MM-dd"),
+          spentAt: todayIn(await viewerTimeZone()),
           jobId,
           clientId,
           billable: false,

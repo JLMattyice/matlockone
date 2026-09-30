@@ -8,6 +8,8 @@ import { estimateClientOptions, priceBook } from "../queries";
 import { requirePermission } from "@/lib/auth";
 import { blankLine } from "@/lib/line-draft";
 import { currencySymbol } from "@/lib/money";
+import { nowIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "New estimate" };
 
@@ -28,7 +30,9 @@ export default async function NewEstimatePage({
     ? clients.find((c) => c.id === params.clientId)
     : undefined;
 
-  const today = new Date();
+  // Today on the viewer's clock: at 9 PM in New York it is already tomorrow
+  // on the server's.
+  const today = nowIn(await viewerTimeZone());
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

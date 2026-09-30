@@ -1,6 +1,6 @@
-import { format } from "date-fns";
 
 import { formatMoney, formatMoneyCompact } from "@/lib/money";
+import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
 export type TrendBucket = {
@@ -22,11 +22,14 @@ export type TrendBucket = {
  */
 export function TrendChart({
   buckets,
+  zone,
   currency,
   locale,
   showSpend = false,
 }: {
   buckets: TrendBucket[];
+  /** The zone the buckets were cut in. */
+  zone: string;
   currency: string;
   locale: string;
   /** Hidden from anyone whose role cannot see expenses. */
@@ -75,10 +78,10 @@ export function TrendChart({
             className="flex min-w-0 flex-1 flex-col items-center gap-1.5"
             title={
               showSpend
-                ? `${format(bucket.date, "MMM d, yyyy")} — in ${money(
+                ? `${formatIn(bucket.date, "MMM d, yyyy", zone)} — in ${money(
                     bucket.inCents,
                   )}, out ${money(bucket.outCents)}`
-                : `${format(bucket.date, "MMM d, yyyy")}: ${money(bucket.inCents)}`
+                : `${formatIn(bucket.date, "MMM d, yyyy", zone)}: ${money(bucket.inCents)}`
             }
           >
             {!dense ? (
@@ -144,7 +147,7 @@ export function TrendChart({
           <tbody>
             {buckets.map((bucket) => (
               <tr key={bucket.date.toISOString()}>
-                <th scope="row">{format(bucket.date, "MMMM d, yyyy")}</th>
+                <th scope="row">{formatIn(bucket.date, "MMMM d, yyyy", zone)}</th>
                 <td>{money(bucket.inCents)}</td>
                 {showSpend ? <td>{money(bucket.outCents)}</td> : null}
               </tr>

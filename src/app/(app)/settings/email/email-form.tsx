@@ -7,6 +7,7 @@ import {
   saveEmailAccount,
   sendTestEmail,
 } from "./actions";
+import { useTimeZone } from "@/components/app-shell/time-zone";
 import { Badge } from "@/components/ui/badge";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
   type EmailProviderId,
   type SmtpPresetId,
 } from "@/lib/email/catalog";
+import { formatIn } from "@/lib/time-zone";
 
 export type EmailAccountValues = {
   connected: boolean;
@@ -370,6 +372,7 @@ function TestCard({
 }
 
 function StatusBanner({ values }: { values: EmailAccountValues }) {
+  const zone = useTimeZone();
   if (!values.canEncrypt) {
     return (
       <Note tone="danger">
@@ -402,7 +405,7 @@ function StatusBanner({ values }: { values: EmailAccountValues }) {
     return (
       <Note tone="success">
         <Badge tone="success">Connected</Badge> Last tested{" "}
-        {new Date(values.lastTestedAt!).toLocaleString()}.
+        {formatIn(values.lastTestedAt!, "MMM d, yyyy 'at' h:mm a", zone)}.
       </Note>
     );
   }

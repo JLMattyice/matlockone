@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format, isToday, isTomorrow, isYesterday } from "date-fns";
+import { isToday, isTomorrow, isYesterday } from "date-fns";
 import { Briefcase, CalendarDays, Plus, Repeat } from "lucide-react";
 
 import { KindIcon } from "./kind-icon";
@@ -25,6 +25,8 @@ import {
   jobKindLabel,
 } from "@/lib/constants";
 import { can } from "@/lib/permissions";
+import { formatIn, inZone } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Jobs" };
 
@@ -41,6 +43,7 @@ export default async function JobsPage({
   }>;
 }) {
   const ctx = await requirePermission("jobs:read");
+  const zone = await viewerTimeZone();
   const { user, org } = ctx;
   const params = await searchParams;
 
@@ -248,12 +251,12 @@ export default async function JobsPage({
                         {job.scheduledStart ? (
                           <>
                             <span className="block">
-                              {relativeDay(job.scheduledStart)}
+                              {relativeDay(job.scheduledStart, zone)}
                             </span>
                             <span className="block text-xs text-ink-subtle">
                               {job.allDay
                                 ? "All day"
-                                : format(job.scheduledStart, "h:mm a")}
+                                : formatIn(job.scheduledStart, "h:mm a", zone)}
                             </span>
                           </>
                         ) : (
@@ -299,9 +302,11 @@ export default async function JobsPage({
   );
 }
 
-function relativeDay(date: Date) {
-  if (isToday(date)) return "Today";
-  if (isTomorrow(date)) return "Tomorrow";
-  if (isYesterday(date)) return "Yesterday";
-  return format(date, "MMM d, yyyy");
+/** Today, tomorrow and yesterday on the viewer's clock. */
+function relativeDay(date: Date, zone: string) {
+  const local = inZone(date, zone);
+  if (isToday(local)) return "Today";
+  if (isTomorrow(local)) return "Tomorrow";
+  if (isYesterday(local)) return "Yesterday";
+  return formatIn(local, "MMM d, yyyy", zone);
 }

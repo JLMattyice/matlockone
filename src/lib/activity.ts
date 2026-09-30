@@ -1,7 +1,10 @@
 import "server-only";
 
+import { subDays } from "date-fns";
+
 import { prisma } from "./db";
 import { can, type Actor } from "./permissions";
+import { formatIn, inZone } from "./time-zone";
 
 /**
  * What happened, in the order it happened.
@@ -483,50 +486,39 @@ export async function recentActivity(
 }
 
 /**
- * Groups events under the day they happened, newest day first.
+ * Groups events under the day they happened on the viewer's clock, newest day
+ * first.
  *
  * Pure, so the grouping is testable without a database, and done on the server
  * so the client component renders a list rather than working out dates.
  */
 export function groupByDay(
   events: ActivityEvent[],
+  zone: string,
   now = new Date(),
 ): { label: string; events: ActivityEvent[] }[] {
   const groups = new Map<string, ActivityEvent[]>();
 
   for (const event of events) {
-    const key = dayKey(event.createdAt);
+    const key = formatIn(event.createdAt, "yyyy-MM-dd", zone);
     const bucket = groups.get(key);
     if (bucket) bucket.push(event);
     else groups.set(key, [event]);
   }
 
   return [...groups.entries()].map(([key, grouped]) => ({
-    label: dayLabel(key, now),
+    label: dayLabel(key, grouped[0].createdAt, zone, now),
     events: grouped,
   }));
 }
 
-function dayKey(date: Date) {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
+function dayLabel(key: string, date: Date, zone: string, now: Date) {
+  const today = inZone(now, zone);
+  if (formatIn(today, "yyyy-MM-dd", zone) === key) return "Today";
+  if (formatIn(subDays(today, 1), "yyyy-MM-dd", zone) === key) return "Yesterday";
 
-function dayLabel(key: string, now: Date) {
-  const [year, month, day] = key.split("-").map(Number);
-  const date = new Date(year, month, day);
-
-  if (dayKey(now) === key) return "Today";
-
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (dayKey(yesterday) === key) return "Yesterday";
-
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    // A year only once it is not this one — "Mar 4" reads better than
-    // "Mar 4, 2026" on everything that happened this year.
-    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
+  // A year only once it is not this one — "Mar 4" reads better than
+  // "Mar 4, 2026" on everything that happened this year.
+  const sameYear = key.slice(0, 4) === formatIn(today, "yyyy", zone);
+  return formatIn(date, sameYear ? "EEE, MMM d" : "EEE, MMM d, yyyy", zone);
 }

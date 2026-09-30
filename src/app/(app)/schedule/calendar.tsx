@@ -12,6 +12,7 @@ import {
   isSameDay,
   isSameMonth,
   isToday,
+  set,
   startOfDay,
   startOfMonth,
   startOfWeek,
@@ -29,8 +30,17 @@ import {
 } from "./types";
 import { rescheduleJob } from "../jobs/actions";
 import { KindIcon } from "../jobs/kind-icon";
+import { useTimeZone } from "@/components/app-shell/time-zone";
 import { JOB_STATUS_META } from "@/lib/constants";
+import { formatIn, inZone, instant } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
+
+/*
+ * Every day, hour and "today" here is on the clock of the viewer's time zone,
+ * which the server rendered in too: `anchor` and the days made from it are
+ * TZDates, so date-fns works in that zone, and event times are read into it
+ * before they are compared or placed.
+ */
 
 const DRAG_TYPE = "application/x-matlockone-job";
 
@@ -65,14 +75,16 @@ export function ScheduleCalendar({
   // The server is the source of truth; re-sync whenever it sends a new set.
   useEffect(() => setEvents(initialEvents), [initialEvents]);
 
-  const anchor = new Date(anchorISO);
+  const zone = useTimeZone();
+  const anchor = inZone(anchorISO, zone);
 
   /**
    * Moves the event locally first so the block follows the drop immediately,
    * then asks the server. A rejected move is rolled back.
    */
-  function move(id: string, start: Date, durationMinutes: number) {
+  function move(id: string, at: Date, durationMinutes: number) {
     const previous = events;
+    const start = instant(at);
     const end = new Date(start.getTime() + durationMinutes * 60_000);
 
     setEvents((current) =>
@@ -314,13 +326,14 @@ function DayColumn({
   setDragging,
   move,
 }: GridProps & { day: Date; hours: number[] }) {
+  const zone = useTimeZone();
   const columnRef = useRef<HTMLDivElement>(null);
   const [hoverTop, setHoverTop] = useState<number | null>(null);
 
   const dayEvents = events.filter((event) =>
-    isSameDay(new Date(event.startISO), day),
+    isSameDay(inZone(event.startISO, zone), day),
   );
-  const positioned = layoutDay(dayEvents);
+  const positioned = layoutDay(dayEvents, zone);
   const allDayEvents = dayEvents.filter((event) => event.allDay);
 
   function pointerMinutes(clientY: number) {
@@ -351,9 +364,14 @@ function DayColumn({
       Math.min(snapped, (GRID_END_HOUR - GRID_START_HOUR) * 60 - 15),
     );
 
-    const start = new Date(day);
-    start.setHours(GRID_START_HOUR, 0, 0, 0);
-    start.setMinutes(start.getMinutes() + clamped);
+    // Wall-clock hours and minutes, so a slot means the same time on the day
+    // the clocks change as on any other.
+    const start = set(day, {
+      hours: GRID_START_HOUR + Math.floor(clamped / 60),
+      minutes: clamped % 60,
+      seconds: 0,
+      milliseconds: 0,
+    });
 
     move(payload.id, start, payload.durationMinutes);
   }
@@ -458,6 +476,7 @@ function MonthGrid({
   setDragging,
   move,
 }: GridProps & { anchor: Date }) {
+  const zone = useTimeZone();
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(anchor)),
     end: endOfWeek(endOfMonth(anchor)),
@@ -481,7 +500,7 @@ function MonthGrid({
         {days.map((day) => {
           const key = day.toISOString();
           const dayEvents = events
-            .filter((event) => isSameDay(new Date(event.startISO), day))
+            .filter((event) => isSameDay(inZone(event.startISO, zone), day))
             .sort(
               (a, b) =>
                 new Date(a.startISO).getTime() - new Date(b.startISO).getTime(),
@@ -522,14 +541,13 @@ function MonthGrid({
                 // Month cells have no time axis, so the time of day is kept
                 // and only the date changes.
                 const source = events.find((ev) => ev.id === payload.id);
-                const original = source ? new Date(source.startISO) : new Date();
-                const start = new Date(day);
-                start.setHours(
-                  original.getHours(),
-                  original.getMinutes(),
-                  0,
-                  0,
-                );
+                const original = inZone(source?.startISO ?? Date.now(), zone);
+                const start = set(day, {
+                  hours: original.getHours(),
+                  minutes: original.getMinutes(),
+                  seconds: 0,
+                  milliseconds: 0,
+                });
 
                 move(payload.id, start, payload.durationMinutes);
               }}
@@ -607,6 +625,7 @@ function EventBlock({
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
 }) {
+  const zone = useTimeZone();
   const tone = JOB_STATUS_META[event.status].tone;
 
   return (
@@ -626,7 +645,7 @@ function EventBlock({
     >
       <span className="tabular flex items-center gap-1 font-semibold">
         {event.kind !== "JOB" ? <KindIcon kind={event.kind} /> : null}
-        {format(new Date(event.startISO), "h:mm a")}
+        {formatIn(event.startISO, "h:mm a", zone)}
       </span>
       <span className="block truncate font-medium">{event.title}</span>
       {event.clientName ? (
@@ -649,6 +668,7 @@ function EventChip({
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
 }) {
+  const zone = useTimeZone();
   const tone = JOB_STATUS_META[event.status].tone;
 
   return (
@@ -668,7 +688,7 @@ function EventChip({
       {event.kind !== "JOB" ? <KindIcon kind={event.kind} /> : null}
       {!event.allDay ? (
         <span className="tabular shrink-0 font-semibold">
-          {format(new Date(event.startISO), "h:mm")}
+          {formatIn(event.startISO, "h:mm", zone)}
         </span>
       ) : null}
       <span className="truncate">{event.title}</span>
@@ -692,11 +712,7 @@ function formatHour(hour: number) {
 }
 
 function slotISO(day: Date, hour: number) {
-  const date = new Date(day);
-  date.setHours(hour, 0, 0, 0);
-  // Local parts, not toISOString(): the new-job form reads this as local time.
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate(),
-  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  // The day's wall-clock date and the hour, not toISOString(): the new-job
+  // form reads this as a time on the viewer's clock.
+  return `${format(day, "yyyy-MM-dd")}T${String(hour).padStart(2, "0")}:00`;
 }

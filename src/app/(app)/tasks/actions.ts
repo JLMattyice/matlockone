@@ -8,6 +8,8 @@ import { requirePermission } from "@/lib/auth";
 import { record } from "@/lib/activity";
 import { prisma } from "@/lib/db";
 import { can, taskVisibilityWhere } from "@/lib/permissions";
+import { parseDateTimeLocal } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 /**
  * Writes for tasks.
@@ -29,27 +31,15 @@ const taskSchema = z.object({
 
 /**
  * A date input gives a bare "2026-09-21", which `new Date` reads as UTC
- * midnight and can render as the day before west of Greenwich. Built from the
- * parts, at the end of that day: a task due Friday is not late on Friday
- * morning.
+ * midnight and can render as the day before west of Greenwich. Read on the
+ * clock of whoever typed it, at the end of that day: a task due Friday is not
+ * late on Friday morning.
  */
-function parseDue(value: string | null | undefined): Date | null {
+function parseDue(value: string | null | undefined, zone: string): Date | null {
   if (!value) return null;
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  return new Date(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3]),
-    23,
-    59,
-    59,
-  );
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? parseDateTimeLocal(`${value}T23:59:59`, zone)
+    : parseDateTimeLocal(value, zone);
 }
 
 /**
@@ -126,7 +116,7 @@ export async function createTask(
       organizationId: org.id,
       title: parsed.data.title,
       notes: parsed.data.notes || null,
-      dueAt: parseDue(parsed.data.dueAt),
+      dueAt: parseDue(parsed.data.dueAt, await viewerTimeZone()),
       createdById: user.id,
       ...links,
     },
@@ -214,7 +204,7 @@ export async function updateTask(
     data: {
       title: parsed.data.title,
       notes: parsed.data.notes || null,
-      dueAt: parseDue(parsed.data.dueAt),
+      dueAt: parseDue(parsed.data.dueAt, await viewerTimeZone()),
       ...links,
     },
   });

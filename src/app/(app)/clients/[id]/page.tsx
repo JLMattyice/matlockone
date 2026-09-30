@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import {
   ArrowLeft,
   CalendarClock,
@@ -56,7 +55,9 @@ import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { canSeeBusinessActivity, clientTimeline } from "@/lib/activity";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
 import { directionsUrl, formatPhone } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 const VIEWS = [
   "overview",
@@ -96,6 +97,7 @@ export default async function ClientDetailPage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const { user, org } = await requirePermission("clients:read");
+  const zone = await viewerTimeZone();
   const { id } = await params;
   const { view: rawView } = await searchParams;
 
@@ -282,6 +284,7 @@ export default async function ClientDetailPage({
         <Overview
           client={client}
           org={org}
+          zone={zone}
           jobLabel={org.labelJobPlural}
           seesMoney={seesMoney}
         />
@@ -292,6 +295,7 @@ export default async function ClientDetailPage({
           <JobsTable
             jobs={await clientJobs(org.id, client.id)}
             jobLabel={org.labelJobPlural}
+            zone={zone}
           />
         </Card>
       ) : null}
@@ -322,6 +326,7 @@ export default async function ClientDetailPage({
             payments={await clientPayments(org.id, client.id)}
             currency={org.currency}
             locale={org.locale}
+            zone={zone}
           />
         </Card>
       ) : null}
@@ -330,6 +335,7 @@ export default async function ClientDetailPage({
         <Card className="overflow-hidden">
           <AttachmentPanel
             attachments={await clientAttachments(org.id, client.id)}
+            zone={zone}
             entityType="client"
             entityId={client.id}
             canWrite={can(user, "files:write")}
@@ -361,6 +367,7 @@ export default async function ClientDetailPage({
               record to answer. */}
           <ActivityTimeline
             events={await clientTimeline(org.id, client.id, user)}
+            zone={zone}
             emptyTitle="Nothing has happened yet"
             emptyDescription={`Work, ${org.labelEstimatePlural.toLowerCase()}, invoices and payments will appear here as they happen.`}
           />
@@ -371,6 +378,7 @@ export default async function ClientDetailPage({
         <Card className="overflow-hidden">
           <NotesPanel
             notes={await clientNotes(org.id, client.id)}
+            zone={zone}
             entityType="client"
             entityId={client.id}
             canWrite={writable}
@@ -388,11 +396,13 @@ export default async function ClientDetailPage({
 async function Overview({
   client,
   org,
+  zone,
   jobLabel,
   seesMoney,
 }: {
   client: Awaited<ReturnType<typeof getClient>>;
   org: { id: string; currency: string; locale: string; labelJobPlural: string };
+  zone: string;
   jobLabel: string;
   seesMoney: boolean;
 }) {
@@ -432,12 +442,12 @@ async function Overview({
                     <div className="w-20 shrink-0">
                       <p className="text-xs font-medium text-ink">
                         {job.scheduledStart
-                          ? format(job.scheduledStart, "EEE, MMM d")
+                          ? formatIn(job.scheduledStart, "EEE, MMM d", zone)
                           : "Unscheduled"}
                       </p>
                       <p className="tabular text-xs text-ink-subtle">
                         {job.scheduledStart && !job.allDay
-                          ? format(job.scheduledStart, "h:mm a")
+                          ? formatIn(job.scheduledStart, "h:mm a", zone)
                           : job.allDay
                             ? "All day"
                             : ""}
@@ -472,7 +482,7 @@ async function Overview({
               </Link>
             }
           />
-          <JobsTable jobs={recentJobs} jobLabel={jobLabel} />
+          <JobsTable jobs={recentJobs} jobLabel={jobLabel} zone={zone} />
         </Card>
 
         {seesMoney ? (
@@ -557,11 +567,11 @@ async function Overview({
                 : "Not recorded"}
             </Detail>
             <Detail label="Added">
-              {format(client.createdAt, "MMM d, yyyy")}
+              {formatIn(client.createdAt, "MMM d, yyyy", zone)}
               {client.createdBy ? ` by ${client.createdBy.name}` : ""}
             </Detail>
             <Detail label="Last updated">
-              {format(client.updatedAt, "MMM d, yyyy")}
+              {formatIn(client.updatedAt, "MMM d, yyyy", zone)}
             </Detail>
           </dl>
         </Card>
@@ -587,7 +597,7 @@ async function Overview({
                   </p>
                   <p className="mt-1.5 text-xs text-ink-subtle">
                     {note.author?.name ?? "Removed user"} ·{" "}
-                    {format(note.createdAt, "MMM d, yyyy")}
+                    {formatIn(note.createdAt, "MMM d, yyyy", zone)}
                   </p>
                 </li>
               ))}

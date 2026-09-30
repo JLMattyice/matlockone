@@ -13,14 +13,16 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Groups" };
 
 export default async function GroupsPage() {
   const { user, org } = await requirePermission("employees:read");
+  const zone = await viewerTimeZone();
 
   const [groups, memberCount] = await Promise.all([
-    listGroups(org.id),
+    listGroups(org.id, zone),
     prisma.user.count({ where: { organizationId: org.id } }),
   ]);
 

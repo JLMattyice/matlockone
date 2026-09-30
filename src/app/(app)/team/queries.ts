@@ -4,8 +4,10 @@ import { notFound } from "next/navigation";
 import { endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 
 import { prisma } from "@/lib/db";
+import { instant, nowIn } from "@/lib/time-zone";
 
-export async function listTeam(organizationId: string, includeInactive = true) {
+/** `zone` is the viewer's: "this week" starts on Sunday on their clock. */
+export async function listTeam(organizationId: string, zone: string, includeInactive = true) {
   const members = await prisma.user.findMany({
     where: {
       organizationId,
@@ -28,7 +30,7 @@ export async function listTeam(organizationId: string, includeInactive = true) {
   });
 
   const ids = members.map((m) => m.id);
-  const now = new Date();
+  const now = nowIn(zone);
 
   // Open work per person, in one grouped query rather than one per row.
   const [openJobs, weekJobs] = await Promise.all([
@@ -53,8 +55,8 @@ export async function listTeam(organizationId: string, includeInactive = true) {
             job: {
               organizationId,
               scheduledStart: {
-                gte: startOfWeek(now),
-                lte: endOfWeek(now),
+                gte: instant(startOfWeek(now)),
+                lte: instant(endOfWeek(now)),
               },
             },
           },
@@ -99,9 +101,12 @@ export async function getTeamMember(organizationId: string, id: string) {
 
 export type TeamMember = Awaited<ReturnType<typeof getTeamMember>>;
 
-/** Upcoming work, recent history and month-to-date hours for one person. */
-export async function memberWorkload(organizationId: string, userId: string) {
-  const now = new Date();
+/**
+ * Upcoming work, recent history and month-to-date hours for one person, with
+ * the week and month starting on the clock of `zone`, the viewer's.
+ */
+export async function memberWorkload(organizationId: string, userId: string, zone: string) {
+  const now = nowIn(zone);
 
   const [upcoming, recent, hours, completedCount] = await Promise.all([
     prisma.job.findMany({
@@ -109,7 +114,7 @@ export async function memberWorkload(organizationId: string, userId: string) {
         organizationId,
         assignments: { some: { userId } },
         status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] },
-        scheduledStart: { gte: startOfWeek(now) },
+        scheduledStart: { gte: instant(startOfWeek(now)) },
       },
       orderBy: { scheduledStart: "asc" },
       take: 8,
@@ -134,7 +139,7 @@ export async function memberWorkload(organizationId: string, userId: string) {
       where: {
         organizationId,
         userId,
-        startedAt: { gte: startOfMonth(now) },
+        startedAt: { gte: instant(startOfMonth(now)) },
       },
       _sum: { minutes: true },
     }),

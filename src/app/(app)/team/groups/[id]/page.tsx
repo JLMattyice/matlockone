@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
 import { ArrowLeft, Pencil, Users } from "lucide-react";
 
 import { deleteGroup, setGroupActive } from "../actions";
@@ -14,7 +13,9 @@ import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
 import { asStatus, JOB_STATUS_META, JOB_STATUSES, ROLE_META, ROLES, type Role } from "@/lib/constants";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
 import { formatPhone } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Group" };
 
@@ -24,10 +25,11 @@ export default async function GroupPage({
   params: Promise<{ id: string }>;
 }) {
   const { user, org } = await requirePermission("employees:read");
+  const zone = await viewerTimeZone();
   const { id } = await params;
 
   const group = await getGroup(org.id, id);
-  const work = await groupWorkload(org.id, group.id);
+  const work = await groupWorkload(org.id, group.id, zone);
 
   const writable = can(user, "employees:write");
   const members = group.members.map((row) => row.user);
@@ -154,7 +156,7 @@ export default async function GroupPage({
                       </span>
                       <span className="shrink-0 text-xs text-ink-subtle">
                         {job.scheduledStart
-                          ? format(job.scheduledStart, "d MMM")
+                          ? formatIn(job.scheduledStart, "d MMM", zone)
                           : "Unscheduled"}
                       </span>
                       <Badge tone={JOB_STATUS_META[status].tone}>
@@ -178,7 +180,7 @@ export default async function GroupPage({
               <Row label="Completed" value={String(work.completed)} />
               <Row
                 label="Created"
-                value={format(group.createdAt, "d MMM yyyy")}
+                value={formatIn(group.createdAt, "d MMM yyyy", zone)}
               />
             </CardBody>
 

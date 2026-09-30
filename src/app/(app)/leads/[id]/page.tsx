@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
   ArrowRight,
@@ -39,7 +39,9 @@ import {
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { formatIn } from "@/lib/time-zone";
 import { cn, formatPhone } from "@/lib/utils";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 /** The happy path. LOST sits outside it and is offered separately. */
 const PIPELINE: LeadStatus[] = [
@@ -73,6 +75,7 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { user, org } = await requirePermission("leads:read");
+  const zone = await viewerTimeZone();
   const { id } = await params;
   const lead = await getLead(org.id, id);
 
@@ -100,7 +103,7 @@ export default async function LeadDetailPage({
           <p className="text-sm text-ink">
             Converted to a {org.labelClientSingular.toLowerCase()}
             {lead.convertedAt
-              ? ` on ${format(lead.convertedAt, "MMM d, yyyy")}`
+              ? ` on ${formatIn(lead.convertedAt, "MMM d, yyyy", zone)}`
               : ""}
             .
           </p>
@@ -291,6 +294,7 @@ export default async function LeadDetailPage({
           />
           <NotesPanel
             notes={lead.notes}
+            zone={zone}
             entityType="lead"
             entityId={lead.id}
             canWrite={writable}
@@ -320,7 +324,7 @@ export default async function LeadDetailPage({
                 : "Never"}
             </Detail>
             <Detail label="Created">
-              {format(lead.createdAt, "MMM d, yyyy")}
+              {formatIn(lead.createdAt, "MMM d, yyyy", zone)}
               {lead.createdBy ? ` by ${lead.createdBy.name}` : ""}
             </Detail>
           </dl>
