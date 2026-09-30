@@ -7,13 +7,17 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { launchMode, onlineAppUrl, ONLINE_APP_URL } = require(
+const { launchMode, onlineAppUrl, ONLINE_APP_URL, choseOnline, writeOnlineChoice, clearOnlineChoice } = require(
   path.resolve(process.cwd(), "electron", "runtime.js"),
 ) as {
   launchMode: (input: {
     databaseExists: boolean;
     listAccounts?: () => unknown;
+    choseOnline?: boolean;
   }) => "local" | "online";
+  choseOnline: (file: string) => boolean;
+  writeOnlineChoice: (file: string, at?: Date) => void;
+  clearOnlineChoice: (file: string) => void;
   onlineAppUrl: (env?: Record<string, string | undefined>) => string;
   ONLINE_APP_URL: string;
 };
@@ -142,6 +146,59 @@ describe("launchMode with the recovery tool's account list", () => {
   it("keeps an unreadable database local", () => {
     fs.writeFileSync(databaseFile, "this is not a database");
     expect(launchMode({ databaseExists: true, listAccounts })).toBe("local");
+  });
+});
+
+/**
+ * "Use my online account instead…" in the File menu. An install holding a
+ * business stays local by default; once its owner has moved that business
+ * online, this is how the last computer showing the old copy follows.
+ */
+describe("choosing the online account over a business on this computer", () => {
+  let dir: string;
+  let choiceFile: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "online-choice-"));
+    choiceFile = path.join(dir, "use-online-account");
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("goes online without opening the database that holds the business", () => {
+    let listed = false;
+    const mode = launchMode({
+      choseOnline: true,
+      databaseExists: true,
+      listAccounts: () => {
+        listed = true;
+        return { ok: true, accounts: [{ email: "owner@shop.test" }] };
+      },
+    });
+    expect(mode).toBe("online");
+    expect(listed).toBe(false);
+  });
+
+  it("is remembered in a file beside the database, and forgotten by removing it", () => {
+    expect(choseOnline(choiceFile)).toBe(false);
+
+    writeOnlineChoice(choiceFile, new Date("2026-09-29T12:00:00Z"));
+    expect(choseOnline(choiceFile)).toBe(true);
+    // Someone who finds it while troubleshooting should know what it does.
+    expect(fs.readFileSync(choiceFile, "utf8")).toContain("Delete this file");
+
+    clearOnlineChoice(choiceFile);
+    expect(choseOnline(choiceFile)).toBe(false);
+    // Going back twice is harmless.
+    expect(() => clearOnlineChoice(choiceFile)).not.toThrow();
+  });
+
+  it("creates the data folder if it is missing", () => {
+    const nested = path.join(dir, "not-yet", "use-online-account");
+    writeOnlineChoice(nested);
+    expect(choseOnline(nested)).toBe(true);
   });
 });
 

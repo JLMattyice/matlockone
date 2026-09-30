@@ -20,6 +20,9 @@ const {
   encryptionKey,
   ensureDatabase,
   launchMode,
+  choseOnline,
+  writeOnlineChoice,
+  clearOnlineChoice,
   onlineAppUrl,
   stablePort,
   legacyDataDirs,
@@ -80,6 +83,8 @@ let log = null;
 let connectionInfo = { local: "", lan: [] };
 /** "local" or "online", decided once at launch. */
 let mode = "local";
+/** Online because the owner chose it from the File menu, over a local business. */
+let switchedOnline = false;
 
 const isPackaged = app.isPackaged;
 
@@ -188,18 +193,21 @@ function chooseMode() {
   // list to the *current* name, which made the migration look for the folder it
   // was already using, find nothing, and start the customer with an empty
   // database. Their data was safe only because this copies rather than moves.
-  const carried = migrateLegacyData(
-    store.root,
-    legacyDataDirs(app),
-    store.databaseFile,
-  );
+  //
+  // Not when the owner has chosen the online account: then nothing here is
+  // copied or opened, and the business on this computer is left as it is.
+  const switched = choseOnline(store.onlineChoiceFile);
+  const carried = switched
+    ? null
+    : migrateLegacyData(store.root, legacyDataDirs(app), store.databaseFile);
 
   const chosen = launchMode({
+    choseOnline: switched,
     databaseExists: fs.existsSync(store.databaseFile),
     listAccounts: () => runRecovery(["list"]),
   });
 
-  return { mode: chosen, carried };
+  return { mode: chosen, carried, switched };
 }
 
 /**
@@ -612,14 +620,89 @@ ipcMain.on("recovery:cancel", (event) => {
   }
 });
 
+/**
+ * Opens the online account on this computer from now on, at the owner's say.
+ *
+ * An install that held a business before accounts went online stays local
+ * (see launchMode), which is right until the owner has moved that business to
+ * their online account — and then it is the one computer still showing the
+ * old copy. Only the launch choice changes. The business here, its files and
+ * its server address stay exactly where they are, which is what makes going
+ * back safe.
+ *
+ * A restart rather than a switch in place: the server, its automation timer
+ * and the window's navigation rules are all set up once for one mode.
+ * Electron's relaunch waits for this process to exit, so the new one gets the
+ * single-instance lock.
+ */
+async function switchToOnline() {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    title: "Use your online account",
+    message: "Open your online account on this computer?",
+    detail: [
+      "From now on this computer opens your Matlock One account at www.matlockone.com — the same one you sign in to on your other computers and your phone.",
+      "Anything that is only in the business on this computer will not be there. Make sure your records have been moved to your online account first.",
+      "Anyone on your team who connects to this computer over wifi will need to sign in at www.matlockone.com instead.",
+      "Nothing is deleted. The business on this computer stays in its data folder, and you can come back to it from the File menu.",
+    ].join("\n\n"),
+    buttons: ["Switch to my online account", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response !== 0) return;
+
+  writeOnlineChoice(paths(app).onlineChoiceFile);
+  log?.write(`=== switched to the online account at ${new Date().toISOString()} ===
+`);
+  app.relaunch();
+  app.quit();
+}
+
+/** The way back: the business on this computer, as it was before switching. */
+async function switchToLocal() {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    title: "Use the business on this computer",
+    message: "Go back to the business stored on this computer?",
+    detail: [
+      "This computer will open the business kept in its own data folder again, as it did before you switched.",
+      "Anything added to your online account since then is not in it.",
+      "You can switch to your online account again from the File menu.",
+    ].join("\n\n"),
+    buttons: ["Use the business on this computer", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response !== 0) return;
+
+  clearOnlineChoice(paths(app).onlineChoiceFile);
+  log?.write(`=== switched back to the business on this computer at ${new Date().toISOString()} ===
+`);
+  app.relaunch();
+  app.quit();
+}
+
 function buildMenu() {
   const store = paths(app);
 
   // Online there is no local database, server, or crew address, so the items
-  // that act on those would open empty folders and explain nothing.
+  // that act on those would open empty folders and explain nothing. The way
+  // back is offered only to someone who switched: a new install has no
+  // business on this computer to go back to.
   const fileMenu =
     mode === "online"
-      ? [{ role: "quit", label: "Exit Matlock One" }]
+      ? [
+          ...(switchedOnline
+            ? [
+                { label: "Use the business on this computer…", click: switchToLocal },
+                { type: "separator" },
+              ]
+            : []),
+          { role: "quit", label: "Exit Matlock One" },
+        ]
       : [
           {
             label: "Connect your team…",
@@ -634,6 +717,11 @@ function buildMenu() {
           {
             label: "Open server log",
             click: () => shell.openPath(store.logFile),
+          },
+          { type: "separator" },
+          {
+            label: "Use my online account instead…",
+            click: switchToOnline,
           },
           { type: "separator" },
           {
@@ -722,6 +810,7 @@ app.whenReady().then(async () => {
   try {
     const choice = chooseMode();
     mode = choice.mode;
+    switchedOnline = choice.switched;
     buildMenu();
 
     url = mode === "online" ? startOnline() : await startServer(choice.carried);

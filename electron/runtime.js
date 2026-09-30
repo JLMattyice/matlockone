@@ -95,6 +95,7 @@ function paths(app) {
     encryptionKeyFile: path.join(root, "encryption.key"),
     logFile: path.join(root, "server.log"),
     portFile: path.join(root, "port"),
+    onlineChoiceFile: path.join(root, "use-online-account"),
   };
 }
 
@@ -402,8 +403,14 @@ function onlineAppUrl(env = process.env) {
  * `listAccounts` is only called when the file exists: opening a SQLite path
  * that is not there creates it, and an online install should not grow a
  * database it will never use.
+ *
+ * The owner can overrule all of that from the File menu (see
+ * writeOnlineChoice): once they have moved their business online, they choose
+ * to open the account here too. That choice wins without the database being
+ * looked at, because it was made knowing what the database holds.
  */
-function launchMode({ databaseExists, listAccounts }) {
+function launchMode({ databaseExists, listAccounts, choseOnline = false }) {
+  if (choseOnline) return "online";
   if (!databaseExists) return "online";
 
   let result;
@@ -417,10 +424,39 @@ function launchMode({ databaseExists, listAccounts }) {
   return result.accounts.length > 0 ? "local" : "online";
 }
 
+/**
+ * The owner's choice to open their online account on a computer that holds a
+ * business of its own.
+ *
+ * A file beside the database rather than a setting inside it, so the choice is
+ * read without opening the database, and so deleting it by hand — the obvious
+ * thing to try if the app will not start — puts everything back as it was.
+ * The business stays where it is either way: switching never touches it.
+ */
+function choseOnline(file) {
+  return fs.existsSync(file);
+}
+
+function writeOnlineChoice(file, at = new Date()) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    `Chose the online account on ${at.toISOString()}.\n` +
+      "Delete this file to open the business stored on this computer again.\n",
+  );
+}
+
+function clearOnlineChoice(file) {
+  fs.rmSync(file, { force: true });
+}
+
 module.exports = {
   ONLINE_APP_URL,
   onlineAppUrl,
   launchMode,
+  choseOnline,
+  writeOnlineChoice,
+  clearOnlineChoice,
   paths,
   legacyDataDirs,
   migrateLegacyData,
