@@ -20,9 +20,12 @@ const {
   encryptionKey,
   ensureDatabase,
   launchMode,
+  shouldExplainOnline,
   choseOnline,
   writeOnlineChoice,
-  clearOnlineChoice,
+  choseLocal,
+  writeLocalChoice,
+  clearLocalChoice,
   onlineAppUrl,
   stablePort,
   legacyDataDirs,
@@ -44,10 +47,10 @@ const {
  * The server binds to 0.0.0.0 on purpose: this machine is the office server,
  * and phones and laptops on the same network sign in against it.
  *
- * That is local mode, and only an install that already holds a business runs
- * it now. Everything else is online: no server starts, and the window opens the
- * account the customer created on the website, which is what lets one sign-in
- * work on every computer they own. See launchMode in runtime.js.
+ * That is local mode, and only an install whose owner chose it from the File
+ * menu runs it now. Everything else is online: no server starts, and the window
+ * opens the account the customer created on the website, which is what lets one
+ * sign-in work on every computer they own. See launchMode in runtime.js.
  */
 
 // Only one copy may run: two servers would fight over the same database file.
@@ -83,8 +86,8 @@ let log = null;
 let connectionInfo = { local: "", lan: [] };
 /** "local" or "online", decided once at launch. */
 let mode = "local";
-/** Online because the owner chose it from the File menu, over a local business. */
-let switchedOnline = false;
+/** This computer holds a database of its own, which the File menu can open. */
+let hasLocalData = false;
 
 const isPackaged = app.isPackaged;
 
@@ -174,12 +177,13 @@ function openLog(logFile) {
 }
 
 /**
- * Decides, once per launch, whether this install runs its own server.
+ * Decides, once per launch, whether this install runs its own server, and
+ * whether its owner needs telling that it no longer does.
  *
  * Earlier product names' data is carried forward first, and that order is
  * what matters here. A customer upgrading across a rename keeps their business
- * in the old folder until this copies it. Asking before the copy would find
- * the new folder empty and send them online, away from everything they had.
+ * in the old folder until this copies it. Looking before the copy would find
+ * the new folder empty: no notice, and no way back to it in the File menu.
  */
 function chooseMode() {
   const store = paths(app);
@@ -193,28 +197,27 @@ function chooseMode() {
   // list to the *current* name, which made the migration look for the folder it
   // was already using, find nothing, and start the customer with an empty
   // database. Their data was safe only because this copies rather than moves.
-  //
-  // Not when the owner has chosen the online account: then nothing here is
-  // copied or opened, and the business on this computer is left as it is.
-  const switched = choseOnline(store.onlineChoiceFile);
-  const carried = switched
-    ? null
-    : migrateLegacyData(store.root, legacyDataDirs(app), store.databaseFile);
+  const carried = migrateLegacyData(store.root, legacyDataDirs(app), store.databaseFile);
 
-  const chosen = launchMode({
-    choseOnline: switched,
-    databaseExists: fs.existsSync(store.databaseFile),
-    listAccounts: () => runRecovery(["list"]),
-  });
+  const databaseExists = fs.existsSync(store.databaseFile);
+  const chosen = launchMode({ choseLocal: choseLocal(store.localChoiceFile) });
 
-  return { mode: chosen, carried, switched };
+  const explain =
+    chosen === "online" &&
+    shouldExplainOnline({
+      databaseExists,
+      alreadyKnows: choseOnline(store.onlineChoiceFile),
+      listAccounts: () => runRecovery(["list"]),
+    });
+
+  return { mode: chosen, carried, hasLocalData: databaseExists, explain };
 }
 
 /**
  * Online there is nothing to start. The log still opens, because the updater
  * writes to it and an update that goes wrong is exactly when it gets read.
  */
-function startOnline() {
+function startOnline(carried) {
   const store = paths(app);
   fs.mkdirSync(store.root, { recursive: true });
 
@@ -224,6 +227,11 @@ function startOnline() {
   log.write(`
 === Matlock One started ${new Date().toISOString()}, online at ${url} ===
 `);
+  if (carried) {
+    log.write(
+      `[matlock-one] Carried data forward from ${carried.from}: ${carried.copied.join(", ")}\n`,
+    );
+  }
 
   return url;
 }
@@ -621,14 +629,12 @@ ipcMain.on("recovery:cancel", (event) => {
 });
 
 /**
- * Opens the online account on this computer from now on, at the owner's say.
+ * Back to the online account, from an install whose owner chose the business
+ * stored on this computer.
  *
- * An install that held a business before accounts went online stays local
- * (see launchMode), which is right until the owner has moved that business to
- * their online account — and then it is the one computer still showing the
- * old copy. Only the launch choice changes. The business here, its files and
- * its server address stay exactly where they are, which is what makes going
- * back safe.
+ * Only the launch choice changes. The business here, its files and its server
+ * address stay exactly where they are, which is what makes going back and
+ * forth safe.
  *
  * A restart rather than a switch in place: the server, its automation timer
  * and the window's navigation rules are all set up once for one mode.
@@ -653,23 +659,35 @@ async function switchToOnline() {
   });
   if (response !== 0) return;
 
-  writeOnlineChoice(paths(app).onlineChoiceFile);
+  const store = paths(app);
+  clearLocalChoice(store.localChoiceFile);
+  // They know what they are switching to; the notice has nothing to add.
+  writeOnlineChoice(store.onlineChoiceFile);
   log?.write(`=== switched to the online account at ${new Date().toISOString()} ===
 `);
   app.relaunch();
   app.quit();
 }
 
-/** The way back: the business on this computer, as it was before switching. */
+/** Opens the business stored on this computer from now on, and restarts into it. */
+function openLocalBusiness() {
+  writeLocalChoice(paths(app).localChoiceFile);
+  log?.write(`=== switched to the business on this computer at ${new Date().toISOString()} ===
+`);
+  app.relaunch();
+  app.quit();
+}
+
+/** The way back, for an owner whose records are still only on this computer. */
 async function switchToLocal() {
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: "question",
     title: "Use the business on this computer",
-    message: "Go back to the business stored on this computer?",
+    message: "Open the business stored on this computer?",
     detail: [
-      "This computer will open the business kept in its own data folder again, as it did before you switched.",
-      "Anything added to your online account since then is not in it.",
-      "You can switch to your online account again from the File menu.",
+      "This computer will open the business kept in its own data folder instead of your online account.",
+      "Anything added to your online account is not in it.",
+      "You can switch back to your online account from the File menu.",
     ].join("\n\n"),
     buttons: ["Use the business on this computer", "Cancel"],
     defaultId: 1,
@@ -678,11 +696,38 @@ async function switchToLocal() {
   });
   if (response !== 0) return;
 
-  clearOnlineChoice(paths(app).onlineChoiceFile);
-  log?.write(`=== switched back to the business on this computer at ${new Date().toISOString()} ===
-`);
-  app.relaunch();
-  app.quit();
+  openLocalBusiness();
+}
+
+/**
+ * Tells the owner of an install that held its own business, once, that this
+ * computer now opens their online account.
+ *
+ * Without it, the first launch after the update shows a sign-in page where the
+ * business used to be, which reads as every record gone. It offers the way back
+ * right there, for an owner whose records never made it online.
+ *
+ * The file that stops it showing again is written only once it is answered, so
+ * quitting with the dialog open shows it again next launch.
+ */
+async function explainOnline() {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: "info",
+    title: "Your online account",
+    message: "Matlock One now opens your online account",
+    detail: [
+      "This computer now opens your Matlock One account at www.matlockone.com — the same one you sign in to on your other computers and your phone, so all of them show the same business.",
+      "The business that was stored on this computer has not been touched. If its records are not in your online account yet, you can open it here, or any time from File > Use the business on this computer.",
+      "Anyone on your team who connected to this computer over wifi now signs in at www.matlockone.com instead.",
+    ].join("\n\n"),
+    buttons: ["Continue online", "Open the business on this computer"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+
+  writeOnlineChoice(paths(app).onlineChoiceFile);
+  if (response === 1) openLocalBusiness();
 }
 
 function buildMenu() {
@@ -690,12 +735,12 @@ function buildMenu() {
 
   // Online there is no local database, server, or crew address, so the items
   // that act on those would open empty folders and explain nothing. The way
-  // back is offered only to someone who switched: a new install has no
-  // business on this computer to go back to.
+  // back is offered only where there is something to go back to: a new install
+  // has no business on this computer.
   const fileMenu =
     mode === "online"
       ? [
-          ...(switchedOnline
+          ...(hasLocalData
             ? [
                 { label: "Use the business on this computer…", click: switchToLocal },
                 { type: "separator" },
@@ -807,13 +852,15 @@ app.on("second-instance", () => {
 
 app.whenReady().then(async () => {
   let url;
+  let explain = false;
   try {
     const choice = chooseMode();
     mode = choice.mode;
-    switchedOnline = choice.switched;
+    hasLocalData = choice.hasLocalData;
+    explain = choice.explain;
     buildMenu();
 
-    url = mode === "online" ? startOnline() : await startServer(choice.carried);
+    url = mode === "online" ? startOnline(choice.carried) : await startServer(choice.carried);
   } catch (error) {
     // Without this, a failure here rejects into nothing: the process stays
     // alive with no window and no explanation.
@@ -849,6 +896,9 @@ ${paths(app).root}`,
   if (mode === "local" && connectionInfo.firstRun) {
     setTimeout(showConnectionInfo, 1200);
   }
+
+  // Once the window is up, so the notice has something to sit over.
+  if (explain) setTimeout(explainOnline, 1200);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(url);

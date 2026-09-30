@@ -10,20 +10,29 @@ computer they work from, and signs in with that same account on every one. The
 app starts in one of two modes, decided once per launch by `launchMode` in
 `electron/runtime.js`:
 
-- **Online** (every new install). No server starts. The window opens
-  `https://www.matlockone.com/login`, and the business lives in the hosted
-  account, so every computer shows the same records. It needs an internet
-  connection; without one the window shows `electron/offline.html` with a
-  retry. The File menu drops the local-only items.
-- **Local** (any install whose database already has an account in it). This is
+- **Online** (every install, unless its owner chose otherwise). No server
+  starts. The window opens `https://www.matlockone.com/login`, and the business
+  lives in the hosted account, so every computer shows the same records. It
+  needs an internet connection; without one the window shows
+  `electron/offline.html` with a retry. The File menu drops the local-only
+  items.
+- **Local** (only when the owner picks File → "Use the business on this
+  computer…", which writes `use-this-computer` in the data folder). This is
   everything the rest of this document describes: its own server, a SQLite
-  file on this disk, and the crew over the office network.
+  file on this disk, and the crew over the office network. File → "Use my
+  online account instead…" goes back.
 
-Existing installs stay local on purpose. An update that turned a business's
-own copy into a window onto a website where that business does not exist would
-look, to its owner, like losing everything. Every doubt about the database,
-such as a file the account list cannot read, resolves toward local for the same
-reason.
+Through 0.6.1, an install whose database already had an account in it stayed
+local, so an update would never look like it had lost the business. That left
+owners with the real business on one PC and an empty online account everywhere
+else. Such an install now opens online like any other and never touches the
+business on disk: the first launch shows a one-time notice (`shouldExplainOnline`)
+saying where the business went, with a button that opens it, and the File
+menu offers it from then on. Once answered, `use-online-account` in the data
+folder keeps the notice from showing again; 0.6.1's File-menu switch wrote the
+same file, so owners who already switched are not told twice. A database whose
+accounts cannot be read counts as holding a business, because the costly
+mistake is an owner believing their records are gone.
 
 A development run can point online mode somewhere else:
 

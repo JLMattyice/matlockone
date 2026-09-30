@@ -5,10 +5,11 @@
  * reader and the Prisma client it is handed, so the whole path can be tested
  * against two SQLite files.
  *
- * Why this exists: an install that held a business before 0.3.0 stays local
- * forever (see launchMode in electron/runtime.js), so its owner can end up
- * with the real business on one PC and an empty online account everywhere
- * else, both on the same email.
+ * Why this exists: through 0.6.1 an install that held a business before 0.3.0
+ * stayed local for good, so its owner could end up with the real business on
+ * one PC and an empty online account everywhere else, both on the same email.
+ * Later versions open the online account there too (see launchMode in
+ * electron/runtime.js), which makes this the way that business gets online.
  *
  * What it does, in order:
  *

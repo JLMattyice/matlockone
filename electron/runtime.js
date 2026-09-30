@@ -96,6 +96,7 @@ function paths(app) {
     logFile: path.join(root, "server.log"),
     portFile: path.join(root, "port"),
     onlineChoiceFile: path.join(root, "use-online-account"),
+    localChoiceFile: path.join(root, "use-this-computer"),
   };
 }
 
@@ -386,67 +387,103 @@ function onlineAppUrl(env = process.env) {
  * Whether this install runs its own server ("local") or opens the account
  * that lives on the website ("online").
  *
- * Online is the default: a customer signs up on the website and signs in with
- * that account on every computer, so each one shows the same business. A new
- * install has nothing to lose by that.
+ * Online, whatever is on this disk, unless the owner chose the business stored
+ * on this computer from the File menu. A customer signs up on the website and
+ * signs in with that account on every computer, so each one shows the same
+ * business.
  *
- * An install that already holds a business stays local. Updating it to a
- * window onto a website where that business does not exist would look,
- * to the person using it, exactly like losing every record they had. Their
- * data would still be in the folder, but that would not be much comfort.
+ * Through 0.6.1 an install that already held a business stayed local, so that
+ * an update would never look like it had lost every record. In practice that
+ * left the real business on one PC and an empty account on every other
+ * computer signed in with the same email, and a File-menu switch the owner had
+ * to know to look for. Such an install now opens online like any other, says
+ * so once (see shouldExplainOnline), and leaves its business exactly where it
+ * was: the File menu opens it again.
  *
- * So the only question is whether the local database has anyone in it, and
- * every doubt resolves toward local. A database that cannot be read is treated
- * as full, because the costly mistake is hiding a business, not showing an
- * empty sign-up form.
- *
- * `listAccounts` is only called when the file exists: opening a SQLite path
- * that is not there creates it, and an online install should not grow a
- * database it will never use.
- *
- * The owner can overrule all of that from the File menu (see
- * writeOnlineChoice): once they have moved their business online, they choose
- * to open the account here too. That choice wins without the database being
- * looked at, because it was made knowing what the database holds.
+ * The database is not looked at here. That is what keeps an online install
+ * from growing a SQLite file it will never use: opening a path that is not
+ * there creates it.
  */
-function launchMode({ databaseExists, listAccounts, choseOnline = false }) {
-  if (choseOnline) return "online";
-  if (!databaseExists) return "online";
+function launchMode({ choseLocal = false } = {}) {
+  return choseLocal ? "local" : "online";
+}
+
+/**
+ * Whether to tell the owner, once, that this computer opens their online
+ * account rather than the business stored on it.
+ *
+ * Only an install that holds a business needs telling: a new one never had
+ * anything else to show. Nor does anyone who already knows — who switched
+ * from the File menu, or has seen the notice — and both of those leave the
+ * online choice file behind.
+ *
+ * Every doubt resolves toward telling. A database whose accounts cannot be
+ * read may still hold a business, and the costly mistake is its owner
+ * believing that business is gone, not one dialog too many.
+ *
+ * `listAccounts` is only called when the file exists, for the same reason
+ * launchMode never opens it.
+ */
+function shouldExplainOnline({ databaseExists, alreadyKnows, listAccounts }) {
+  if (alreadyKnows || !databaseExists) return false;
 
   let result;
   try {
     result = listAccounts();
   } catch {
-    return "local";
+    return true;
   }
 
-  if (!result || !result.ok || !Array.isArray(result.accounts)) return "local";
-  return result.accounts.length > 0 ? "local" : "online";
+  if (!result || !result.ok || !Array.isArray(result.accounts)) return true;
+  return result.accounts.length > 0;
 }
 
 /**
- * The owner's choice to open their online account on a computer that holds a
- * business of its own.
- *
- * A file beside the database rather than a setting inside it, so the choice is
- * read without opening the database, and so deleting it by hand — the obvious
- * thing to try if the app will not start — puts everything back as it was.
- * The business stays where it is either way: switching never touches it.
+ * Files beside the database rather than settings inside it, so they are read
+ * without opening the database, and so deleting one by hand — the obvious
+ * thing to try if the app will not start — puts that part back as it was.
+ * Neither ever touches the business stored on this computer.
  */
-function choseOnline(file) {
+function hasChoice(file) {
   return fs.existsSync(file);
 }
 
-function writeOnlineChoice(file, at = new Date()) {
+function writeChoice(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(
+  fs.writeFileSync(file, text);
+}
+
+/**
+ * The owner has been told this computer opens their online account, or chose
+ * it from the File menu (0.6.1 wrote this file for that switch). Either way
+ * the notice is not shown again.
+ */
+function choseOnline(file) {
+  return hasChoice(file);
+}
+
+function writeOnlineChoice(file, at = new Date()) {
+  writeChoice(
     file,
-    `Chose the online account on ${at.toISOString()}.\n` +
-      "Delete this file to open the business stored on this computer again.\n",
+    `Opened the online account on this computer on ${at.toISOString()}.\n` +
+      "The business stored on this computer is untouched. File > Use the business on this computer opens it.\n",
   );
 }
 
-function clearOnlineChoice(file) {
+/** The owner's choice to open the business stored on this computer instead. */
+function choseLocal(file) {
+  return hasChoice(file);
+}
+
+function writeLocalChoice(file, at = new Date()) {
+  writeChoice(
+    file,
+    `Chose the business stored on this computer on ${at.toISOString()}.\n` +
+      "Delete this file to open the online account again.\n",
+  );
+}
+
+function clearLocalChoice(file) {
   fs.rmSync(file, { force: true });
 }
 
@@ -454,9 +491,12 @@ module.exports = {
   ONLINE_APP_URL,
   onlineAppUrl,
   launchMode,
+  shouldExplainOnline,
   choseOnline,
   writeOnlineChoice,
-  clearOnlineChoice,
+  choseLocal,
+  writeLocalChoice,
+  clearLocalChoice,
   paths,
   legacyDataDirs,
   migrateLegacyData,

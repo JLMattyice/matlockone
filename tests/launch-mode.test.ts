@@ -7,65 +7,106 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { launchMode, onlineAppUrl, ONLINE_APP_URL, choseOnline, writeOnlineChoice, clearOnlineChoice } = require(
-  path.resolve(process.cwd(), "electron", "runtime.js"),
-) as {
-  launchMode: (input: {
+const {
+  launchMode,
+  shouldExplainOnline,
+  onlineAppUrl,
+  ONLINE_APP_URL,
+  choseOnline,
+  writeOnlineChoice,
+  choseLocal,
+  writeLocalChoice,
+  clearLocalChoice,
+} = require(path.resolve(process.cwd(), "electron", "runtime.js")) as {
+  launchMode: (input?: { choseLocal?: boolean }) => "local" | "online";
+  shouldExplainOnline: (input: {
     databaseExists: boolean;
-    listAccounts?: () => unknown;
-    choseOnline?: boolean;
-  }) => "local" | "online";
+    alreadyKnows: boolean;
+    listAccounts: () => unknown;
+  }) => boolean;
   choseOnline: (file: string) => boolean;
   writeOnlineChoice: (file: string, at?: Date) => void;
-  clearOnlineChoice: (file: string) => void;
+  choseLocal: (file: string) => boolean;
+  writeLocalChoice: (file: string, at?: Date) => void;
+  clearLocalChoice: (file: string) => void;
   onlineAppUrl: (env?: Record<string, string | undefined>) => string;
   ONLINE_APP_URL: string;
 };
 
 /**
- * Which way the desktop app starts.
- *
- * The expensive mistake is one direction only: an install holding a business
- * that opens onto the website, where that business does not exist, looks to
- * its owner like every record is gone. These pin that every doubt resolves
- * toward local, and that only a plainly empty install goes online.
+ * Which way the desktop app starts: the online account, on every computer,
+ * unless the owner chose the business stored on this one from the File menu.
  */
-
 describe("launchMode", () => {
-  it("goes online when there is no database, without trying to open one", () => {
+  it("opens the online account by default", () => {
+    expect(launchMode()).toBe("online");
+    expect(launchMode({})).toBe("online");
+    expect(launchMode({ choseLocal: false })).toBe("online");
+  });
+
+  it("opens the business on this computer only when the owner chose it", () => {
+    expect(launchMode({ choseLocal: true })).toBe("local");
+  });
+});
+
+/**
+ * The one-time notice for an install that held a business of its own before
+ * it started opening online. The expensive mistake is one direction only: an
+ * owner who opens the app to a sign-in page, with no word about where their
+ * business went, believes every record is gone. So every doubt resolves
+ * toward telling them.
+ */
+describe("shouldExplainOnline", () => {
+  const withBusiness = () => ({ ok: true, accounts: [{ email: "owner@shop.test" }] });
+
+  it("says nothing on a new install, without trying to open a database", () => {
     let listed = false;
-    const mode = launchMode({
+    const explain = shouldExplainOnline({
       databaseExists: false,
+      alreadyKnows: false,
       listAccounts: () => {
         listed = true;
-        return { ok: true, accounts: [] };
+        return withBusiness();
       },
     });
 
-    expect(mode).toBe("online");
+    expect(explain).toBe(false);
     // Opening a SQLite path that does not exist creates the file.
     expect(listed).toBe(false);
   });
 
-  it("goes online when the database has nobody in it", () => {
+  it("says nothing to an owner who already knows, without opening the database", () => {
+    let listed = false;
+    const explain = shouldExplainOnline({
+      databaseExists: true,
+      alreadyKnows: true,
+      listAccounts: () => {
+        listed = true;
+        return withBusiness();
+      },
+    });
+
+    expect(explain).toBe(false);
+    expect(listed).toBe(false);
+  });
+
+  it("says nothing when the database has nobody in it", () => {
     expect(
-      launchMode({
+      shouldExplainOnline({
         databaseExists: true,
+        alreadyKnows: false,
         listAccounts: () => ({ ok: true, accounts: [] }),
       }),
-    ).toBe("online");
+    ).toBe(false);
   });
 
-  it("stays local when the database holds an account", () => {
+  it("tells an install that holds a business", () => {
     expect(
-      launchMode({
-        databaseExists: true,
-        listAccounts: () => ({ ok: true, accounts: [{ email: "owner@shop.test" }] }),
-      }),
-    ).toBe("local");
+      shouldExplainOnline({ databaseExists: true, alreadyKnows: false, listAccounts: withBusiness }),
+    ).toBe(true);
   });
 
-  it("stays local when the accounts cannot be read", () => {
+  it("tells an install whose accounts cannot be read", () => {
     const failures = [
       () => ({ ok: false, error: "database disk image is malformed" }),
       () => null,
@@ -76,17 +117,19 @@ describe("launchMode", () => {
     ];
 
     for (const listAccounts of failures) {
-      expect(launchMode({ databaseExists: true, listAccounts })).toBe("local");
+      expect(shouldExplainOnline({ databaseExists: true, alreadyKnows: false, listAccounts })).toBe(
+        true,
+      );
     }
   });
 });
 
 /**
  * The same decision fed by the real recovery script, the way the launcher
- * calls it. launchMode reads that script's output, so a change to its shape
- * has to fail here rather than quietly send a full install online.
+ * calls it. shouldExplainOnline reads that script's output, so a change to its
+ * shape has to fail here rather than quietly skip the notice on a full install.
  */
-describe("launchMode with the recovery tool's account list", () => {
+describe("shouldExplainOnline with the recovery tool's account list", () => {
   const SCRIPT = path.resolve(process.cwd(), "electron", "reset-password.js");
   let dir: string;
   let databaseFile: string;
@@ -124,6 +167,9 @@ describe("launchMode with the recovery tool's account list", () => {
     db.close();
   }
 
+  const explain = () =>
+    shouldExplainOnline({ databaseExists: true, alreadyKnows: false, listAccounts });
+
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "launch-mode-"));
     databaseFile = path.join(dir, "matlockone.db");
@@ -133,72 +179,81 @@ describe("launchMode with the recovery tool's account list", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("sends an install with an empty database online", () => {
+  it("says nothing about an empty database", () => {
     createDatabase(false);
-    expect(launchMode({ databaseExists: true, listAccounts })).toBe("online");
+    expect(explain()).toBe(false);
   });
 
-  it("keeps an install with a business local", () => {
+  it("tells an install with a business", () => {
     createDatabase(true);
-    expect(launchMode({ databaseExists: true, listAccounts })).toBe("local");
+    expect(explain()).toBe(true);
   });
 
-  it("keeps an unreadable database local", () => {
+  it("tells an install whose database cannot be read", () => {
     fs.writeFileSync(databaseFile, "this is not a database");
-    expect(launchMode({ databaseExists: true, listAccounts })).toBe("local");
+    expect(explain()).toBe(true);
   });
 });
 
 /**
- * "Use my online account instead…" in the File menu. An install holding a
- * business stays local by default; once its owner has moved that business
- * online, this is how the last computer showing the old copy follows.
+ * The two files beside the database: "use-this-computer" is the owner's choice
+ * of the business stored here, and "use-online-account" records that they know
+ * this computer opens the online account (0.6.1 wrote it for its File-menu
+ * switch, so those owners are not told again).
  */
-describe("choosing the online account over a business on this computer", () => {
+describe("the launch choices", () => {
   let dir: string;
-  let choiceFile: string;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "online-choice-"));
-    choiceFile = path.join(dir, "use-online-account");
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "launch-choice-"));
   });
 
   afterEach(() => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("goes online without opening the database that holds the business", () => {
-    let listed = false;
-    const mode = launchMode({
-      choseOnline: true,
-      databaseExists: true,
-      listAccounts: () => {
-        listed = true;
-        return { ok: true, accounts: [{ email: "owner@shop.test" }] };
-      },
-    });
-    expect(mode).toBe("online");
-    expect(listed).toBe(false);
+  it("remembers choosing this computer's business, and forgets it when removed", () => {
+    const file = path.join(dir, "use-this-computer");
+    expect(choseLocal(file)).toBe(false);
+
+    writeLocalChoice(file, new Date("2026-09-29T12:00:00Z"));
+    expect(choseLocal(file)).toBe(true);
+    // Someone who finds it while troubleshooting should know what it does.
+    expect(fs.readFileSync(file, "utf8")).toContain("Delete this file");
+
+    clearLocalChoice(file);
+    expect(choseLocal(file)).toBe(false);
+    // Switching back twice is harmless.
+    expect(() => clearLocalChoice(file)).not.toThrow();
   });
 
-  it("is remembered in a file beside the database, and forgotten by removing it", () => {
-    expect(choseOnline(choiceFile)).toBe(false);
+  it("remembers that the owner knows this computer opens the online account", () => {
+    const file = path.join(dir, "use-online-account");
+    expect(choseOnline(file)).toBe(false);
 
-    writeOnlineChoice(choiceFile, new Date("2026-09-29T12:00:00Z"));
-    expect(choseOnline(choiceFile)).toBe(true);
-    // Someone who finds it while troubleshooting should know what it does.
-    expect(fs.readFileSync(choiceFile, "utf8")).toContain("Delete this file");
+    writeOnlineChoice(file, new Date("2026-09-29T12:00:00Z"));
+    expect(choseOnline(file)).toBe(true);
+    expect(fs.readFileSync(file, "utf8")).toContain("Use the business on this computer");
+  });
 
-    clearOnlineChoice(choiceFile);
-    expect(choseOnline(choiceFile)).toBe(false);
-    // Going back twice is harmless.
-    expect(() => clearOnlineChoice(choiceFile)).not.toThrow();
+  it("still honours the file 0.6.1 wrote for its switch", () => {
+    const file = path.join(dir, "use-online-account");
+    fs.writeFileSync(
+      file,
+      "Chose the online account on 2026-09-29T12:00:00.000Z.\n" +
+        "Delete this file to open the business stored on this computer again.\n",
+    );
+    expect(choseOnline(file)).toBe(true);
   });
 
   it("creates the data folder if it is missing", () => {
-    const nested = path.join(dir, "not-yet", "use-online-account");
-    writeOnlineChoice(nested);
-    expect(choseOnline(nested)).toBe(true);
+    const local = path.join(dir, "not-yet", "use-this-computer");
+    writeLocalChoice(local);
+    expect(choseLocal(local)).toBe(true);
+
+    const online = path.join(dir, "not-yet-either", "use-online-account");
+    writeOnlineChoice(online);
+    expect(choseOnline(online)).toBe(true);
   });
 });
 
