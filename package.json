@@ -1,7 +1,7 @@
 {
   "name": "matlock-one",
   "productName": "Matlock One",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
