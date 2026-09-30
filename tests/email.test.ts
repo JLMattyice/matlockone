@@ -7,6 +7,7 @@ import {
   isEmailProvider,
   presetForHost,
   reconcileSecure,
+  rejectedLoginMessage,
   SMTP_PRESETS,
 } from "@/lib/email/catalog";
 
@@ -97,6 +98,31 @@ describe("SMTP failures", () => {
 
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.error).toMatch(/app password/i);
+    // A browser can autofill the wrong address into that box, and nothing else
+    // on screen would show it.
+    expect(result.ok === false && result.error).toContain("office@matlock.test");
+  });
+
+  it("gives the advice for the provider the account is actually on", () => {
+    // The failure that prompted this: a Hostinger mailbox told that "Gmail and
+    // Outlook need an app password", which Hostinger does not have.
+    const hostinger = rejectedLoginMessage(
+      "smtp.hostinger.com",
+      "lane@matlocksoftware.test",
+    );
+    expect(hostinger).toMatch(/hPanel/);
+    expect(hostinger).not.toMatch(/Gmail|Outlook/);
+    expect(hostinger).toContain("lane@matlocksoftware.test");
+
+    expect(rejectedLoginMessage("outbound.att.net")).toMatch(/secure mail key/i);
+    expect(rejectedLoginMessage("smtp.gmail.com")).toMatch(/apppasswords/);
+  });
+
+  it("falls back to general advice for a server it does not know", () => {
+    const message = rejectedLoginMessage("mail.someones-web-host.net");
+    expect(message).toMatch(/full email address/i);
+    // Not the "Other" preset's note, which is about finding the host name.
+    expect(message).not.toMatch(/control panel/i);
   });
 
   it("reports an unreachable server rather than hanging", async () => {
@@ -318,7 +344,7 @@ describe("port and encryption", () => {
       );
 
       expect(result.ok).toBe(false);
-      expect(result.ok === false && result.error).toMatch(/username and password/i);
+      expect(result.ok === false && result.error).toMatch(/rejected the password/i);
 
       // And it must not have tried a second time. The retry is for one exact
       // failure, during the handshake; anything broader would hammer a mail

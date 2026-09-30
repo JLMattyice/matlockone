@@ -151,6 +151,28 @@ export function presetForHost(host: string): SmtpPresetId {
   return match?.id ?? "custom";
 }
 
+/**
+ * What to say when a mail server refuses the login.
+ *
+ * It used to name Gmail and Outlook whatever the account was, which sent a
+ * Hostinger customer looking for an app password Hostinger does not have. The
+ * advice under the password field is hidden once one is saved, so the failure
+ * itself has to carry the provider's own instructions.
+ *
+ * The username is repeated because a browser will happily autofill the sign-in
+ * address for Matlock One into that box, and nothing else on screen shows it.
+ */
+export function rejectedLoginMessage(host?: string, username?: string) {
+  const who = username ? ` for ${username}` : "";
+  const preset = SMTP_PRESETS.find(
+    (entry) => entry.id !== "custom" && entry.id === presetForHost(host ?? ""),
+  );
+
+  return preset
+    ? `The email server rejected the password${who}. ${preset.credential}`
+    : `The email server rejected the password${who}. Check the username is the full email address. Gmail, Outlook, Yahoo and iCloud need an app password, not the one you sign in with.`;
+}
+
 export type EmailConfig = {
   fromName: string;
   fromEmail: string;

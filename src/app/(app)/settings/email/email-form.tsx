@@ -275,7 +275,10 @@ export function EmailForm({ values }: { values: EmailAccountValues }) {
               />
             </Field>
 
-            {provider === "SMTP" && !hasStoredSecret ? (
+            {/* Kept up after a failed test too: that is when somebody is about
+                to type a replacement and most needs to know which one. */}
+            {provider === "SMTP" &&
+            (!hasStoredSecret || values.lastTestOk === false) ? (
               <p className="rounded-lg border border-line bg-surface-muted px-3.5 py-2.5 text-xs text-ink-muted">
                 <span className="font-medium text-ink">
                   {preset.label}

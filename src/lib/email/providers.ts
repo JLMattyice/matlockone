@@ -6,7 +6,11 @@ import os from "node:os";
 
 import nodemailer from "nodemailer";
 
-import type { EmailConfig, EmailProviderId } from "./catalog";
+import {
+  rejectedLoginMessage,
+  type EmailConfig,
+  type EmailProviderId,
+} from "./catalog";
 import { dataStaysOnThisMachine } from "../config";
 
 /**
@@ -203,7 +207,7 @@ async function sendViaSmtp(
     // about TLS, try it the only other way it could have meant. Nothing has
     // been sent at this point, so this cannot deliver the same mail twice.
     if (!isHandshakeMismatch(error)) {
-      return { ok: false, error: describe(error) };
+      return { ok: false, error: describe(error, config) };
     }
 
     try {
@@ -214,8 +218,8 @@ async function sendViaSmtp(
       return {
         ok: false,
         error: isHandshakeMismatch(retryError)
-          ? describe(error)
-          : describe(retryError),
+          ? describe(error, config)
+          : describe(retryError, config),
       };
     }
   }
@@ -280,11 +284,11 @@ export function deliverEmail(
  * Turns provider errors into something a business owner can act on. The raw
  * text from a mail server is written for postmasters, not customers.
  */
-function describe(error: unknown): string {
+function describe(error: unknown, config?: EmailConfig): string {
   const raw = error instanceof Error ? error.message : String(error);
 
   if (/invalid login|535|authentication failed|auth/i.test(raw)) {
-    return "The email server rejected that username and password. Gmail and Outlook need an app password, not your normal one.";
+    return rejectedLoginMessage(config?.host, config?.username);
   }
   if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(raw)) {
     return "Could not find that mail server. Check the host name.";
