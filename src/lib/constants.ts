@@ -127,8 +127,75 @@ export const CLIENT_STATUS_META: Record<ClientStatus, StatusMeta> = {
 
 // ------------------------------------------------------------------- jobs ---
 
-export const JOB_KINDS = ["JOB", "APPOINTMENT"] as const;
+/**
+ * What a calendar entry is. Every entry is a Job row whatever its kind, so
+ * scheduling, crew, reminders and notes all work the same; the kind is what
+ * it is called and how it is marked on the calendar.
+ */
+export const JOB_KINDS = [
+  "JOB",
+  "APPOINTMENT",
+  "MEETING",
+  "DEADLINE",
+  "LAUNCH",
+  "SOCIAL_POST",
+  "EVENT",
+  "OTHER",
+] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
+
+/** JOB has no label here: it takes the business's own word for a job. */
+export const JOB_KIND_META: Record<
+  Exclude<JobKind, "JOB">,
+  { label: string; plural: string; hint: string }
+> = {
+  APPOINTMENT: {
+    label: "Appointment",
+    plural: "Appointments",
+    hint: "A visit, estimate or check-in",
+  },
+  MEETING: {
+    label: "Meeting",
+    plural: "Meetings",
+    hint: "Time with the team, a supplier or a partner",
+  },
+  DEADLINE: {
+    label: "Deadline",
+    plural: "Deadlines",
+    hint: "Something that has to be done by a date",
+  },
+  LAUNCH: {
+    label: "Launch",
+    plural: "Launches",
+    hint: "A product, service or offer going live",
+  },
+  SOCIAL_POST: {
+    label: "Social post",
+    plural: "Social posts",
+    hint: "A planned social media post",
+  },
+  EVENT: {
+    label: "Event",
+    plural: "Events",
+    hint: "A market, show, class or promotion",
+  },
+  OTHER: {
+    label: "Other",
+    plural: "Other",
+    hint: "Anything else worth a spot on the calendar",
+  },
+};
+
+export function jobKindLabel(kind: string, jobLabel: string) {
+  const known = asStatus(JOB_KINDS, kind, "JOB");
+  return known === "JOB" ? jobLabel : JOB_KIND_META[known].label;
+}
+
+/**
+ * The kinds that are work done for a client, and so count toward "jobs
+ * completed". A launch or a social post going out is not finished work.
+ */
+export const WORK_KINDS: JobKind[] = ["JOB", "APPOINTMENT"];
 
 export const JOB_STATUSES = [
   "SCHEDULED",

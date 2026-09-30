@@ -374,7 +374,7 @@ model Job {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   number      String
-  kind        String  @default("JOB") // JOB | APPOINTMENT
+  kind        String  @default("JOB") // JOB_KINDS in src/lib/constants.ts
   title       String
   description String?
 

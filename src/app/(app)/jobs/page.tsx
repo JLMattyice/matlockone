@@ -3,6 +3,7 @@ import Link from "next/link";
 import { format, isToday, isTomorrow, isYesterday } from "date-fns";
 import { Briefcase, CalendarDays, Plus, Repeat } from "lucide-react";
 
+import { KindIcon } from "./kind-icon";
 import { activeCrew, jobStatusCounts, listJobs } from "./queries";
 import { assignableGroups } from "../team/groups/queries";
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +16,13 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { requirePermission } from "@/lib/auth";
 import {
   asStatus,
+  JOB_KIND_META,
+  JOB_KINDS,
   JOB_PRIORITY_META,
   JOB_PRIORITIES,
   JOB_STATUS_META,
   JOB_STATUSES,
+  jobKindLabel,
 } from "@/lib/constants";
 import { can } from "@/lib/permissions";
 
@@ -100,10 +104,11 @@ export default async function JobsPage({
           {
             name: "kind",
             label: "types",
-            options: [
-              { value: "JOB", label: org.labelJobPlural },
-              { value: "APPOINTMENT", label: "Appointments" },
-            ],
+            options: JOB_KINDS.map((kind) => ({
+              value: kind,
+              label:
+                kind === "JOB" ? org.labelJobPlural : JOB_KIND_META[kind].plural,
+            })),
           },
           ...(groups.length
             ? [
@@ -205,8 +210,11 @@ export default async function JobsPage({
                             ) : null}
                           </span>
                           <span className="flex items-center gap-1.5 text-xs text-ink-subtle">
-                            {job.kind === "APPOINTMENT" ? (
-                              <span>Appointment</span>
+                            {job.kind !== "JOB" ? (
+                              <span className="flex items-center gap-1">
+                                <KindIcon kind={job.kind} />
+                                {jobKindLabel(job.kind, org.labelJobSingular)}
+                              </span>
                             ) : job.address ? (
                               <span className="truncate">
                                 {[job.address.line1, job.address.city]

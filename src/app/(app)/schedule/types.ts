@@ -26,6 +26,7 @@ export type UnscheduledJob = {
   id: string;
   number: string;
   title: string;
+  kind: string;
   status: JobStatus;
   clientName: string | null;
   durationMinutes: number;

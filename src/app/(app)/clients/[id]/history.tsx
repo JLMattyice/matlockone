@@ -13,6 +13,7 @@ import {
   INVOICE_STATUSES,
   JOB_STATUS_META,
   JOB_STATUSES,
+  jobKindLabel,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
   type PaymentMethod,
@@ -82,8 +83,10 @@ export function JobsTable({
                 >
                   {job.title}
                 </Link>
-                {job.kind === "APPOINTMENT" ? (
-                  <span className="text-xs text-ink-subtle">Appointment</span>
+                {job.kind !== "JOB" ? (
+                  <span className="text-xs text-ink-subtle">
+                    {jobKindLabel(job.kind, jobLabel)}
+                  </span>
                 ) : job.address ? (
                   <span className="block truncate text-xs text-ink-subtle">
                     {[job.address.line1, job.address.city]

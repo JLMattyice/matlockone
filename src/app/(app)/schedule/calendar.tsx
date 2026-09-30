@@ -28,6 +28,7 @@ import {
   type UnscheduledJob,
 } from "./types";
 import { rescheduleJob } from "../jobs/actions";
+import { KindIcon } from "../jobs/kind-icon";
 import { JOB_STATUS_META } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -204,8 +205,11 @@ function UnscheduledPanel({
               <span className="tabular block text-[0.6875rem] text-ink-subtle">
                 {job.number}
               </span>
-              <span className="block truncate text-xs font-medium text-ink">
-                {job.title}
+              <span className="flex items-center gap-1 text-xs font-medium text-ink">
+                {job.kind !== "JOB" ? (
+                  <KindIcon kind={job.kind} className="text-ink-subtle" />
+                ) : null}
+                <span className="truncate">{job.title}</span>
               </span>
               {job.clientName ? (
                 <span className="block truncate text-[0.6875rem] text-ink-subtle">
@@ -620,7 +624,8 @@ function EventBlock({
       )}
       title={`${event.number} · ${event.title}`}
     >
-      <span className="tabular block font-semibold">
+      <span className="tabular flex items-center gap-1 font-semibold">
+        {event.kind !== "JOB" ? <KindIcon kind={event.kind} /> : null}
         {format(new Date(event.startISO), "h:mm a")}
       </span>
       <span className="block truncate font-medium">{event.title}</span>
@@ -660,6 +665,7 @@ function EventChip({
       )}
       title={`${event.number} · ${event.title}`}
     >
+      {event.kind !== "JOB" ? <KindIcon kind={event.kind} /> : null}
       {!event.allDay ? (
         <span className="tabular shrink-0 font-semibold">
           {format(new Date(event.startISO), "h:mm")}

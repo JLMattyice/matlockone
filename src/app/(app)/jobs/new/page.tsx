@@ -6,6 +6,7 @@ import { JobForm } from "../job-form";
 import { activeCrew, clientOptions } from "../queries";
 import { assignableGroups } from "../../team/groups/queries";
 import { requirePermission } from "@/lib/auth";
+import { asStatus, JOB_KINDS } from "@/lib/constants";
 import { can } from "@/lib/permissions";
 import { toDateTimeLocal } from "@/lib/utils";
 
@@ -58,7 +59,7 @@ export default async function NewJobPage({
         jobLabel={org.labelJobSingular}
         canAssign={can(user, "jobs:assign")}
         values={{
-          kind: params.kind === "APPOINTMENT" ? "APPOINTMENT" : "JOB",
+          kind: asStatus(JOB_KINDS, params.kind, "JOB"),
           title: "",
           description: "",
           clientId: client?.id ?? "",

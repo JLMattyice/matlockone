@@ -22,6 +22,7 @@ import {
   asStatus,
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_LABELS,
+  WORK_KINDS,
   type ExpenseCategory,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
@@ -167,6 +168,7 @@ export async function periodTotals(
       prisma.job.count({
         where: {
           ...scope,
+          kind: { in: WORK_KINDS },
           status: "COMPLETED",
           completedAt: { gte: range.from, lte: range.to },
         },

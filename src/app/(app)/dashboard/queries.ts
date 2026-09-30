@@ -10,7 +10,7 @@ import {
 } from "date-fns";
 
 import type { AppContext } from "@/lib/auth";
-import { INVOICE_OPEN_STATUSES } from "@/lib/constants";
+import { INVOICE_OPEN_STATUSES, WORK_KINDS } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { can, jobVisibilityWhere } from "@/lib/permissions";
 import { leadPipelineSummary } from "../leads/queries";
@@ -82,6 +82,7 @@ export async function loadDashboard(ctx: AppContext) {
     prisma.job.count({
       where: {
         ...jobScope,
+        kind: { in: WORK_KINDS },
         status: "COMPLETED",
         completedAt: { gte: monthStart, lte: monthEnd },
       },

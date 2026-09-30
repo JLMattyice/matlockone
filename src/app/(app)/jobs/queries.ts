@@ -250,13 +250,19 @@ export async function scheduleEvents(
   ctx: AppContext,
   from: Date,
   to: Date,
-  filters: { assignedTo?: string; status?: string; groupId?: string } = {},
+  filters: {
+    assignedTo?: string;
+    status?: string;
+    groupId?: string;
+    kind?: string;
+  } = {},
 ) {
   return prisma.job.findMany({
     where: {
       organizationId: ctx.org.id,
       ...jobVisibilityWhere(ctx.user),
       ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.kind ? { kind: filters.kind } : {}),
       ...(filters.assignedTo
         ? { assignments: { some: { userId: filters.assignedTo } } }
         : {}),

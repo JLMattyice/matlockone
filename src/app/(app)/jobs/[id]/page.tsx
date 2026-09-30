@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { CancelJob } from "./cancel-job";
+import { KindIcon } from "../kind-icon";
 import { MaterialForm } from "./material-form";
 import { TimeForm } from "./time-form";
 import {
@@ -53,6 +54,7 @@ import {
   JOB_STATUS_FLOW,
   JOB_STATUS_META,
   JOB_STATUSES,
+  jobKindLabel,
   type ExpenseCategory,
   type JobStatus,
 } from "@/lib/constants";
@@ -143,7 +145,12 @@ export default async function JobDetailPage({
                   {JOB_PRIORITY_META[priority].label}
                 </Badge>
               ) : null}
-              {job.kind === "APPOINTMENT" ? <Badge>Appointment</Badge> : null}
+              {job.kind !== "JOB" ? (
+                <Badge>
+                  <KindIcon kind={job.kind} />
+                  {jobKindLabel(job.kind, org.labelJobSingular)}
+                </Badge>
+              ) : null}
               {job.recurrenceRule ? (
                 <Badge tone="info">
                   <Repeat className="h-3 w-3" strokeWidth={2} />

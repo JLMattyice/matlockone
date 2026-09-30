@@ -5,6 +5,7 @@ import { useActionState, useMemo, useState } from "react";
 import { Repeat } from "lucide-react";
 
 import { createJob, updateJob } from "./actions";
+import { KindIcon } from "./kind-icon";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import {
@@ -19,11 +20,14 @@ import { useKeepTyped } from "@/components/ui/keep-typed";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import {
+  JOB_KIND_META,
+  JOB_KINDS,
   JOB_PRIORITIES,
   JOB_PRIORITY_META,
   JOB_STATUS_META,
   JOB_STATUSES,
   RECURRENCE_FREQUENCIES,
+  jobKindLabel,
   type JobKind,
   type JobPriority,
   type JobStatus,
@@ -105,6 +109,9 @@ export function JobForm({
   const keep = useKeepTyped(state);
 
   const [kind, setKind] = useState<JobKind>(values.kind);
+  // "Create other" reads as a typo, so the catch-all is just an entry.
+  const noun =
+    kind === "OTHER" ? "entry" : jobKindLabel(kind, jobLabel).toLowerCase();
   const [clientId, setClientId] = useState(values.clientId);
   const [addressId, setAddressId] = useState(values.addressId);
   const [allDay, setAllDay] = useState(values.allDay);
@@ -188,16 +195,11 @@ export function JobForm({
         <CardBody className="space-y-5">
           <fieldset>
             <legend className="mb-2 text-sm font-medium text-ink">Type</legend>
-            <div className="flex gap-2">
-              {(
-                [
-                  ["JOB", jobLabel, "Billable work at a site"],
-                  ["APPOINTMENT", "Appointment", "A visit, estimate or check-in"],
-                ] as const
-              ).map(([option, label, hint]) => (
+            <div className="flex flex-wrap gap-2">
+              {JOB_KINDS.map((option) => (
                 <label
                   key={option}
-                  title={hint}
+                  title={kindHint(option)}
                   className={cn(
                     "flex cursor-pointer items-center gap-2 rounded-lg border px-3.5 py-2 text-sm transition-colors",
                     kind === option
@@ -211,10 +213,12 @@ export function JobForm({
                     onChange={() => setKind(option)}
                     className="sr-only"
                   />
-                  {label}
+                  <KindIcon kind={option} className="h-3.5 w-3.5" />
+                  {jobKindLabel(option, jobLabel)}
                 </label>
               ))}
             </div>
+            <p className="mt-2 text-xs text-ink-subtle">{kindHint(kind)}</p>
           </fieldset>
 
           <Field label="Title" htmlFor="title" required error={err("title")}>
@@ -466,7 +470,7 @@ export function JobForm({
                   ) : null}
 
                   <p className="text-xs text-ink-subtle">
-                    Each occurrence is created as its own {jobLabel.toLowerCase()},
+                    Each occurrence is created as its own {noun},
                     so any one of them can be moved, reassigned or cancelled on
                     its own.
                   </p>
@@ -569,12 +573,18 @@ export function JobForm({
             Cancel
           </Link>
           <SubmitButton pendingLabel={isEdit ? "Saving…" : "Creating…"}>
-            {isEdit ? "Save changes" : `Create ${jobLabel.toLowerCase()}`}
+            {isEdit
+              ? "Save changes"
+              : `Create ${noun}`}
           </SubmitButton>
         </CardFooter>
       </Card>
     </form>
   );
+}
+
+function kindHint(kind: JobKind) {
+  return kind === "JOB" ? "Billable work at a site" : JOB_KIND_META[kind].hint;
 }
 
 function formatDuration(minutes: number) {

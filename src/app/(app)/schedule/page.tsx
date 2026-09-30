@@ -31,6 +31,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
 import {
   asStatus,
+  JOB_KIND_META,
+  JOB_KINDS,
   JOB_STATUS_META,
   JOB_STATUSES,
   type JobStatus,
@@ -47,6 +49,7 @@ type SearchParams = Promise<{
   assignedTo?: string;
   group?: string;
   status?: string;
+  kind?: string;
 }>;
 
 export default async function SchedulePage({
@@ -73,6 +76,7 @@ export default async function SchedulePage({
       assignedTo: params.assignedTo,
       groupId: params.group,
       status: params.status,
+      kind: params.kind,
     }),
     unscheduledJobs(ctx),
     can(user, "jobs:assign") ? activeCrew(org.id) : Promise.resolve([]),
@@ -109,6 +113,7 @@ export default async function SchedulePage({
     id: job.id,
     number: job.number,
     title: job.title,
+    kind: job.kind,
     status: asStatus(JOB_STATUSES, job.status, "SCHEDULED") as JobStatus,
     clientName: job.client?.displayName ?? null,
     durationMinutes: job.estimatedMinutes ?? 60,
@@ -123,6 +128,7 @@ export default async function SchedulePage({
       assignedTo: params.assignedTo,
       group: params.group,
       status: params.status,
+      kind: params.kind,
       ...next,
     };
     for (const [key, value] of Object.entries(merged)) {
@@ -207,9 +213,13 @@ export default async function SchedulePage({
         <ScheduleFilters
           crew={crew}
           groups={groups}
+          jobLabel={org.labelJobPlural}
+          view={params.view}
+          date={params.date}
           group={params.group}
           assignedTo={params.assignedTo}
           status={params.status}
+          kind={params.kind}
           hrefFor={href}
         />
       </div>
@@ -240,64 +250,90 @@ export default async function SchedulePage({
 function ScheduleFilters({
   crew,
   groups,
+  jobLabel,
+  view,
+  date,
   group,
   assignedTo,
   status,
+  kind,
   hrefFor,
 }: {
   crew: { id: string; name: string }[];
   groups: { id: string; name: string }[];
+  jobLabel: string;
+  view?: string;
+  date?: string;
   group?: string;
   assignedTo?: string;
   status?: string;
+  kind?: string;
   hrefFor: (next: Partial<Record<string, string>>) => string;
 }) {
   return (
     <div className="ml-auto flex flex-wrap items-center gap-2">
-      {crew.length > 0 || groups.length > 0 ? (
-        <form action="/schedule" className="contents">
-          {groups.length > 0 ? (
-            <Select
-              name="group"
-              defaultValue={group ?? ""}
-              aria-label="Filter by group"
-              className="w-40"
-            >
-              <option value="">All groups</option>
-              {groups.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </Select>
-          ) : null}
+      <form action="/schedule" className="contents">
+        <Select
+          name="kind"
+          defaultValue={kind ?? ""}
+          aria-label="Filter by type"
+          className="w-40"
+        >
+          <option value="">All types</option>
+          {JOB_KINDS.map((option) => (
+            <option key={option} value={option}>
+              {option === "JOB" ? jobLabel : JOB_KIND_META[option].plural}
+            </option>
+          ))}
+        </Select>
 
-          {crew.length > 0 ? (
-            <Select
-              name="assignedTo"
-              defaultValue={assignedTo ?? ""}
-              aria-label="Filter by person"
-              className="w-40"
-              // Server-rendered form: submitting navigates with the new query.
-            >
-              <option value="">Everyone</option>
-              {crew.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </Select>
-          ) : null}
+        {groups.length > 0 ? (
+          <Select
+            name="group"
+            defaultValue={group ?? ""}
+            aria-label="Filter by group"
+            className="w-40"
+          >
+            <option value="">All groups</option>
+            {groups.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
 
-          {status ? <input type="hidden" name="status" value={status} /> : null}
-          <button type="submit" className={buttonClasses("outline", "md")}>
-            Apply
-          </button>
-        </form>
-      ) : null}
+        {crew.length > 0 ? (
+          <Select
+            name="assignedTo"
+            defaultValue={assignedTo ?? ""}
+            aria-label="Filter by person"
+            className="w-40"
+            // Server-rendered form: submitting navigates with the new query.
+          >
+            <option value="">Everyone</option>
+            {crew.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
 
-      {(assignedTo || status || group) && (
-        <Link href={hrefFor({ assignedTo: "", status: "", group: "" })} className={buttonClasses("ghost", "md")}>
+        {/* Filtering keeps the week or month being looked at. */}
+        {view ? <input type="hidden" name="view" value={view} /> : null}
+        {date ? <input type="hidden" name="date" value={date} /> : null}
+        {status ? <input type="hidden" name="status" value={status} /> : null}
+        <button type="submit" className={buttonClasses("outline", "md")}>
+          Apply
+        </button>
+      </form>
+
+      {(assignedTo || status || group || kind) && (
+        <Link
+          href={hrefFor({ assignedTo: "", status: "", group: "", kind: "" })}
+          className={buttonClasses("ghost", "md")}
+        >
           Clear
         </Link>
       )}
