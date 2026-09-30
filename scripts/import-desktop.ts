@@ -84,6 +84,18 @@ function openSource(file: string): { reader: SourceReader; close(): void } {
   return { reader, close: () => db.close() };
 }
 
+/**
+ * The address as pasted. Copying from a dashboard's .env view brings the name
+ * and quotes along (DATABASE_URL="postgresql://…"), which is still the address.
+ */
+function databaseUrl(raw: string | undefined) {
+  return (raw ?? "")
+    .trim()
+    .replace(/^DATABASE_URL\s*=\s*/i, "")
+    .replace(/^(["'])(.*)\1$/, "$2")
+    .trim();
+}
+
 function describe(value: unknown) {
   if (value === null || value === undefined || value === "") return "(blank)";
   const text = String(value).replace(/\s+/g, " ");
@@ -99,11 +111,15 @@ async function main() {
   }
   if (!fs.existsSync(file)) fail(`There is no file at ${file}`);
 
-  const url = process.env.DATABASE_URL?.trim() ?? "";
+  const url = databaseUrl(process.env.DATABASE_URL);
   if (!/^postgres(ql)?:\/\//i.test(url)) {
+    // Enough of the value to tell a copied command or a dev path from a real
+    // address, and never enough to reach the password.
+    const seen = url ? `It starts with: ${url.slice(0, 12)}` : "It is empty.";
     fail(
       "DATABASE_URL is not set to the hosted database in this window.\n" +
-        "Set it the same way as for `npm run db:deploy`, then run this again.",
+        `${seen}\n` +
+        "It should start with postgresql:// — set it the same way as for `npm run db:deploy`, then run this again.",
     );
   }
 
