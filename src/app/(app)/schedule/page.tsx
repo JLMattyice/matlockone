@@ -13,7 +13,7 @@ import {
   subDays,
   subMonths,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 import { ScheduleCalendar } from "./calendar";
 import {
@@ -175,12 +175,24 @@ export default async function SchedulePage({
         title="Schedule"
         description={rangeLabel(view, anchor)}
         actions={
-          can(user, "jobs:write") ? (
-            <Link href="/jobs/new" className={buttonClasses("primary", "md")}>
-              <Plus className="h-4 w-4" strokeWidth={2} />
-              New {org.labelJobSingular.toLowerCase()}
+          <>
+            {/* Every role with a schedule can subscribe to it, so this sits
+                beside the one action only some roles get. */}
+            <Link
+              href="/settings/profile#calendar-feed"
+              className={buttonClasses("outline", "md")}
+            >
+              <CalendarPlus className="h-4 w-4" strokeWidth={2} />
+              <span className="hidden sm:inline">Add to my calendar</span>
+              <span className="sm:hidden">Subscribe</span>
             </Link>
-          ) : null
+            {can(user, "jobs:write") ? (
+              <Link href="/jobs/new" className={buttonClasses("primary", "md")}>
+                <Plus className="h-4 w-4" strokeWidth={2} />
+                New {org.labelJobSingular.toLowerCase()}
+              </Link>
+            ) : null}
+          </>
         }
       />
 

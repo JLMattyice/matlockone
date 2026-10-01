@@ -164,6 +164,12 @@ model User {
   hourlyRateCents Int?
   isActive        Boolean @default(true)
 
+  /// The private address of this person's calendar feed. It is the whole
+  /// credential — a calendar app cannot sign in — so it is 32 characters
+  /// from a cryptographic source, and clearing or replacing it is what cuts
+  /// off a link that was shared by mistake.
+  calendarFeedToken String? @unique
+
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
