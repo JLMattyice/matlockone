@@ -34,6 +34,10 @@ export type PaymentSettingsValues = {
   lastError: string | null;
   canEncrypt: boolean;
   readOnly: boolean;
+  /** PayPal reports payments to this business as they happen. */
+  instantUpdates: boolean;
+  /** The morning run asks the processor about every open pay link. */
+  checkedEachMorning: boolean;
 };
 
 export function PaymentsForm({ values }: { values: PaymentSettingsValues }) {
@@ -290,6 +294,11 @@ function StatusBanner({ values }: { values: PaymentSettingsValues }) {
       <Note tone="success">
         <Badge tone="success">Connected</Badge> {meta.label}, checked{" "}
         {formatIn(values.lastTestedAt!, "MMM d, yyyy 'at' h:mm a", zone)}.
+        {values.instantUpdates
+          ? " Online payments are recorded the moment a client pays."
+          : meta.reconciles && values.checkedEachMorning
+            ? " Online payments are recorded each morning, or straight away with Check for payment on the invoice."
+            : null}
       </Note>
     );
   }

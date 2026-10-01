@@ -18,6 +18,10 @@ export type PaymentLinkPanelProps = {
   /** Null when nothing is connected under Settings → Payments. */
   processorLabel: string | null;
   processorReconciles: boolean;
+  /** The processor reports payments here as they happen. */
+  instant: boolean;
+  /** The morning run asks about this link by itself. */
+  checkedEachMorning: boolean;
   paymentUrl: string | null;
   paymentCheckedAt: string | null;
   /** The processor link cannot be polled — a pasted link, for instance. */
@@ -30,6 +34,8 @@ export function PaymentLinkPanel({
   invoiceId,
   processorLabel,
   processorReconciles,
+  instant,
+  checkedEachMorning,
   paymentUrl,
   paymentCheckedAt,
   hasRef,
@@ -103,11 +109,28 @@ export function PaymentLinkPanel({
           {processorLabel} cannot tell Matlock One what it collected, so record
           the payment below once it lands.
         </p>
-      ) : paymentCheckedAt ? (
-        <p className="text-xs text-ink-subtle">
-          Last checked {formatIn(paymentCheckedAt, "MMM d, yyyy 'at' h:mm a", zone)}.
-        </p>
-      ) : null}
+      ) : (
+        <CheckedNote
+          lines={[
+            settled
+              ? null
+              : instant
+                ? `${processorLabel} tells Matlock One the moment this is paid.`
+                : checkedEachMorning
+                  ? `Checked with ${processorLabel} every morning.`
+                  : null,
+            paymentCheckedAt
+              ? `Last checked ${formatIn(paymentCheckedAt, "MMM d, yyyy 'at' h:mm a", zone)}.`
+              : null,
+          ]}
+        />
+      )}
     </div>
   );
+}
+
+/** How this link gets checked, and when it last was — whichever are known. */
+function CheckedNote({ lines }: { lines: (string | null)[] }) {
+  const text = lines.filter(Boolean).join(" ");
+  return text ? <p className="text-xs text-ink-subtle">{text}</p> : null;
 }

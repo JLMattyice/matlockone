@@ -261,8 +261,17 @@ a web address to pay at and puts it on the invoice and in the email; the payment
 page belongs to the processor, on the processor's domain. That keeps this
 application entirely out of PCI scope, and it is the only arrangement that works
 for the desktop build, where a client at home cannot reach a laptop in the
-office. Reconciliation is by polling for the same reason — a webhook needs an
-address the processor can reach.
+office.
+
+**Online payments record themselves.** On the hosted site, connecting PayPal
+registers a webhook on the business's own PayPal app (`src/lib/payments/paypal-webhooks.ts`),
+at an address signed per business. A notice is trusted only to say *which*
+invoice to look at — the payment itself is read back from PayPal with the
+business's credentials before anything is written, so a forged notice can do no
+more than prompt a check. Under that, the morning run asks every processor about
+every open pay link before the overdue automation runs, so a missed notice never
+gets a paid customer chased. The desktop build, which has no address a processor
+can reach, relies on that sweep and the Check for payment button.
 
 **A repeated poll cannot record the same payment twice.** Each incoming payment
 is stored under the processor's own transaction id behind a unique index on

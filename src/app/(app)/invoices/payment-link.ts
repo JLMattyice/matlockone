@@ -6,10 +6,8 @@ import { failed, saved, type ActionState } from "@/lib/action-state";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
-import { recordRemotePayments, resolveProcessor } from "@/lib/payments/account";
 import { attachPaymentLink } from "@/lib/payments/link";
-import { PAYMENT_PROVIDER_META } from "@/lib/payments/catalog";
-import { notify } from "@/lib/notifications";
+import { reconcileInvoice } from "@/lib/payments/reconcile";
 
 /**
  * Putting a Pay now link on an invoice, and asking the processor what has been
@@ -116,9 +114,10 @@ export async function removePaymentLink(formData: FormData) {
 /**
  * Asks the processor what has settled, and records anything new.
  *
- * Polling rather than webhooks: a webhook needs an address the processor can
- * reach, and the desktop build has none. Safe to run repeatedly — each payment
- * is stored under the processor's own transaction id behind a unique index.
+ * The same check PayPal's notices and the morning run make, so a payment found
+ * by pressing this is announced and acted on exactly as one found by either of
+ * them. Safe to run repeatedly — each payment is stored under the processor's
+ * own transaction id behind a unique index.
  */
 export async function checkForPayment(
   _prev: ActionState,
@@ -127,72 +126,23 @@ export async function checkForPayment(
   const { org, user } = await requirePermission("payments:record");
 
   const id = String(formData.get("invoiceId") ?? "");
-  const invoice = await loadInvoice(org.id, id);
-  if (!invoice) return failed("That invoice no longer exists.");
-
-  const processor = await resolveProcessor(org.id);
-  if (!processor) {
-    return failed(
-      "No payment processor is connected. Set one up under Settings → Payments.",
-    );
-  }
-
-  if (invoice.status === "DRAFT") {
-    return failed("Send the invoice before recording payments against it.");
-  }
-
-  const meta = PAYMENT_PROVIDER_META[processor.provider];
-  if (!meta.reconciles) {
-    return failed(
-      `${meta.label} cannot tell Matlock One what it collected. Record the payment by hand once it lands.`,
-    );
-  }
-
-  const result = await processor.adapter.listPayments(
-    invoice.paymentRef,
-    processor.config,
-    processor.credentials,
-  );
-
-  if (!result.ok) return failed(result.error);
-
-  const outcome = await recordRemotePayments({
+  const outcome = await reconcileInvoice({
     organizationId: org.id,
-    invoiceId: invoice.id,
-    clientId: invoice.clientId,
-    provider: processor.provider,
-    payments: result.value,
+    invoiceId: id,
+    userId: user.id,
   });
 
-  await prisma.invoice.update({
-    where: { id: invoice.id },
-    data: { paymentCheckedAt: new Date() },
-  });
+  if (!outcome.ok) return failed(outcome.error);
+
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/invoices");
+  revalidatePath("/payments");
+  revalidatePath("/tasks");
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
 
-  if (outcome.recorded > 0) {
-    await notify({
-      organizationId: org.id,
-      userIds: invoice.createdById ? [invoice.createdById] : [],
-      exceptUserId: user.id,
-      type: "PAYMENT_RECEIVED",
-      title: `${money(outcome.amountCents)} received on ${invoice.number}`,
-      body: outcome.settled
-        ? "Paid in full."
-        : `${money(outcome.balanceCents)} still outstanding.`,
-      entityType: "invoice",
-      entityId: invoice.id,
-      actionUrl: `/invoices/${invoice.id}`,
-    });
-  }
-
-  revalidatePath(`/invoices/${invoice.id}`);
-  revalidatePath("/invoices");
-  revalidatePath("/payments");
-
   if (outcome.recorded === 0) {
-    return saved(`Nothing new — ${meta.label} reports no further payments.`);
+    return saved(`Nothing new — ${outcome.providerLabel} reports no further payments.`);
   }
 
   return saved(

@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { PaymentsForm, type PaymentSettingsValues } from "./payments-form";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { sweepsAutomatically } from "@/lib/config";
 import { isPaymentProvider } from "@/lib/payments/catalog";
+import { hasInstantUpdates } from "@/lib/payments/paypal-webhooks";
 import { can } from "@/lib/permissions";
 import { encryptionAvailable } from "@/lib/secret-box";
 
@@ -42,6 +44,8 @@ export default async function PaymentSettingsPage() {
     lastError: integration?.lastError ?? null,
     canEncrypt: encryptionAvailable(),
     readOnly: !can(user, "settings:write"),
+    instantUpdates: hasInstantUpdates(org.id, integration?.provider, config),
+    checkedEachMorning: sweepsAutomatically(),
   };
 
   return <PaymentsForm values={values} />;

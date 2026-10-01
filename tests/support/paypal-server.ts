@@ -61,7 +61,15 @@ export type FakePaypal = {
   charge: (subscriptionId: string, amount: string, transactionId: string, time: Date) => void;
   /** Anything else happening at PayPal: suspension, a customer cancelling. */
   setStatus: (subscriptionId: string, status: string) => void;
+  /** Webhooks registered on the app, keyed by id. Seed it to pre-exist one. */
+  webhooks: Map<string, PaypalWebhookRecord>;
   close: () => Promise<void>;
+};
+
+export type PaypalWebhookRecord = {
+  id: string;
+  url: string;
+  event_types: { name: string }[];
 };
 
 export type PaypalSubscriptionRecord = {
@@ -110,6 +118,7 @@ export async function startFakePaypal(
   const subscriptions = new Map<string, PaypalSubscriptionRecord>();
   const plans = new Map<string, unknown>();
   const products = new Map<string, unknown>();
+  const webhooks = new Map<string, PaypalWebhookRecord>();
   /** PayPal-Request-Id → the id first made for it, as PayPal replays them. */
   const replays = new Map<string, string>();
   let tokenGrants = 0;
@@ -258,6 +267,46 @@ export async function startFakePaypal(
         });
       }
 
+      // -------------------------------------------------------- webhooks ---
+      if (path === "/v1/notifications/webhooks" && method === "GET") {
+        return send(200, { webhooks: [...webhooks.values()] });
+      }
+
+      if (path === "/v1/notifications/webhooks" && method === "POST") {
+        const url = String(body?.url ?? "");
+        if (!/^https:\/\//.test(url)) {
+          return send(400, {
+            name: "VALIDATION_ERROR",
+            details: [{ field: "url", issue: "Invalid URL. Must be HTTPS." }],
+          });
+        }
+        if ([...webhooks.values()].some((webhook) => webhook.url === url)) {
+          return send(400, { name: "WEBHOOK_URL_ALREADY_EXISTS", message: "Webhook URL already exists" });
+        }
+        if (webhooks.size >= 10) {
+          return send(400, {
+            name: "WEBHOOK_NUMBER_LIMIT_EXCEEDED",
+            message: "The webhook's number limit has exceeded",
+          });
+        }
+        const id = `WH-TEST-${nextId++}`;
+        const created = { id, url, event_types: body?.event_types ?? [] };
+        webhooks.set(id, created);
+        return send(201, created);
+      }
+
+      const hookMatch = /^\/v1\/notifications\/webhooks\/([^/?]+)$/.exec(path);
+      if (hookMatch && method === "PATCH") {
+        const webhook = webhooks.get(hookMatch[1]);
+        if (!webhook) return send(404, { name: "INVALID_RESOURCE_ID" });
+        for (const operation of (body ?? []) as { op: string; path: string; value: unknown }[]) {
+          if (operation.op === "replace" && operation.path === "/event_types") {
+            webhook.event_types = operation.value as { name: string }[];
+          }
+        }
+        return send(200, webhook);
+      }
+
       // --------------------------------------------------- subscriptions ---
       const requestId = req.headers["paypal-request-id"] as string | undefined;
 
@@ -392,6 +441,7 @@ export async function startFakePaypal(
       if (!subscription) throw new Error(`No fake subscription ${subscriptionId}`);
       subscription.status = status;
     },
+    webhooks,
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve());

@@ -77,6 +77,16 @@ export const SIGNUP_PER_IP: RateLimitRule = { limit: 5, windowSeconds: HOUR };
 export const PAY_REDIRECT_PER_INVOICE: RateLimitRule = { limit: 20, windowSeconds: HOUR };
 
 /**
+ * PayPal payment notices, per business.
+ *
+ * Each one makes Matlock One ask PayPal about an invoice using the business's
+ * own credentials, so an address in the wrong hands must not be a way to run
+ * that up. Far above what a real business receives; PayPal resends anything
+ * turned away, so a genuine burst is delayed, not lost.
+ */
+export const PAYMENT_NOTICES_PER_BUSINESS: RateLimitRule = { limit: 300, windowSeconds: HOUR };
+
+/**
  * Checking the current password before a password change, per account.
  *
  * The one place a signed-in session can test a password. Somebody holding a

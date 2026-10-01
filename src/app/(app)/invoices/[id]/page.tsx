@@ -47,6 +47,8 @@ import { publicUrl } from "@/lib/messaging";
 import { PaymentLinkPanel } from "./payment-link-panel";
 import { resolveProcessor } from "@/lib/payments/account";
 import { PAYMENT_PROVIDER_META } from "@/lib/payments/catalog";
+import { hasInstantUpdates } from "@/lib/payments/paypal-webhooks";
+import { sweepsAutomatically } from "@/lib/config";
 import { currencySymbol, formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { autopayStatus } from "@/lib/autopay";
@@ -307,6 +309,12 @@ export default async function InvoiceDetailPage({
                 invoiceId={invoice.id}
                 processorLabel={processorMeta?.label ?? null}
                 processorReconciles={processorMeta?.reconciles ?? false}
+                instant={
+                  processor
+                    ? hasInstantUpdates(org.id, processor.provider, processor.config)
+                    : false
+                }
+                checkedEachMorning={sweepsAutomatically()}
                 paymentUrl={invoice.paymentUrl}
                 paymentCheckedAt={invoice.paymentCheckedAt?.toISOString() ?? null}
                 hasRef={Boolean(invoice.paymentRef)}

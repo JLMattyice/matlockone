@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { publicUrl } from "@/lib/messaging";
 import { resolveProcessor } from "./account";
+import { ensurePaypalWebhook } from "./paypal-webhooks";
 import type { Organization } from "@/generated/prisma/client";
 
 /**
@@ -94,6 +95,19 @@ export async function attachPaymentLink(
       paymentCheckedAt: null,
     },
   });
+
+  // A link is about to go out, so PayPal had better know where to say it was
+  // paid. Free once done; never a reason to fail the link that already exists.
+  if (processor.provider === "PAYPAL") {
+    try {
+      const hooked = await ensurePaypalWebhook(org.id, processor);
+      if (!hooked.ok && hooked.reason === "failed") {
+        console.error(`[payments] could not register PayPal notices for ${org.id}: ${hooked.error}`);
+      }
+    } catch (error) {
+      console.error("[payments] registering PayPal notices failed", error);
+    }
+  }
 
   return { ok: true, url: result.value.url, alreadyHad: false };
 }

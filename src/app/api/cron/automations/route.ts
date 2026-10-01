@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { MIN_CRON_SECRET } from "@/lib/config";
 import { syncAutopay } from "@/lib/autopay";
+import { sweepPayLinks } from "@/lib/payments/reconcile";
 import { draftDueInvoices } from "@/lib/recurring-invoices";
 import { sweepEveryBusiness } from "@/lib/workflows/run";
 
@@ -25,6 +26,10 @@ import { sweepEveryBusiness } from "@/lib/workflows/run";
  * and each date is claimed once, so a second call makes no second draft.
  * Auto-pay is checked after the drafts, so a payment PayPal took this
  * morning finds this morning's invoice to land on.
+ *
+ * Pay links are checked first of all. A client who paid last night must not
+ * be chased this morning because the notice went astray, so every open link
+ * is asked about before the overdue automation looks at anything.
  */
 
 export const dynamic = "force-dynamic";
@@ -54,12 +59,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const payLinks = await sweepPayLinks();
   const result = await sweepEveryBusiness();
   const repeating = await draftDueInvoices();
   const autopay = await syncAutopay();
 
   console.info(
-    `[automations] morning run: ${result.businesses} businesses, ${result.created} tasks raised` +
+    `[automations] morning run: pay links: ${payLinks.checked} checked, ${payLinks.recorded} payments recorded` +
+      (payLinks.failed > 0 ? `, ${payLinks.failed} failed` : "") +
+      (payLinks.stoppedEarly ? ", stopped for time" : "") +
+      `; ${result.businesses} businesses, ${result.created} tasks raised` +
       (result.failed.length > 0 ? `, ${result.failed.length} failed` : "") +
       `; ${repeating.drafted.length} repeating invoices drafted` +
       (repeating.failed.length > 0 ? `, ${repeating.failed.length} schedules failed` : "") +
@@ -70,6 +79,9 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ...result,
+    payLinksChecked: payLinks.checked,
+    payLinksRecorded: payLinks.recorded,
+    payLinksFailed: payLinks.failed,
     drafted: repeating.drafted.length,
     draftFailed: repeating.failed,
     autopayCollected: autopay.collected,

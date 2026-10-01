@@ -16,6 +16,7 @@ import {
   PAYMENT_PROVIDER_META,
   partitionFields,
 } from "@/lib/payments/catalog";
+import { ensurePaypalWebhook } from "@/lib/payments/paypal-webhooks";
 import { adapterFor, allAdapters } from "@/lib/payments/providers";
 import { encryptionAvailable, seal } from "@/lib/secret-box";
 
@@ -178,9 +179,23 @@ export async function testPaymentProcessor(
 
   revalidatePath("/settings/payments");
 
-  return result.ok
-    ? saved(`Working — payments go to ${result.value.accountLabel}.`)
-    : failed(result.error);
+  if (!result.ok) return failed(result.error);
+
+  const working = `Working — payments go to ${result.value.accountLabel}.`;
+
+  // A passing test is the moment to have PayPal report payments as they
+  // happen: the credentials have just been proven. Failing to is not a failed
+  // test — pay links still work, and the morning run still finds payments.
+  const hooked = await ensurePaypalWebhook(org.id, processor);
+  if (hooked.ok) {
+    return saved(`${working} Online payments are recorded the moment a client pays.`);
+  }
+  if (hooked.reason === "failed") {
+    return saved(
+      `${working} PayPal could not be set up to report payments as they happen, so they will be checked each morning instead. PayPal said: ${hooked.error}`,
+    );
+  }
+  return saved(working);
 }
 
 export async function disconnectPaymentProcessor() {
