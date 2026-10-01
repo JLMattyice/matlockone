@@ -7,7 +7,8 @@ import {
   toggleExpenseBillable,
   toggleExpenseReimbursed,
 } from "../actions";
-import { getExpense } from "../queries";
+import { getExpense, getExpenseSeries } from "../queries";
+import { ExpenseRepeatCard } from "./repeat-card";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { NotesPanel } from "@/components/notes/notes-panel";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,7 @@ export default async function ExpenseDetailPage({
   const zone = await viewerTimeZone();
   const { id } = await params;
   const expense = await getExpense(org.id, id);
+  const series = await getExpenseSeries(org.id, expense.scheduleId);
 
   const writable = can(user, "expenses:write");
   const deletable = can(user, "expenses:delete");
@@ -94,6 +96,7 @@ export default async function ExpenseDetailPage({
                 {expense.description}
               </h1>
               <Badge tone="neutral">{EXPENSE_CATEGORY_LABELS[category]}</Badge>
+              {series?.isActive ? <Badge tone="neutral">Repeating</Badge> : null}
               {expense.billable ? <Badge tone="accent">Rebillable</Badge> : null}
               {owedBack ? <Badge tone="warning">Owed back</Badge> : null}
               {expense.reimbursedAt ? (
@@ -210,55 +213,67 @@ export default async function ExpenseDetailPage({
           </Card>
         </div>
 
-        <Card>
-          <CardHeader title="Details" />
-          <dl className="divide-y divide-line text-sm">
-            <Detail label="Category">{EXPENSE_CATEGORY_LABELS[category]}</Detail>
-            <Detail label="Vendor">{expense.vendor ?? "Not recorded"}</Detail>
-            <Detail label="Paid with">{PAYMENT_METHOD_LABELS[method]}</Detail>
-            <Detail label="Reference">{expense.reference ?? "—"}</Detail>
-            <Detail label="Paid by">
-              {expense.paidBy?.name ?? "The business"}
-            </Detail>
-
-            <Detail label={org.labelJobSingular}>
-              {expense.job ? (
-                <Link
-                  href={`/jobs/${expense.job.id}`}
-                  className="text-brand hover:underline"
-                >
-                  {expense.job.number}
-                </Link>
-              ) : (
-                "Overhead"
-              )}
-            </Detail>
-
-            <Detail label={org.labelClientSingular}>
-              {expense.client ? (
-                <Link
-                  href={`/clients/${expense.client.id}`}
-                  className="text-brand hover:underline"
-                >
-                  {expense.client.displayName}
-                </Link>
-              ) : (
-                "—"
-              )}
-            </Detail>
-
-            {expense.reimbursedAt ? (
-              <Detail label="Reimbursed">
-                {formatIn(expense.reimbursedAt, "MMM d, yyyy", zone)}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader title="Details" />
+            <dl className="divide-y divide-line text-sm">
+              <Detail label="Category">{EXPENSE_CATEGORY_LABELS[category]}</Detail>
+              <Detail label="Vendor">{expense.vendor ?? "Not recorded"}</Detail>
+              <Detail label="Paid with">{PAYMENT_METHOD_LABELS[method]}</Detail>
+              <Detail label="Reference">{expense.reference ?? "—"}</Detail>
+              <Detail label="Paid by">
+                {expense.paidBy?.name ?? "The business"}
               </Detail>
-            ) : null}
+  
+              <Detail label={org.labelJobSingular}>
+                {expense.job ? (
+                  <Link
+                    href={`/jobs/${expense.job.id}`}
+                    className="text-brand hover:underline"
+                  >
+                    {expense.job.number}
+                  </Link>
+                ) : (
+                  "Overhead"
+                )}
+              </Detail>
+  
+              <Detail label={org.labelClientSingular}>
+                {expense.client ? (
+                  <Link
+                    href={`/clients/${expense.client.id}`}
+                    className="text-brand hover:underline"
+                  >
+                    {expense.client.displayName}
+                  </Link>
+                ) : (
+                  "—"
+                )}
+              </Detail>
+  
+              {expense.reimbursedAt ? (
+                <Detail label="Reimbursed">
+                  {formatIn(expense.reimbursedAt, "MMM d, yyyy", zone)}
+                </Detail>
+              ) : null}
+  
+              <Detail label="Recorded">
+                {formatIn(expense.createdAt, "MMM d, yyyy", zone)}
+                {expense.createdBy ? ` by ${expense.createdBy.name}` : ""}
+              </Detail>
+            </dl>
+          </Card>
 
-            <Detail label="Recorded">
-              {formatIn(expense.createdAt, "MMM d, yyyy", zone)}
-              {expense.createdBy ? ` by ${expense.createdBy.name}` : ""}
-            </Detail>
-          </dl>
-        </Card>
+          {series || writable ? (
+            <ExpenseRepeatCard
+              expense={expense}
+              series={series}
+              canEdit={writable}
+              money={money}
+              zone={zone}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );

@@ -33,6 +33,8 @@ export type TaskItem = {
   client: { id: string; displayName: string } | null;
   job: { id: string; number: string; title: string } | null;
   lead: { id: string; name: string } | null;
+  /** A repeating bill to enter: the task links to the filled-in form. */
+  expenseScheduleId?: string | null;
 };
 
 export function TaskList({
@@ -216,6 +218,17 @@ function TaskRow({
               className="text-brand hover:underline"
             >
               {task.lead.name}
+            </Link>
+          ) : null}
+
+          {task.expenseScheduleId && !done ? (
+            <Link
+              href={`/expenses/new?repeat=${task.expenseScheduleId}${
+                task.dueAt ? `&date=${formatIn(task.dueAt, "yyyy-MM-dd", zone)}` : ""
+              }`}
+              className="font-medium text-brand hover:underline"
+            >
+              Enter it
             </Link>
           ) : null}
         </p>

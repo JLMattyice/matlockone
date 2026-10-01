@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { format } from "date-fns";
-import { Banknote, Paperclip, Plus } from "lucide-react";
+import { Banknote, Paperclip, Plus, Repeat } from "lucide-react";
 
 import {
   asExpensePeriod,
@@ -9,6 +9,8 @@ import {
   EXPENSE_PERIOD_LABELS,
   EXPENSE_PERIODS,
   listExpenses,
+  listRepeatingExpenses,
+  type RepeatingExpense,
 } from "./queries";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
@@ -26,6 +28,9 @@ import {
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { describeRecurrence } from "@/lib/recurrence";
+import { monthlyEquivalentCents } from "@/lib/recurring-expenses";
+import { formatIn } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Expenses" };
@@ -47,20 +52,22 @@ export default async function ExpensesPage({
   const params = await searchParams;
   const period = asExpensePeriod(params.period);
 
+  const zone = await viewerTimeZone();
   const query = {
     organizationId: org.id,
     q: params.q,
     category: params.category,
     period,
-    zone: await viewerTimeZone(),
+    zone,
     flag: params.flag,
     jobId: params.jobId,
     clientId: params.clientId,
   };
 
-  const [list, summary] = await Promise.all([
+  const [list, summary, repeating] = await Promise.all([
     listExpenses({ ...query, page: Number(params.page) || 1 }),
     expenseSummary(query),
+    listRepeatingExpenses(org.id),
   ]);
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
@@ -126,6 +133,10 @@ export default async function ExpensesPage({
             </Card>
           ))}
         </div>
+      ) : null}
+
+      {repeating.length > 0 && !isFiltered ? (
+        <RepeatingBills bills={repeating} money={money} zone={zone} />
       ) : null}
 
       <ListToolbar
@@ -213,6 +224,13 @@ export default async function ExpensesPage({
                           className="flex min-w-0 items-center gap-2 font-medium text-ink transition-colors hover:text-brand"
                         >
                           <span className="truncate">{expense.description}</span>
+                          {expense.scheduleId ? (
+                            <Repeat
+                              className="h-3.5 w-3.5 shrink-0 text-ink-subtle"
+                              strokeWidth={1.75}
+                              aria-label="A repeating bill"
+                            />
+                          ) : null}
                           {expense._count.attachments > 0 ? (
                             <Paperclip
                               className="h-3.5 w-3.5 shrink-0 text-ink-subtle"
@@ -294,5 +312,71 @@ export default async function ExpensesPage({
         )}
       </Card>
     </div>
+  );
+}
+
+/**
+ * The bills that come round again, folded away under one line: how many, what
+ * the fixed ones come to a month, and what is next. Opened, each links to its
+ * latest expense, where the repeat is changed or stopped.
+ */
+function RepeatingBills({
+  bills,
+  money,
+  zone,
+}: {
+  bills: RepeatingExpense[];
+  money: (cents: number) => string;
+  zone: string;
+}) {
+  // Only the fixed ones have a known amount. A bill that changes every time
+  // is left out of the total rather than guessed at.
+  const fixedMonthly = bills
+    .filter((bill) => !bill.amountVaries)
+    .reduce(
+      (total, bill) =>
+        total + monthlyEquivalentCents(bill.latest.amountCents, bill.frequency, bill.interval),
+      0,
+    );
+  const next = bills[0];
+
+  return (
+    <details className="group rounded-card border border-line bg-surface">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
+        <Repeat className="h-4 w-4 shrink-0 text-ink-subtle" strokeWidth={1.75} />
+        <span className="font-medium text-ink">
+          {bills.length} repeating bill{bills.length === 1 ? "" : "s"}
+        </span>
+        {fixedMonthly > 0 ? (
+          <span className="text-ink-muted">
+            about <span className="tabular">{money(fixedMonthly)}</span> a month fixed
+          </span>
+        ) : null}
+        <span className="text-ink-subtle">
+          next: {next.latest.description} on {formatIn(next.nextDate, "MMM d", zone)}
+        </span>
+        <span className="ml-auto text-xs text-ink-muted group-open:hidden">Show</span>
+        <span className="ml-auto hidden text-xs text-ink-muted group-open:inline">Hide</span>
+      </summary>
+
+      <ul className="divide-y divide-line border-t border-line">
+        {bills.map((bill) => (
+          <li key={bill.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2.5 text-sm">
+            <Link
+              href={`/expenses/${bill.latest.id}`}
+              className="min-w-0 truncate font-medium text-ink transition-colors hover:text-brand"
+            >
+              {bill.latest.description}
+            </Link>
+            <span className="text-xs text-ink-subtle">
+              {describeRecurrence(bill)} · next {formatIn(bill.nextDate, "MMM d", zone)}
+            </span>
+            <span className="tabular ml-auto text-ink-muted">
+              {bill.amountVaries ? "You enter it" : money(bill.latest.amountCents)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

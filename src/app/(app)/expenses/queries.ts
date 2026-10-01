@@ -229,3 +229,48 @@ export async function payerOptions(organizationId: string) {
     select: { id: true, name: true },
   });
 }
+
+/** The repeating bill an expense belongs to, with the latest in its series. */
+export async function getExpenseSeries(organizationId: string, scheduleId: string | null) {
+  if (!scheduleId) return null;
+
+  return prisma.expenseSchedule.findFirst({
+    where: { id: scheduleId, organizationId },
+    include: {
+      expenses: {
+        orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+        take: 6,
+        select: { id: true, spentAt: true, amountCents: true },
+      },
+      _count: { select: { expenses: true } },
+    },
+  });
+}
+
+export type ExpenseSeries = NonNullable<Awaited<ReturnType<typeof getExpenseSeries>>>;
+
+/**
+ * Every bill still repeating, each shown as its latest expense — the one the
+ * next period copies. A series with nothing left in it is left out: it stops
+ * itself on its next date.
+ */
+export async function listRepeatingExpenses(organizationId: string) {
+  const schedules = await prisma.expenseSchedule.findMany({
+    where: { organizationId, isActive: true },
+    orderBy: { nextDate: "asc" },
+    include: {
+      expenses: {
+        orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
+        take: 1,
+        select: { id: true, description: true, vendor: true, amountCents: true },
+      },
+    },
+  });
+
+  return schedules.flatMap((schedule) => {
+    const latest = schedule.expenses[0];
+    return latest ? [{ ...schedule, latest }] : [];
+  });
+}
+
+export type RepeatingExpense = Awaited<ReturnType<typeof listRepeatingExpenses>>[number];

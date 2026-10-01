@@ -463,6 +463,7 @@ export const NOTIFICATION_TYPES = [
   "PAYMENT_RECEIVED",
   "INVOICE_DRAFTED",
   "AUTOPAY",
+  "EXPENSE_DUE",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

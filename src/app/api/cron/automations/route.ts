@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { MIN_CRON_SECRET } from "@/lib/config";
 import { syncAutopay } from "@/lib/autopay";
 import { sweepPayLinks } from "@/lib/payments/reconcile";
+import { recordDueExpenses } from "@/lib/recurring-expenses";
 import { draftDueInvoices } from "@/lib/recurring-invoices";
 import { sweepEveryBusiness } from "@/lib/workflows/run";
 
@@ -26,6 +27,9 @@ import { sweepEveryBusiness } from "@/lib/workflows/run";
  * and each date is claimed once, so a second call makes no second draft.
  * Auto-pay is checked after the drafts, so a payment PayPal took this
  * morning finds this morning's invoice to land on.
+ *
+ * Repeating expenses come last: a bill recorded or a reminder raised waits
+ * on nothing else in the run.
  *
  * Pay links are checked first of all. A client who paid last night must not
  * be chased this morning because the notice went astray, so every open link
@@ -63,6 +67,8 @@ export async function GET(request: Request) {
   const result = await sweepEveryBusiness();
   const repeating = await draftDueInvoices();
   const autopay = await syncAutopay();
+  const bills = await recordDueExpenses();
+  const billsRecorded = bills.done.filter((item) => item.kind === "recorded").length;
 
   console.info(
     `[automations] morning run: pay links: ${payLinks.checked} checked, ${payLinks.recorded} payments recorded` +
@@ -74,7 +80,9 @@ export async function GET(request: Request) {
       (repeating.failed.length > 0 ? `, ${repeating.failed.length} schedules failed` : "") +
       `; auto-pay: ${autopay.checked} checked, ${autopay.collected} payments recorded` +
       (autopay.unmatched > 0 ? `, ${autopay.unmatched} waiting for their invoice` : "") +
-      (autopay.failed.length > 0 ? `, ${autopay.failed.length} failed` : ""),
+      (autopay.failed.length > 0 ? `, ${autopay.failed.length} failed` : "") +
+      `; repeating expenses: ${billsRecorded} recorded, ${bills.done.length - billsRecorded} to enter` +
+      (bills.failed.length > 0 ? `, ${bills.failed.length} schedules failed` : ""),
   );
 
   return NextResponse.json({
@@ -86,5 +94,8 @@ export async function GET(request: Request) {
     draftFailed: repeating.failed,
     autopayCollected: autopay.collected,
     autopayFailed: autopay.failed,
+    expensesRecorded: billsRecorded,
+    expensesToEnter: bills.done.length - billsRecorded,
+    expensesFailed: bills.failed,
   });
 }

@@ -83,6 +83,7 @@ const TASK_SELECT = {
   client: { select: { id: true, displayName: true } },
   job: { select: { id: true, number: true, title: true } },
   lead: { select: { id: true, name: true } },
+  expenseScheduleId: true,
 } as const;
 
 export type TaskRow = Awaited<ReturnType<typeof listTasks>>["rows"][number];

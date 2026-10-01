@@ -33,6 +33,8 @@ export type ExpenseFormValues = {
   billable: boolean;
   reimbursable: boolean;
   paidById: string;
+  /** Entering the next bill of a repeating expense: the series it joins. */
+  scheduleId?: string;
 };
 
 export type ExpenseJobOption = {
@@ -50,7 +52,10 @@ export function ExpenseForm({
   currencySymbol,
   jobLabel,
   clientLabel,
+  amountHint,
 }: {
+  /** Replaces the usual hint under Amount — "Last time: $142.30". */
+  amountHint?: string;
   values: ExpenseFormValues;
   jobs: ExpenseJobOption[];
   clients: { id: string; displayName: string }[];
@@ -80,6 +85,9 @@ export function ExpenseForm({
   return (
     <form ref={keep} action={formAction}>
       {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
+      {values.scheduleId ? (
+        <input type="hidden" name="scheduleId" value={values.scheduleId} />
+      ) : null}
 
       <Card>
         <CardHeader
@@ -103,7 +111,7 @@ export function ExpenseForm({
                 name="description"
                 defaultValue={values.description}
                 required
-                autoFocus={!isEdit}
+                autoFocus={!isEdit && !values.scheduleId}
                 placeholder="Printer paper and toner"
               />
             </Field>
@@ -132,7 +140,7 @@ export function ExpenseForm({
               htmlFor="amount"
               required
               error={err("amount")}
-              hint="The receipt total, tax included."
+              hint={amountHint ?? "The receipt total, tax included."}
             >
               <div className="relative">
                 <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-subtle">
@@ -144,6 +152,8 @@ export function ExpenseForm({
                   inputMode="decimal"
                   defaultValue={values.amount}
                   required
+                  // Entering this period's bill: everything else is filled in.
+                  autoFocus={Boolean(values.scheduleId)}
                   placeholder="184.20"
                   className="tabular pl-7"
                 />

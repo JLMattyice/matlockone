@@ -130,6 +130,7 @@ model Organization {
   invoices       Invoice[]
   invoiceSchedules InvoiceSchedule[]
   autopaySubscriptions AutopaySubscription[]
+  expenseSchedules ExpenseSchedule[]
   payments       Payment[]
   expenses       Expense[]
   attachments    Attachment[]
@@ -199,6 +200,7 @@ model User {
   completedTasks   Task[]          @relation("TaskCompleter")
   createdWorkflows Workflow[]      @relation("WorkflowCreator")
   createdInvoiceSchedules InvoiceSchedule[] @relation("InvoiceScheduleCreator")
+  createdExpenseSchedules ExpenseSchedule[] @relation("ExpenseScheduleCreator")
   conversations    ConversationMember[]
   startedThreads   Conversation[]  @relation("ConversationCreator")
   messages         Message[]       @relation("MessageAuthor")
@@ -759,6 +761,46 @@ model InvoiceSchedule {
   @@index([organizationId])
 }
 
+/// A bill that comes round again: rent, software, insurance, the electric.
+///
+/// Like an invoice schedule, it says how often and the expenses in its series
+/// say what — each period copies the latest one, so a new price carries
+/// forward. What happens on the date depends on `amountVaries`: a fixed bill
+/// is recorded by itself, and one that changes every time (utilities) raises a
+/// task to enter the real amount instead, so nothing guessed reaches the books.
+model ExpenseSchedule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  frequency String @default("MONTHLY") // WEEKLY | MONTHLY | YEARLY
+  interval  Int    @default(1)
+  /// The date the current settings started from; keeps a monthly bill on its day.
+  anchorDate DateTime
+  /// The date of the next one. Advanced in the same transaction that records it
+  /// (or raises its task), and only if it still holds the value that was read.
+  nextDate   DateTime
+  /// Nothing comes due after this.
+  endDate    DateTime?
+  isActive   Boolean   @default(true)
+  /// False: the same amount every time, recorded by itself. True: a task to
+  /// enter the real amount, and nothing recorded until somebody does.
+  amountVaries Boolean @default(false)
+  lastRunAt  DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("ExpenseScheduleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses Expense[]
+  tasks    Task[]
+
+  @@index([isActive, nextDate])
+  @@index([organizationId])
+}
+
 /// One PayPal subscription made for a repeating invoice's auto-pay.
 ///
 /// A row per attempt rather than one per schedule. PayPal's approval link
@@ -887,6 +929,10 @@ model Expense {
   createdById String?
   createdBy   User?   @relation("ExpenseCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
+  /// The repeating bill this is one of, if any.
+  scheduleId String?
+  schedule   ExpenseSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -896,6 +942,7 @@ model Expense {
   @@index([organizationId, spentAt])
   @@index([organizationId, category])
   @@index([jobId])
+  @@index([scheduleId])
 }
 
 // ------------------------------------------------------ files, notes, log ---
@@ -1219,6 +1266,10 @@ model Task {
   job      Job?    @relation(fields: [jobId], references: [id], onDelete: Cascade)
   leadId   String?
   lead     Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// "Enter this month's electric bill": the repeating expense it is for.
+  /// Entering an expense in that series ticks off the oldest such task.
+  expenseScheduleId String?
+  expenseSchedule   ExpenseSchedule? @relation(fields: [expenseScheduleId], references: [id], onDelete: SetNull)
 
   completedAt   DateTime?
   completedById String?
@@ -1232,6 +1283,7 @@ model Task {
   @@index([assignedToId, status])
   @@index([jobId])
   @@index([clientId])
+  @@index([expenseScheduleId])
 }
 
 // -------------------------------------------------------------- workflows ---

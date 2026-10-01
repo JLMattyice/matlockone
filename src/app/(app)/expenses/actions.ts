@@ -9,6 +9,7 @@ import { requirePermission } from "@/lib/auth";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { parseMoneyToCents } from "@/lib/money";
+import type { Prisma } from "@/generated/prisma/client";
 
 const expenseSchema = z
   .object({
@@ -141,25 +142,57 @@ export async function createExpense(
   const input = parsed.data;
   const links = await resolveLinks(input, org.id);
 
-  const expense = await prisma.expense.create({
-    data: {
-      organizationId: org.id,
-      description: input.description,
-      category: input.category,
-      vendor: input.vendor ?? null,
-      amountCents: parseMoneyToCents(input.amount)!,
-      taxCents: parseMoneyToCents(input.tax ?? null) ?? 0,
-      method: input.method,
-      reference: input.reference ?? null,
-      spentAt: parseSpentAt(input.spentAt),
-      billable: input.billable,
-      reimbursable: input.reimbursable,
-      createdById: user.id,
-      ...links,
-    },
+  // Entering this period's bill of a repeating expense. The series has to be
+  // this business's own — the id arrived from a form.
+  const scheduleId = text(formData, "scheduleId");
+  const schedule = scheduleId
+    ? await prisma.expenseSchedule.findFirst({
+        where: { id: scheduleId, organizationId: org.id },
+        select: { id: true },
+      })
+    : null;
+
+  const expense = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const created = await tx.expense.create({
+      data: {
+        organizationId: org.id,
+        description: input.description,
+        category: input.category,
+        vendor: input.vendor ?? null,
+        amountCents: parseMoneyToCents(input.amount)!,
+        taxCents: parseMoneyToCents(input.tax ?? null) ?? 0,
+        method: input.method,
+        reference: input.reference ?? null,
+        spentAt: parseSpentAt(input.spentAt),
+        billable: input.billable,
+        reimbursable: input.reimbursable,
+        createdById: user.id,
+        scheduleId: schedule?.id ?? null,
+        ...links,
+      },
+    });
+
+    // The reminder that asked for it is done. The oldest, if several periods
+    // went by: bills are entered in the order they came.
+    if (schedule) {
+      const reminder = await tx.task.findFirst({
+        where: { organizationId: org.id, expenseScheduleId: schedule.id, status: "OPEN" },
+        orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }],
+        select: { id: true },
+      });
+      if (reminder) {
+        await tx.task.update({
+          where: { id: reminder.id },
+          data: { status: "DONE", completedAt: new Date(), completedById: user.id },
+        });
+      }
+    }
+
+    return created;
   });
 
   revalidatePath("/expenses");
+  if (schedule) revalidatePath("/tasks");
   redirect(`/expenses/${expense.id}`);
 }
 
