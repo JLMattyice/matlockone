@@ -296,6 +296,10 @@ const INDUSTRIES = [
   { trade: "Field services", job: "Work orders", client: "Sites" },
   { trade: "Agencies", job: "Projects", client: "Accounts" },
   { trade: "Maintenance & facilities", job: "Call-outs", client: "Properties" },
+  { trade: "Photography & video", job: "Sessions", client: "Clients" },
+  { trade: "Salons & wellness", job: "Bookings", client: "Clients" },
+  { trade: "Events & hospitality", job: "Events", client: "Clients" },
+  { trade: "Retail & shops", job: "Orders", client: "Customers" },
 ];
 
 function Industries() {

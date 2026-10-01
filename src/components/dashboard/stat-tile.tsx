@@ -10,6 +10,7 @@ export function StatTile({
   icon: Icon,
   tone = "neutral",
   href,
+  className: extra,
 }: {
   label: string;
   value: string;
@@ -17,6 +18,8 @@ export function StatTile({
   icon: LucideIcon;
   tone?: "neutral" | "brand" | "success" | "warning" | "danger";
   href?: string;
+  /** Placement in the parent grid, such as a column span. */
+  className?: string;
 }) {
   const iconTone = {
     neutral: "bg-surface-3 text-ink-muted",
@@ -53,6 +56,7 @@ export function StatTile({
   const className = cn(
     "min-w-0 rounded-card border border-line bg-surface p-3.5 shadow-xs sm:p-4",
     href && "transition-colors hover:border-line-strong hover:bg-surface-2",
+    extra,
   );
 
   return href ? (

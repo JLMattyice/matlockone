@@ -24,6 +24,7 @@ import {
   topClients,
   type ReportPeriod,
 } from "./queries";
+import { loadRecurringRevenue } from "../invoices/queries";
 import { ShareBar, TrendChart } from "@/components/reports/trend-chart";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -33,11 +34,15 @@ import { requirePermission } from "@/lib/auth";
 import { LEAD_SOURCE_LABELS, LEAD_SOURCES, type LeadSource } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
+import { describeRecurrence } from "@/lib/recurrence";
 import { formatIn } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Reports" };
+
+/** The largest repeating invoices listed by name; the rest are in the totals. */
+const RECURRING_ROWS = 10;
 
 export default async function ReportsPage({
   searchParams,
@@ -71,6 +76,7 @@ export default async function ReportsPage({
     priorSpend,
     categories,
     vendors,
+    recurring,
   ] = await Promise.all([
     periodTotals(org.id, current),
     periodTotals(org.id, previous),
@@ -84,6 +90,7 @@ export default async function ReportsPage({
     showSpend ? expenseTotals(org.id, previous) : null,
     showSpend ? spendByCategory(org.id, current) : [],
     showSpend ? spendByVendor(org.id, current) : [],
+    loadRecurringRevenue(org.id),
   ]);
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
@@ -277,6 +284,89 @@ export default async function ReportsPage({
           />
         </div>
       </Card>
+
+      {/* -------------------------------------------------------- recurring --- */}
+      <section id="recurring" className="scroll-mt-20">
+        <Card className="overflow-hidden">
+          <CardHeader
+            title="Recurring revenue"
+            description="Repeating invoices still billing, as of today. Each is counted at its latest invoice and spread over an average month, so a weekly one counts 52 times a year, not 48."
+          />
+          <div className="grid grid-cols-2 divide-line border-b border-line sm:grid-cols-4 sm:divide-x">
+            <Figure label="A month" value={money(recurring.monthlyCents)} />
+            <Figure label="A year" value={money(recurring.yearlyCents)} />
+            <Figure
+              label="Repeating invoices"
+              value={String(recurring.count)}
+            />
+            <Figure
+              label="On auto-pay"
+              value={String(recurring.series.filter((row) => row.autopay).length)}
+              hint="Charged by PayPal each period"
+            />
+          </div>
+          {recurring.count === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-ink-subtle">
+              No repeating invoices yet. Open any invoice and set it to repeat
+              for a retainer, a membership or a maintenance plan.
+            </p>
+          ) : (
+            <Table>
+              <THead>
+                <Th>Client</Th>
+                <Th className="hidden sm:table-cell">Billed</Th>
+                <Th align="right" className="hidden sm:table-cell">
+                  Each time
+                </Th>
+                <Th align="right">A month</Th>
+              </THead>
+              <TBody>
+                {recurring.series.slice(0, RECURRING_ROWS).map((row) => (
+                  <Tr key={row.id}>
+                    <Td>
+                      {row.latestInvoice ? (
+                        <Link
+                          href={`/invoices/${row.latestInvoice.id}`}
+                          className="block truncate font-medium text-ink transition-colors hover:text-brand"
+                        >
+                          {row.client?.displayName ?? row.latestInvoice.number}
+                        </Link>
+                      ) : (
+                        <span className="block truncate font-medium">
+                          {row.client?.displayName ?? "—"}
+                        </span>
+                      )}
+                      <ShareBar
+                        value={row.monthlyCents}
+                        peak={recurring.series[0].monthlyCents}
+                      />
+                    </Td>
+                    <Td className="hidden text-ink-muted sm:table-cell">
+                      {describeRecurrence(row)}
+                      {row.autopay ? " · auto-pay" : ""}
+                    </Td>
+                    <Td
+                      align="right"
+                      className="tabular hidden whitespace-nowrap text-ink-muted sm:table-cell"
+                    >
+                      {money(row.amountCents ?? 0)}
+                    </Td>
+                    <Td align="right" className="tabular font-medium whitespace-nowrap">
+                      {money(row.monthlyCents)}
+                    </Td>
+                  </Tr>
+                ))}
+              </TBody>
+            </Table>
+          )}
+          {recurring.count > RECURRING_ROWS ? (
+            <p className="border-t border-line px-5 py-2.5 text-xs text-ink-subtle">
+              And {recurring.count - RECURRING_ROWS} more, all counted in the
+              totals above.
+            </p>
+          ) : null}
+        </Card>
+      </section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* ----------------------------------------------------- services --- */}

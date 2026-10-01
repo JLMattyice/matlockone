@@ -14,6 +14,7 @@ import { INVOICE_OPEN_STATUSES, WORK_KINDS } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { can, jobVisibilityWhere } from "@/lib/permissions";
 import { inZone, instant, nowIn } from "@/lib/time-zone";
+import { loadRecurringRevenue } from "../invoices/queries";
 import { leadPipelineSummary } from "../leads/queries";
 
 /**
@@ -199,7 +200,7 @@ export async function loadDashboard(ctx: AppContext, zone: string) {
   // right beside it. Neither is fetched for a role that may not see it.
   const seesPipeline = can(ctx.user, "leads:read");
 
-  const [activeWork, pipeline] = await Promise.all([
+  const [activeWork, pipeline, recurring] = await Promise.all([
     // Work that is booked or under way: the "what is on" number. Scoped like
     // every other job query, so a technician counts their own.
     prisma.job.count({
@@ -212,6 +213,8 @@ export async function loadDashboard(ctx: AppContext, zone: string) {
     seesPipeline
       ? leadPipelineSummary(orgId)
       : Promise.resolve(null),
+    // Invoice totals, so gated like every other invoice figure.
+    seesMoney ? loadRecurringRevenue(orgId) : Promise.resolve(null),
   ]);
 
   return {
@@ -221,6 +224,8 @@ export async function loadDashboard(ctx: AppContext, zone: string) {
     activeWork,
     pipelineCount: pipeline?.openCount ?? 0,
     pipelineValueCents: pipeline?.openValueCents ?? 0,
+    recurringCount: recurring?.count ?? 0,
+    recurringMonthlyCents: recurring?.monthlyCents ?? 0,
     upcoming,
     inProgress,
     completedThisMonth,

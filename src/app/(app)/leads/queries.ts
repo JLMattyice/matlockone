@@ -2,7 +2,11 @@ import "server-only";
 
 import { notFound } from "next/navigation";
 
-import { LEAD_STATUSES, type LeadStatus } from "@/lib/constants";
+import {
+  LEAD_STATUSES,
+  OPEN_LEAD_STATUSES,
+  type LeadStatus,
+} from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
@@ -95,7 +99,7 @@ export async function leadPipelineSummary(organizationId: string) {
     ]),
   );
 
-  const open = (["NEW", "CONTACTED", "QUALIFIED", "ESTIMATE_SENT"] as const).reduce(
+  const open = OPEN_LEAD_STATUSES.reduce(
     (acc, status) => {
       const entry = byStatus.get(status);
       return {

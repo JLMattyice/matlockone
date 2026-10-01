@@ -407,7 +407,7 @@ async function main() {
 
   const leadStatuses = [
     "NEW", "NEW", "NEW", "CONTACTED", "CONTACTED", "QUALIFIED",
-    "QUALIFIED", "ESTIMATE_SENT", "ESTIMATE_SENT", "WON", "WON", "LOST",
+    "QUALIFIED", "ESTIMATE_SENT", "NEGOTIATION", "WON", "WON", "LOST",
   ];
 
   for (let i = 0; i < leadStatuses.length; i++) {

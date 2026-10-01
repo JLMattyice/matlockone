@@ -49,6 +49,7 @@ const PIPELINE: LeadStatus[] = [
   "CONTACTED",
   "QUALIFIED",
   "ESTIMATE_SENT",
+  "NEGOTIATION",
   "WON",
 ];
 

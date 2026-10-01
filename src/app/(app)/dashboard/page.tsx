@@ -9,6 +9,7 @@ import {
   CheckSquare,
   CircleDollarSign,
   Plus,
+  Repeat,
   Scale,
   Target,
   Timer,
@@ -68,6 +69,8 @@ export default async function DashboardPage() {
     outstandingCount: data.outstandingCount,
     overdueCents: data.overdueCents,
     overdueCount: data.overdueCount,
+    recurringCount: data.recurringCount,
+    recurringMonthlyCents: data.recurringMonthlyCents,
     pipelineCount: data.pipelineCount,
     pipelineValueCents: data.pipelineValueCents,
     activeWork: data.activeWork,
@@ -455,6 +458,7 @@ const HEALTH_ICONS: Record<HealthIcon, LucideIcon> = {
   spent: Banknote,
   net: Scale,
   outstanding: Wallet,
+  recurring: Repeat,
   pipeline: Target,
   work: Briefcase,
   tasks: CheckSquare,
@@ -473,11 +477,22 @@ function HealthBand({ title, tiles }: { title: string; tiles: HealthTile[] }) {
   // Two to a row even on a phone: one tile per row put eight big boxes
   // between an owner and today's work.
   const columns =
-    tiles.length >= 4
-      ? "grid-cols-2 xl:grid-cols-4"
-      : tiles.length === 3
-        ? "grid-cols-2 sm:grid-cols-3"
-        : "grid-cols-2";
+    tiles.length >= 5
+      ? "grid-cols-2 xl:grid-cols-5"
+      : tiles.length === 4
+        ? "grid-cols-2 xl:grid-cols-4"
+        : tiles.length === 3
+          ? "grid-cols-2 sm:grid-cols-3"
+          : "grid-cols-2";
+
+  // An odd tile out at the end of a two-column row takes the whole row,
+  // until the wide layout fits every tile on one line.
+  const lastSpans =
+    tiles.length % 2 === 1
+      ? tiles.length === 3
+        ? "col-span-2 sm:col-span-1"
+        : "col-span-2 xl:col-span-1"
+      : undefined;
 
   return (
     <section>
@@ -485,9 +500,10 @@ function HealthBand({ title, tiles }: { title: string; tiles: HealthTile[] }) {
         {title}
       </h2>
       <div className={cn("grid gap-3 sm:gap-4", columns)}>
-        {tiles.map((tile) => (
+        {tiles.map((tile, index) => (
           <StatTile
             key={tile.key}
+            className={index === tiles.length - 1 ? lastSpans : undefined}
             label={tile.label}
             value={tile.value}
             sublabel={tile.sublabel}

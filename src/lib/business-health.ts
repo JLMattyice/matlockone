@@ -20,6 +20,7 @@ export type HealthIcon =
   | "spent"
   | "net"
   | "outstanding"
+  | "recurring"
   | "pipeline"
   | "work"
   | "tasks"
@@ -47,6 +48,9 @@ export type HealthInput = {
   outstandingCount: number;
   overdueCents: number;
   overdueCount: number;
+  /** Repeating invoices still billing, and what they bring in a month. */
+  recurringCount: number;
+  recurringMonthlyCents: number;
 
   pipelineCount: number;
   pipelineValueCents: number;
@@ -146,6 +150,21 @@ export function healthBands(input: HealthInput): {
       icon: "outstanding",
       href: "/invoices",
     });
+
+    // Only once there is a repeating invoice. Plenty of businesses bill each
+    // piece of work once, and a standing "$0 a month" would read as a target
+    // they are missing rather than a thing they do not do.
+    if (input.recurringCount > 0) {
+      money.push({
+        key: "recurring",
+        label: "Recurring",
+        value: input.money(input.recurringMonthlyCents),
+        sublabel: `a month · ${input.recurringCount} repeating ${plural(input.recurringCount, "invoice")}`,
+        tone: "success",
+        icon: "recurring",
+        href: "/reports#recurring",
+      });
+    }
   }
 
   // -------------------------------------------------------------- work ---

@@ -5,6 +5,7 @@ import { startOfMonth } from "date-fns";
 
 import { prisma } from "@/lib/db";
 import { ageingBucket } from "@/lib/documents";
+import { recurringRevenue } from "@/lib/recurring-revenue";
 import { like } from "@/lib/search";
 import { instant, nowIn } from "@/lib/time-zone";
 import type { Prisma } from "@/generated/prisma/client";
@@ -226,6 +227,65 @@ export async function getInvoiceSeries(organizationId: string, scheduleId: strin
 }
 
 export type InvoiceSeries = NonNullable<Awaited<ReturnType<typeof getInvoiceSeries>>>;
+
+/**
+ * Every repeating invoice still billing, valued per month — the dashboard
+ * tile and the Reports card.
+ *
+ * A series is valued at its latest invoice that was not cancelled, the one the
+ * next draft copies. A series whose every invoice was cancelled is left out:
+ * it would still draft, but counting money that was refused every time it was
+ * asked for overstates what comes back each month.
+ */
+export async function loadRecurringRevenue(organizationId: string) {
+  const schedules = await prisma.invoiceSchedule.findMany({
+    where: { organizationId, isActive: true },
+    select: {
+      id: true,
+      frequency: true,
+      interval: true,
+      isActive: true,
+      nextIssueDate: true,
+      endDate: true,
+      autopaySubscriptions: {
+        where: { status: { in: ["APPROVED", "ACTIVE"] } },
+        select: { id: true },
+        take: 1,
+      },
+      invoices: {
+        where: { status: { not: "CANCELLED" } },
+        orderBy: [{ issueDate: "desc" }, { createdAt: "desc" }],
+        take: 1,
+        select: {
+          id: true,
+          number: true,
+          totalCents: true,
+          client: { select: { id: true, displayName: true } },
+        },
+      },
+    },
+  });
+
+  return recurringRevenue(
+    schedules.map((schedule) => {
+      const latest = schedule.invoices[0] ?? null;
+      return {
+        id: schedule.id,
+        frequency: schedule.frequency,
+        interval: schedule.interval,
+        isActive: schedule.isActive,
+        nextIssueDate: schedule.nextIssueDate,
+        endDate: schedule.endDate,
+        amountCents: latest?.totalCents ?? null,
+        latestInvoice: latest ? { id: latest.id, number: latest.number } : null,
+        client: latest?.client ?? null,
+        autopay: schedule.autopaySubscriptions.length > 0,
+      };
+    }),
+  );
+}
+
+export type RecurringRevenue = Awaited<ReturnType<typeof loadRecurringRevenue>>;
 
 /** The public view, addressed only by its unguessable token. */
 export async function getInvoiceByToken(token: string) {

@@ -60,16 +60,27 @@ export const LEAD_STATUSES = [
   "CONTACTED",
   "QUALIFIED",
   "ESTIMATE_SENT",
+  "NEGOTIATION",
   "WON",
   "LOST",
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+/** Stages still in play: counted as pipeline value, not yet won or lost. */
+export const OPEN_LEAD_STATUSES = [
+  "NEW",
+  "CONTACTED",
+  "QUALIFIED",
+  "ESTIMATE_SENT",
+  "NEGOTIATION",
+] as const satisfies readonly LeadStatus[];
 
 export const LEAD_STATUS_META: Record<LeadStatus, StatusMeta> = {
   NEW: { label: "New", tone: "info" },
   CONTACTED: { label: "Contacted", tone: "neutral" },
   QUALIFIED: { label: "Qualified", tone: "accent" },
   ESTIMATE_SENT: { label: "Estimate sent", tone: "warning" },
+  NEGOTIATION: { label: "Negotiation", tone: "accent" },
   WON: { label: "Won", tone: "success" },
   LOST: { label: "Lost", tone: "danger" },
 };

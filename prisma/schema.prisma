@@ -355,7 +355,7 @@ model Lead {
   phone        String?
 
   source String? // REFERRAL | WEBSITE | GOOGLE | SOCIAL | REPEAT | WALK_IN | OTHER
-  status String  @default("NEW") // NEW | CONTACTED | QUALIFIED | ESTIMATE_SENT | WON | LOST
+  status String  @default("NEW") // NEW | CONTACTED | QUALIFIED | ESTIMATE_SENT | NEGOTIATION | WON | LOST
 
   estimatedValueCents Int?
   lostReason          String?

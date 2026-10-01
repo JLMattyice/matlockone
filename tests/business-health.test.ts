@@ -28,6 +28,8 @@ function input(overrides: Partial<HealthInput> = {}): HealthInput {
     outstandingCount: 6,
     overdueCents: 124_000,
     overdueCount: 2,
+    recurringCount: 0,
+    recurringMonthlyCents: 0,
     pipelineCount: 5,
     pipelineValueCents: 3_150_000,
     activeWork: 14,
@@ -83,6 +85,38 @@ describe("who sees what", () => {
     const bands = healthBands(input({ seesExpenses: false }));
 
     expect(keys(bands.money)).toEqual(["collected", "outstanding"]);
+  });
+
+  it("adds recurring revenue once there is a repeating invoice", () => {
+    const bands = healthBands(
+      input({ recurringCount: 3, recurringMonthlyCents: 412_500 }),
+    );
+    const recurring = bands.money.find((tile) => tile.key === "recurring")!;
+
+    expect(keys(bands.money)).toEqual([
+      "collected",
+      "spent",
+      "net",
+      "outstanding",
+      "recurring",
+    ]);
+    expect(recurring.value).toBe("$4125.00");
+    expect(recurring.sublabel).toBe("a month · 3 repeating invoices");
+  });
+
+  it("keeps recurring revenue from a role without money", () => {
+    // Invoice totals, so the same gate as every other money tile.
+    const bands = healthBands(
+      input({
+        seesMoney: false,
+        seesExpenses: false,
+        recurringCount: 3,
+        recurringMonthlyCents: 412_500,
+      }),
+    );
+
+    expect(bands.money).toEqual([]);
+    expect(keys(bands.work)).not.toContain("recurring");
   });
 
   it("keeps the pipeline from a role without leads", () => {
