@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { buttonClasses } from "@/components/ui/button";
 import { getContext } from "@/lib/auth";
 import { demoAvailable } from "@/lib/demo";
+import { LEGAL_PAGES } from "@/lib/legal";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -53,12 +54,15 @@ finish review, the verdict, DESIGN.md, and every shipping raster carrying its
 provenance.
 `;
 
+// Anchored to the homepage rather than to whatever page is open: the same
+// header and footer sit over the legal pages, where a bare "#pricing" would
+// go nowhere. On the homepage itself the browser just scrolls.
 const NAV = [
-  { href: "#platform", label: "Platform" },
-  { href: "#product", label: "Product" },
-  { href: "#industries", label: "Solutions" },
-  { href: "#pricing", label: "Pricing" },
-  { href: "#download", label: "Download" },
+  { href: "/#platform", label: "Platform" },
+  { href: "/#product", label: "Product" },
+  { href: "/#industries", label: "Solutions" },
+  { href: "/#pricing", label: "Pricing" },
+  { href: "/#download", label: "Download" },
 ];
 
 export default async function MarketingLayout({
@@ -116,7 +120,7 @@ export default async function MarketingLayout({
             {/* Somebody already signed in has an account; what they are
                 still missing is the app. */}
             {ctx ? (
-              <a href="#download" className={buttonClasses("primary", "sm")}>
+              <a href="/#download" className={buttonClasses("primary", "sm")}>
                 Download
                 <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
               </a>
@@ -148,7 +152,7 @@ export default async function MarketingLayout({
               </p>
             </div>
 
-            <nav aria-label="Footer" className="flex gap-12 text-sm">
+            <nav aria-label="Footer" className="flex flex-wrap gap-x-12 gap-y-8 text-sm">
               <div>
                 <p className="font-medium text-ink">Product</p>
                 <ul className="mt-3 space-y-2 text-ink-muted">
@@ -165,7 +169,7 @@ export default async function MarketingLayout({
                 <p className="font-medium text-ink">Get started</p>
                 <ul className="mt-3 space-y-2 text-ink-muted">
                   <li>
-                    <a href="#download" className="hover:text-ink">
+                    <a href="/#download" className="hover:text-ink">
                       Download
                     </a>
                   </li>
@@ -182,6 +186,18 @@ export default async function MarketingLayout({
                       </Link>
                     </li>
                   )}
+                </ul>
+              </div>
+              <div>
+                <p className="font-medium text-ink">Legal</p>
+                <ul className="mt-3 space-y-2 text-ink-muted">
+                  {LEGAL_PAGES.map((page) => (
+                    <li key={page.href}>
+                      <Link href={page.href} className="hover:text-ink">
+                        {page.label}
+                      </Link>
+                    </li>
+                  ))}
                 </ul>
               </div>
             </nav>

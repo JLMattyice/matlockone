@@ -221,6 +221,21 @@ export default async function BillingPage({
               }
               currentInterval={access.ok ? org.subscriptionInterval : null}
             />
+            {/* What a plan commits them to, beside the buttons that commit
+                them to it. */}
+            <p className="text-xs leading-relaxed text-ink-muted">
+              Plans renew automatically until you cancel. Cancel any time here and keep
+              everything until the end of what you’ve paid for; unused time isn’t refunded.
+              Choosing a plan means you agree to the{" "}
+              <Link href="/terms" className="font-medium text-ink hover:underline">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/refunds" className="font-medium text-ink hover:underline">
+                Refund Policy
+              </Link>
+              .
+            </p>
           </section>
         ) : (
           <Card>

@@ -142,6 +142,20 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
         />
       </Field>
 
+      {/* Said before the button, where it is read, rather than after it.
+          New tabs, so following a link does not lose what was typed here. */}
+      <p className="text-xs leading-relaxed text-ink-muted">
+        By creating a workspace, you agree to the{" "}
+        <Link href="/terms" target="_blank" rel="noopener" className="font-medium text-ink underline-offset-2 hover:underline">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" target="_blank" rel="noopener" className="font-medium text-ink underline-offset-2 hover:underline">
+          Privacy Policy
+        </Link>
+        .
+      </p>
+
       <SubmitButton />
 
       {offerSignIn ? (

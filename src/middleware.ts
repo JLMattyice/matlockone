@@ -30,6 +30,11 @@ const PUBLIC_PREFIXES = [
  */
 const PUBLIC_PAGES = new Set([
   "/",
+  // The agreements somebody accepts by signing up, so they have to be
+  // readable before there is anything to sign in to.
+  "/terms",
+  "/privacy",
+  "/refunds",
   // What a phone fetches to add Matlock One to its home screen and to show
   // the offline page. A redirect to sign-in would break all three.
   "/manifest.webmanifest",
