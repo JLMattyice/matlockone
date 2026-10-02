@@ -12,6 +12,11 @@ import {
   listRepeatingExpenses,
   type RepeatingExpense,
 } from "./queries";
+import {
+  ExpenseSelection,
+  SelectAllExpenses,
+  SelectExpense,
+} from "./selection";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -72,6 +77,7 @@ export default async function ExpensesPage({
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
   const writable = can(user, "expenses:write");
+  const deletable = can(user, "expenses:delete");
   const isFiltered = Boolean(
     params.q || params.category || params.flag || params.jobId || params.clientId,
   );
@@ -193,9 +199,14 @@ export default async function ExpensesPage({
             }
           />
         ) : (
-          <>
+          <ExpenseSelection canDelete={deletable}>
             <Table>
               <THead>
+                {deletable ? (
+                  <Th className="w-9">
+                    <SelectAllExpenses ids={list.rows.map((row) => row.id)} />
+                  </Th>
+                ) : null}
                 <Th>Date</Th>
                 <Th>Description</Th>
                 <Th className="hidden sm:table-cell">Category</Th>
@@ -214,6 +225,11 @@ export default async function ExpensesPage({
 
                   return (
                     <Tr key={expense.id}>
+                      {deletable ? (
+                        <Td className="w-9">
+                          <SelectExpense id={expense.id} />
+                        </Td>
+                      ) : null}
                       <Td className="tabular whitespace-nowrap text-ink-muted">
                         {format(expense.spentAt, "MMM d, yyyy")}
                       </Td>
@@ -308,7 +324,7 @@ export default async function ExpensesPage({
               }}
               itemLabel="expenses"
             />
-          </>
+          </ExpenseSelection>
         )}
       </Card>
     </div>

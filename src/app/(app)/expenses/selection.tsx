@@ -2,18 +2,16 @@
 
 import { createContext, useContext, useMemo, useState } from "react";
 
-import { deleteInvoices } from "./actions";
+import { deleteExpenses } from "./actions";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Checkbox } from "@/components/ui/form";
 
 /**
- * Selecting invoices on the list, so a pile of them can be dealt with at once.
+ * Selecting expenses on the list, so a pile of them can be cleared at once.
  *
- * The rows themselves stay server-rendered — only the checkboxes and the action
- * bar are client components, reading one shared set. That keeps the table's
- * data on the server where it belongs, and means selection survives nothing:
- * changing page or filter deliberately clears it, because a hidden selection
- * you cannot see is a hidden selection you can delete by accident.
+ * The same shape as the invoice list: the rows stay server-rendered, and only
+ * the checkboxes and the action bar read one shared set. Changing page or
+ * filter clears it, so nothing hidden is ever deleted by accident.
  */
 
 type Selection = {
@@ -28,12 +26,12 @@ const SelectionContext = createContext<Selection | null>(null);
 function useSelection() {
   const context = useContext(SelectionContext);
   if (!context) {
-    throw new Error("Invoice selection used outside its provider.");
+    throw new Error("Expense selection used outside its provider.");
   }
   return context;
 }
 
-export function InvoiceSelection({
+export function ExpenseSelection({
   children,
   canDelete,
 }: {
@@ -70,7 +68,7 @@ export function InvoiceSelection({
     <SelectionContext.Provider value={value}>
       <form
         action={async (formData) => {
-          await deleteInvoices(formData);
+          await deleteExpenses(formData);
           // The rows are gone, so a selection still holding them would offer
           // to delete things that no longer exist.
           value.clear();
@@ -87,20 +85,20 @@ export function InvoiceSelection({
 }
 
 /** The checkbox on one row. */
-export function SelectInvoice({ id }: { id: string }) {
+export function SelectExpense({ id }: { id: string }) {
   const { selected, toggle } = useSelection();
 
   return (
     <Checkbox
       checked={selected.has(id)}
       onChange={() => toggle(id)}
-      aria-label="Select invoice"
+      aria-label="Select expense"
     />
   );
 }
 
 /** The checkbox in the header, covering everything on this page. */
-export function SelectAllInvoices({ ids }: { ids: string[] }) {
+export function SelectAllExpenses({ ids }: { ids: string[] }) {
   const { selected, setAll } = useSelection();
 
   const onPage = ids.filter((id) => selected.has(id)).length;
@@ -126,9 +124,9 @@ function BulkBar() {
   if (count === 0) return null;
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-sm">
+    <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface-2 px-4 py-2.5 text-sm">
       <span className="font-medium text-ink">
-        {count === 1 ? "1 invoice selected" : `${count} invoices selected`}
+        {count === 1 ? "1 expense selected" : `${count} expenses selected`}
       </span>
 
       <button
@@ -139,10 +137,7 @@ function BulkBar() {
         Clear
       </button>
 
-      <span className="ml-auto flex items-center gap-3">
-        <span className="hidden text-xs text-ink-subtle sm:inline">
-          Deleting also removes any payments recorded against them.
-        </span>
+      <span className="ml-auto">
         <ConfirmButton size="sm" confirmLabel={`Delete ${count} permanently?`}>
           Delete selected
         </ConfirmButton>

@@ -296,3 +296,23 @@ export async function deleteExpense(formData: FormData) {
   revalidatePath("/expenses");
   redirect("/expenses");
 }
+
+export async function deleteExpenses(formData: FormData) {
+  const { org } = await requirePermission("expenses:delete");
+
+  const submitted = formData
+    .getAll("ids")
+    .filter((value): value is string => typeof value === "string" && value !== "");
+
+  if (submitted.length === 0) return;
+
+  // Scoped to this business, so an edited form cannot reach another one's books.
+  const { count } = await prisma.expense.deleteMany({
+    where: { id: { in: submitted }, organizationId: org.id },
+  });
+
+  if (count === 0) return;
+
+  revalidatePath("/expenses");
+  revalidatePath("/reports");
+}

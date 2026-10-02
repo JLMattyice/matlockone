@@ -3,6 +3,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { ArrowLeft } from "lucide-react";
 
+import { deleteExpense } from "../../actions";
 import { ExpenseForm } from "../../expense-form";
 import {
   clientOptions,
@@ -10,6 +11,7 @@ import {
   jobOptions,
   payerOptions,
 } from "../../queries";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { requirePermission } from "@/lib/auth";
 import {
   asStatus,
@@ -18,6 +20,7 @@ import {
   type ExpenseCategory,
 } from "@/lib/constants";
 import { centsToInput, currencySymbol } from "@/lib/money";
+import { can } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Edit expense" };
 
@@ -26,7 +29,7 @@ export default async function EditExpensePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { org } = await requirePermission("expenses:write");
+  const { user, org } = await requirePermission("expenses:write");
   const { id } = await params;
 
   const [expense, jobs, clients, payers] = await Promise.all([
@@ -90,6 +93,25 @@ export default async function EditExpensePage({
           paidById: expense.paidById ?? "",
         }}
       />
+
+      {/* Offered under the form rather than beside Save, so it is never the
+          button somebody reaches for when they meant to keep their changes. */}
+      {can(user, "expenses:delete") ? (
+        <form
+          action={deleteExpense}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line px-4 py-3"
+        >
+          <input type="hidden" name="id" value={expense.id} />
+          <p className="text-xs text-ink-muted">
+            {expense.scheduleId
+              ? "Deleting this one leaves the rest of the repeating bill alone."
+              : "Deleting removes this expense for good, along with anything attached to it."}
+          </p>
+          <ConfirmButton variant="ghost" size="sm" confirmLabel="Delete for good?">
+            Delete expense
+          </ConfirmButton>
+        </form>
+      ) : null}
     </div>
   );
 }
