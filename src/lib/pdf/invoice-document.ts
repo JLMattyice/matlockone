@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { offeredPayLink } from "@/lib/payments/link-amount";
 import { buildInvoicePdf } from "./invoice-pdf";
 import type { Organization } from "@/generated/prisma/client";
 
@@ -54,7 +55,10 @@ export async function invoicePdfFor(org: Organization, invoiceId: string) {
       amountPaidCents: invoice.amountPaidCents,
       balanceCents: invoice.balanceCents,
       notes: invoice.notes,
-      paymentUrl: invoice.paymentUrl,
+      // Only a link that still asks for what is owed. A printed link outlives
+      // every later payment, so a stale one here would go on asking for the
+      // wrong amount for as long as the paper exists.
+      paymentUrl: offeredPayLink(invoice),
     },
     client: invoice.client,
     address: invoice.address,

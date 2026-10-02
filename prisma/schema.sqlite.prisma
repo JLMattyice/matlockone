@@ -683,6 +683,11 @@ model Invoice {
   paymentRef       String?
   paymentLinkedAt  DateTime?
   paymentCheckedAt DateTime?
+  /// What the link asks for. A processor's link is made for the balance at
+  /// that moment and never changes, so once a part-payment or an edit moves
+  /// the balance it would ask for the wrong amount — and is not offered.
+  /// Null for links made before this was recorded.
+  paymentLinkCents Int?
 
   createdById String?
   createdBy   User?   @relation("InvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)

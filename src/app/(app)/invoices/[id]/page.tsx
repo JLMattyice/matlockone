@@ -48,6 +48,7 @@ import { PaymentLinkPanel } from "./payment-link-panel";
 import { resolveProcessor } from "@/lib/payments/account";
 import { PAYMENT_PROVIDER_META } from "@/lib/payments/catalog";
 import { hasInstantUpdates } from "@/lib/payments/paypal-webhooks";
+import { payLinkIsStale } from "@/lib/payments/link-amount";
 import { sweepsAutomatically } from "@/lib/config";
 import { currencySymbol, formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
@@ -320,6 +321,17 @@ export default async function InvoiceDetailPage({
                 hasRef={Boolean(invoice.paymentRef)}
                 settled={invoice.balanceCents <= 0}
                 canRecord={canRecord}
+                stale={
+                  payLinkIsStale(invoice)
+                    ? {
+                        asks:
+                          invoice.paymentLinkCents !== null
+                            ? money(invoice.paymentLinkCents)
+                            : null,
+                        owed: money(invoice.balanceCents),
+                      }
+                    : null
+                }
               />
             ) : null}
           </div>

@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { publicUrl } from "@/lib/messaging";
 import { resolveProcessor } from "./account";
+import { payLinkIsStale } from "./link-amount";
 import { ensurePaypalWebhook } from "./paypal-webhooks";
 import type { Organization } from "@/generated/prisma/client";
 
@@ -22,13 +23,27 @@ export type InvoiceForLink = {
   title: string | null;
   status: string;
   balanceCents: number;
+  amountPaidCents: number;
   paymentUrl: string | null;
+  paymentRef: string | null;
+  paymentLinkCents: number | null;
   client: { displayName: string; email: string | null };
 };
 
 export type LinkOutcome =
   | { ok: true; url: string; alreadyHad: boolean }
-  | { ok: false; reason: "no-processor" | "not-payable"; error?: undefined }
+  | {
+      ok: false;
+      /**
+       * stale: the invoice has a link, but it asks for a different amount
+       * from what is owed now (see link-amount.ts). It is not offered, and a
+       * second one is not made beside it: the first is still payable at the
+       * processor, and a client with two links for one invoice is how
+       * people pay twice.
+       */
+      reason: "no-processor" | "not-payable" | "stale";
+      error?: undefined;
+    }
   | { ok: false; reason: "failed"; error: string };
 
 /**
@@ -58,6 +73,7 @@ export async function attachPaymentLink(
   invoice: InvoiceForLink,
 ): Promise<LinkOutcome> {
   if (invoice.paymentUrl) {
+    if (payLinkIsStale(invoice)) return { ok: false, reason: "stale" };
     return { ok: true, url: invoice.paymentUrl, alreadyHad: true };
   }
 
@@ -93,6 +109,8 @@ export async function attachPaymentLink(
       paymentProvider: processor.provider,
       paymentLinkedAt: new Date(),
       paymentCheckedAt: null,
+      // What it was made for, so a later change to the balance is noticed.
+      paymentLinkCents: invoice.balanceCents,
     },
   });
 

@@ -28,6 +28,12 @@ export type PaymentLinkPanelProps = {
   hasRef: boolean;
   settled: boolean;
   canRecord: boolean;
+  /**
+   * The link asks for a different amount from what is owed now, so it is
+   * left out of everything the client sees. With what it asks for and what
+   * is owed, formatted; `asks` is null for a link made before that was kept.
+   */
+  stale: { asks: string | null; owed: string } | null;
 };
 
 export function PaymentLinkPanel({
@@ -41,6 +47,7 @@ export function PaymentLinkPanel({
   hasRef,
   settled,
   canRecord,
+  stale,
 }: PaymentLinkPanelProps) {
   const zone = useTimeZone();
   const [createState, createAction] = useActionState<ActionState, FormData>(
@@ -83,6 +90,17 @@ export function PaymentLinkPanel({
       </p>
 
       <p className="font-mono text-xs break-all text-ink-muted">{paymentUrl}</p>
+
+      {stale ? (
+        <p className="rounded-lg border border-warning/30 bg-warning/8 px-3 py-2 text-xs text-ink">
+          {stale.asks
+            ? `This link asks for ${stale.asks}, but ${stale.owed} is owed now.`
+            : `A payment has come in since this link was made, so it may ask for more than the ${stale.owed} owed now.`}{" "}
+          It’s left out of emails, reminders, the PDF and the client’s invoice page. Remove it
+          and add a new one for the right amount — the old one still works at {processorLabel}{" "}
+          until you cancel it there.
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         {processorReconciles && hasRef && canRecord && !settled ? (

@@ -308,9 +308,13 @@ export async function getInvoiceByToken(token: string) {
       balanceCents: true,
       notes: true,
       terms: true,
-      // The pay link only. paymentRef and paymentProvider stay internal —
-      // this select is what a public, unauthenticated page renders.
+      // The pay link, and what it takes to tell whether it still asks for
+      // the right amount. This select is what a public, unauthenticated page
+      // renders, so paymentRef is read only to decide, never shown, and
+      // paymentProvider is not read at all.
       paymentUrl: true,
+      paymentRef: true,
+      paymentLinkCents: true,
       lineItems: { orderBy: { sortOrder: "asc" } },
       payments: {
         orderBy: { receivedAt: "desc" },

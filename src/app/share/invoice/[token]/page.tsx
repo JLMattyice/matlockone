@@ -16,6 +16,7 @@ import {
 } from "@/lib/constants";
 import { effectiveInvoiceStatus } from "@/lib/documents";
 import { formatMoney } from "@/lib/money";
+import { offeredPayLink, payLinkIsStale } from "@/lib/payments/link-amount";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
 import { DEFAULT_BRAND_COLOR, formatPhone, hexToRgbChannels } from "@/lib/utils";
 
@@ -62,6 +63,9 @@ export default async function PublicInvoicePage({
   // A draft has not been issued to anyone yet; the link should not resolve.
   if (invoice.status === "DRAFT") notFound();
 
+  const payLink = offeredPayLink(invoice);
+  const staleLink = payLinkIsStale(invoice);
+
   return (
     <div
       style={{ "--brand": brand } as React.CSSProperties}
@@ -96,15 +100,23 @@ export default async function PublicInvoicePage({
           </p>
         ) : null}
 
-        {invoice.paymentUrl && invoice.balanceCents > 0 ? (
+        {payLink ? (
           <a
-            href={invoice.paymentUrl}
+            href={payLink}
             target="_blank"
             rel="noopener noreferrer"
             className="no-print flex items-center justify-center rounded-card bg-brand px-5 py-3.5 text-sm font-semibold text-brand-ink shadow-sm transition hover:brightness-110"
           >
             Pay {money(invoice.balanceCents)} online
           </a>
+        ) : staleLink ? (
+          // The link on file asks for an amount that is no longer owed — a
+          // part-payment or a correction since. A button saying one amount
+          // and charging another is worse than no button.
+          <p className="no-print rounded-card border border-line bg-surface px-4 py-3 text-sm text-ink">
+            {money(invoice.balanceCents)} is still to pay. Please contact {org.name} to arrange
+            paying it.
+          </p>
         ) : null}
 
         <div className="overflow-hidden rounded-card border border-line shadow-xs">

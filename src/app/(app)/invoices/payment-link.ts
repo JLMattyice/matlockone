@@ -28,12 +28,14 @@ async function loadInvoice(organizationId: string, id: string) {
       title: true,
       status: true,
       balanceCents: true,
+      amountPaidCents: true,
       totalCents: true,
       clientId: true,
       createdById: true,
       paymentUrl: true,
       paymentRef: true,
       paymentProvider: true,
+      paymentLinkCents: true,
       client: { select: { displayName: true, email: true } },
     },
   });
@@ -72,7 +74,9 @@ export async function createPaymentLink(
         ? "No payment processor is connected. Set one up under Settings → Payments."
         : linked.reason === "failed"
           ? linked.error
-          : "This invoice cannot take a payment link.",
+          : linked.reason === "stale"
+            ? "The Pay now link on this invoice asks for a different amount from what is owed now. Remove it first, then add a new one."
+            : "This invoice cannot take a payment link.",
     );
   }
 
@@ -104,6 +108,7 @@ export async function removePaymentLink(formData: FormData) {
       paymentProvider: null,
       paymentLinkedAt: null,
       paymentCheckedAt: null,
+      paymentLinkCents: null,
     },
   });
 

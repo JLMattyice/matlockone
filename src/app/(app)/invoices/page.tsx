@@ -28,6 +28,11 @@ import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Invoices" };
 
+// Send reminders runs on this page, and asks the payment processor about each
+// linked invoice before chasing it. A long list of those can outlast the
+// platform's default time limit; this gives it room to finish.
+export const maxDuration = 60;
+
 export default async function InvoicesPage({
   searchParams,
 }: {
