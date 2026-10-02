@@ -231,11 +231,36 @@ describe("latestInstaller", () => {
       [manifestUrl("v0.3.0", "latest.yml")]: { status: 200, body: WINDOWS_MANIFEST },
     });
 
+    // v0.3.0's manifest is fetched alongside the rest, but never offered.
     expect(await latestInstaller("windows", { fetcher })).toEqual({ status: "unknown" });
-    expect(asked).not.toContain(manifestUrl("v0.3.0", "latest.yml"));
   });
 
-  it("looks back only a handful of releases", async () => {
+  it("finds a Mac build several Windows-only releases back", async () => {
+    // As it stood on 2026-10-02: five Windows-only releases since the last
+    // Mac build, which a five-release limit could not reach. The button fell
+    // through to a fixed address for an older build still.
+    const tags = ["v0.8.1", "v0.8.0", "v0.7.0", "v0.6.3", "v0.6.2", "v0.6.1", "v0.6.0"];
+    const feed = tags
+      .map((tag) => `<link href="https://github.com/JLMattyice/matlockone/releases/tag/${tag}"/>`)
+      .join("\n");
+    const { fetcher } = github({
+      [feedUrl]: { status: 200, body: feed },
+      [manifestUrl("v0.6.1", "latest-mac.yml")]: {
+        status: 200,
+        body: MAC_MANIFEST.replaceAll("0.3.0", "0.6.1"),
+      },
+      [manifestUrl("v0.6.0", "latest-mac.yml")]: { status: 200, body: MAC_MANIFEST },
+    });
+
+    const lookup = await latestInstaller("mac", { fetcher });
+
+    expect(lookup).toMatchObject({
+      status: "found",
+      installer: { version: "0.6.1", fileName: "MatlockOne-0.6.1-x64.dmg" },
+    });
+  });
+
+  it("looks through every release the feed lists, all at once", async () => {
     const many = Array.from(
       { length: 12 },
       (_, index) =>
@@ -245,8 +270,31 @@ describe("latestInstaller", () => {
 
     await latestInstaller("mac", { fetcher });
 
-    // The feed, then five manifests.
-    expect(asked).toHaveLength(6);
+    // The feed, then ten manifests — as many as GitHub's feed ever lists.
+    expect(asked).toHaveLength(11);
+  });
+
+  it("answers in one wait, not one wait per release", async () => {
+    // Every manifest is asked for before any answer is read, so ten slow
+    // releases cost one round trip rather than ten in a row.
+    let inFlight = 0;
+    let most = 0;
+    const tags = Array.from({ length: 10 }, (_, index) => `v2.${index}.0`);
+    const feed = tags
+      .map((tag) => `<link href="https://github.com/JLMattyice/matlockone/releases/tag/${tag}"/>`)
+      .join("\n");
+
+    const fetcher = async (url: string) => {
+      if (url === feedUrl) return new Response(feed, { status: 200 });
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight--;
+      return new Response("Not found", { status: 404 });
+    };
+
+    expect(await latestInstaller("mac", { fetcher })).toEqual({ status: "none" });
+    expect(most).toBe(10);
   });
 
   describe("when GitHub is slow", () => {

@@ -543,6 +543,9 @@ async function downloads() {
     latestInstaller("mac"),
   ]);
 
+  // `missing` is read by visitors, not by whoever publishes releases: what
+  // they can do instead, never how a build gets made. (A published installer
+  // shows here within five minutes of release — see LOOKUP_SECONDS.)
   return [
     {
       platform: "Windows",
@@ -550,7 +553,7 @@ async function downloads() {
       available: windows.status !== "none",
       detail: withVersion(windows, "Windows 10 and 11 · 64-bit"),
       missing:
-        "No published release has a Windows installer yet. npm run release builds one, and it appears here within five minutes of being published.",
+        "The Windows app isn’t ready to download just yet. Until it is, sign in from any browser — everything works there.",
     },
     {
       platform: "macOS",
@@ -558,7 +561,7 @@ async function downloads() {
       available: mac.status !== "none",
       detail: withVersion(mac, macDetail(mac)),
       missing:
-        "No published release has a macOS installer yet. The release workflow builds one once the Apple signing secrets are set, and it appears here within five minutes of being published.",
+        "The Mac app is on its way. Until it’s ready, sign in from Safari or any other browser — everything works there.",
     },
   ];
 }

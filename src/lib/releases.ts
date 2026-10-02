@@ -73,8 +73,17 @@ const MANIFEST: Record<Platform, string> = {
  */
 export const LOOKUP_SECONDS = 300;
 
-/** Releases past this many back are not worth walking for an installer. */
-const RELEASES_TO_SEARCH = 5;
+/**
+ * How many releases back to look for a platform's installer — everything
+ * GitHub's releases feed lists, which is the latest ten.
+ *
+ * It was five, which was fine while every release carried both builds. Mac
+ * builds now come out less often than Windows ones, and on 2026-10-02 the
+ * last Mac build (v0.6.1) became the sixth release back: the Mac button
+ * stopped finding it and fell through to an old fixed address. Asked all at
+ * once rather than one after another, so looking further costs no more time.
+ */
+const RELEASES_TO_SEARCH = 10;
 
 // ------------------------------------------------------------------ parsing ---
 
@@ -248,11 +257,17 @@ export async function latestInstaller(
 
   const tags = releaseTags(await feed.text()).slice(0, RELEASES_TO_SEARCH);
 
-  for (const tag of tags) {
-    const response = await get(
-      fetcher,
-      `${RELEASES_PAGE}/download/${encodeURIComponent(tag)}/${MANIFEST[platform]}`,
-    );
+  // Every release's manifest at once, then read newest first. In sequence,
+  // each release without this platform's build cost a round trip, and enough
+  // of them in a row outlasted WAIT_MS before reaching the one that had it.
+  const responses = await Promise.all(
+    tags.map((tag) =>
+      get(fetcher, `${RELEASES_PAGE}/download/${encodeURIComponent(tag)}/${MANIFEST[platform]}`),
+    ),
+  );
+
+  for (const [index, tag] of tags.entries()) {
+    const response = responses[index];
 
     // A 404 is an answer: this release has no build for this platform, so
     // look at the one before it. Anything else is GitHub not answering, and
