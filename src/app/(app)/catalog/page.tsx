@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Archive, Pencil, Plus, Tag, Undo2 } from "lucide-react";
+import { Archive, Pencil, Plus, Tag, Undo2, Upload } from "lucide-react";
 
 import { setCatalogItemActive } from "./actions";
 import { asCatalogView, catalogSummary, listCatalogItems } from "./queries";
@@ -65,10 +65,16 @@ export default async function CatalogPage({
         }
         actions={
           writable ? (
-            <Link href="/catalog/new" className={buttonClasses("primary", "md")}>
-              <Plus className="h-4 w-4" strokeWidth={2} />
-              New item
-            </Link>
+            <>
+              <Link href="/catalog/import" className={buttonClasses("outline", "md")}>
+                <Upload className="h-4 w-4" strokeWidth={1.75} />
+                Import
+              </Link>
+              <Link href="/catalog/new" className={buttonClasses("primary", "md")}>
+                <Plus className="h-4 w-4" strokeWidth={2} />
+                New item
+              </Link>
+            </>
           ) : null
         }
       />
@@ -112,17 +118,26 @@ export default async function CatalogPage({
                 ? "Try a different search or clear the filters."
                 : view === "archived"
                   ? "Archiving takes an item out of the estimate and invoice pickers while leaving every document already priced with it alone."
-                  : "Add what you sell once, and every estimate and invoice can pick it in a click instead of retyping the wording and the price."
+                  : "Add what you sell once, and every estimate and invoice can pick it in a click instead of retyping the wording and the price. Already keep a price list? Import it."
             }
             action={
               !isFiltered && writable && view !== "archived" ? (
-                <Link
-                  href="/catalog/new"
-                  className={buttonClasses("primary", "md")}
-                >
-                  <Plus className="h-4 w-4" strokeWidth={2} />
-                  New item
-                </Link>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Link
+                    href="/catalog/new"
+                    className={buttonClasses("primary", "md")}
+                  >
+                    <Plus className="h-4 w-4" strokeWidth={2} />
+                    New item
+                  </Link>
+                  <Link
+                    href="/catalog/import"
+                    className={buttonClasses("outline", "md")}
+                  >
+                    <Upload className="h-4 w-4" strokeWidth={1.75} />
+                    Import a price list
+                  </Link>
+                </div>
               ) : null
             }
           />

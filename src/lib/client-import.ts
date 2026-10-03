@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { LEAD_SOURCES, type ClientType, type LeadSource } from "./constants";
+import { guessColumns, lowerSquash, type Mapping } from "./import-columns";
 
 /**
  * Turning a customer list somebody already has into customers here.
@@ -16,15 +17,6 @@ import { LEAD_SOURCES, type ClientType, type LeadSource } from "./constants";
  * columns are guessed from their headings and the owner corrects the guess,
  * rather than the file having to match a template.
  */
-
-/** The most a single file may hold. Larger lists import in parts. */
-export const IMPORT_MAX_ROWS = 5000;
-
-/**
- * The largest file accepted, in bytes. Vercel refuses a request body over
- * 4.5 MB before the code ever sees it, and the file travels as text.
- */
-export const IMPORT_MAX_BYTES = 4 * 1024 * 1024;
 
 export const IMPORT_FIELDS = [
   { key: "fullName", label: "Full name" },
@@ -54,15 +46,7 @@ export function isImportField(value: unknown): value is ImportField {
 }
 
 /** For each column of the file, the field it fills, or null to leave it out. */
-export type ColumnMapping = (ImportField | null)[];
-
-/** "E-mail Address" → "e mail address": how headings are compared. */
-function normalizeHeading(heading: string) {
-  return heading
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
+export type ColumnMapping = Mapping<ImportField>;
 
 /** Headings that mean a field outright, after normalizing. */
 const EXACT: Record<ImportField, string[]> = {
@@ -138,37 +122,14 @@ const CONTAINS: [ImportField, RegExp][] = [
   ["notes", /\bnotes?\b/],
 ];
 
-/**
- * A first guess at what each column holds, from its heading. Each field is
- * taken by one column at most — the first that claims it.
- */
+/** A first guess at what each column holds, from its heading. */
 export function guessMapping(headings: string[]): ColumnMapping {
-  const mapping: ColumnMapping = headings.map(() => null);
-  const taken = new Set<ImportField>();
-  const normalized = headings.map(normalizeHeading);
-
-  normalized.forEach((heading, column) => {
-    for (const field of IMPORT_FIELDS) {
-      if (!taken.has(field.key) && EXACT[field.key].includes(heading)) {
-        mapping[column] = field.key;
-        taken.add(field.key);
-        return;
-      }
-    }
-  });
-
-  normalized.forEach((heading, column) => {
-    if (mapping[column] || !heading) return;
-    for (const [field, pattern] of CONTAINS) {
-      if (!taken.has(field) && pattern.test(heading)) {
-        mapping[column] = field;
-        taken.add(field);
-        return;
-      }
-    }
-  });
-
-  return mapping;
+  return guessColumns(
+    headings,
+    IMPORT_FIELDS.map((field) => field.key),
+    EXACT,
+    CONTAINS,
+  );
 }
 
 /**
@@ -225,10 +186,6 @@ const BUSINESS_SUFFIX =
   /\b(llc|l\.l\.c\.?|inc\.?|incorporated|corp\.?|corporation|company|ltd\.?|llp|pllc)$/i;
 
 const emailSchema = z.string().email();
-
-function lowerSquash(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
-}
 
 /** Digits of a phone number, without a leading US country code. */
 function phoneDigits(value: string | null) {

@@ -6,35 +6,19 @@ import { revalidatePath } from "next/cache";
 
 import { onFileKeys } from "./queries";
 import { requirePermission } from "@/lib/auth";
-import {
-  IMPORT_MAX_BYTES,
-  IMPORT_MAX_ROWS,
-  isImportField,
-  mapsAName,
-  planImport,
-  type ColumnMapping,
-} from "@/lib/client-import";
+import { isImportField, mapsAName, planImport } from "@/lib/client-import";
 import { parseCsv } from "@/lib/csv";
 import { prisma } from "@/lib/db";
+import {
+  IMPORT_MAX_BYTES,
+  inGroups,
+  sanitizeMapping,
+  tableProblem,
+} from "@/lib/import-columns";
 
 export type ImportResult =
   | { ok: true; created: number; onFile: number; repeated: number; unnamed: number }
   | { ok: false; error: string };
-
-/**
- * The browser's column choices, made safe: one entry per column, each a known
- * field or nothing, and no field filled from two columns.
- */
-function readMapping(raw: unknown, columns: number): ColumnMapping {
-  const list = Array.isArray(raw) ? raw : [];
-  const taken = new Set<string>();
-  return Array.from({ length: columns }, (_, column) => {
-    const field = list[column];
-    if (!isImportField(field) || taken.has(field)) return null;
-    taken.add(field);
-    return field;
-  });
-}
 
 /**
  * Ids made here rather than by Prisma, so each address and note can name its
@@ -43,13 +27,6 @@ function readMapping(raw: unknown, columns: number): ColumnMapping {
  */
 function newId() {
   return `c${randomBytes(12).toString("hex")}`;
-}
-
-/** Inserts go in groups, well inside every database's limit on one statement. */
-function inGroups<T>(items: T[], size = 500): T[][] {
-  const groups: T[][] = [];
-  for (let i = 0; i < items.length; i += size) groups.push(items.slice(i, i + size));
-  return groups;
 }
 
 /**
@@ -77,17 +54,10 @@ export async function importClients(
   }
 
   const table = parseCsv(csv);
-  if (table.length < 2) {
-    return { ok: false, error: "That file has no rows under its column headings." };
-  }
-  if (table.length - 1 > IMPORT_MAX_ROWS) {
-    return {
-      ok: false,
-      error: `That file has ${(table.length - 1).toLocaleString("en-US")} rows. Up to ${IMPORT_MAX_ROWS.toLocaleString("en-US")} can be imported at a time.`,
-    };
-  }
+  const problem = tableProblem(table);
+  if (problem) return { ok: false, error: problem };
 
-  const mapping = readMapping(rawMapping, table[0].length);
+  const mapping = sanitizeMapping(rawMapping, table[0].length, isImportField);
   if (!mapsAName(mapping)) {
     return { ok: false, error: "Choose the column that holds each name before importing." };
   }

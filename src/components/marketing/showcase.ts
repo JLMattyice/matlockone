@@ -226,7 +226,7 @@ export const SHOWCASE: Record<string, Showcase> = {
   },
   "/catalog": {
     headline: "Your price list, priced once",
-    body: "The services, materials and labor you sell, picked into any estimate or invoice instead of retyped. Changing a price here never rewrites a document already sent.",
+    body: "The services, materials and labor you sell, picked into any estimate or invoice instead of retyped. Bring an existing price list in from a spreadsheet. Changing a price here never rewrites a document already sent.",
     columns: [
       { key: "item", label: "Item" },
       { key: "kind", label: "Kind" },

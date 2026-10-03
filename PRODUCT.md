@@ -92,6 +92,10 @@ partly paid, a payment recorded twice.
 - Estimates & Invoices: shared line-item editor with discounts and tax, a
   client-facing link to accept or decline, estimate-to-job conversion, partial
   payments, printable documents.
+- Products & services: the price book the line-item editor picks from, with
+  archive/restore. Importable from a CSV price list (QuickBooks' own export
+  included); "$85/yd" reads as a price and a unit, a price that cannot be read
+  comes in at 0 and says so, and names already in the book are skipped.
 - Tasks: a module of its own, not just notes on a record. A to-do with a due
   date, optionally assigned and optionally tied to a client, job or lead;
   open / due today / overdue / done views; panels on the job and client pages;
