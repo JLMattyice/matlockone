@@ -6,6 +6,7 @@ import { INVOICE_OPEN_STATUSES } from "../constants";
 import { prisma } from "../db";
 import { formatMoney } from "../money";
 import { notify } from "../notifications";
+import { sendToQuickBooksSoon } from "../quickbooks/sync";
 import { whoHandlesBilling } from "../recurring-invoices";
 import { runEventWorkflows } from "../workflows/run";
 import { recordRemotePayments, resolveProcessor, type ConnectedProcessor } from "./account";
@@ -167,6 +168,13 @@ export async function reconcileInvoice(input: {
         clientId: invoice.clientId,
       });
     }
+  }
+
+  // Online payments reach QuickBooks like hand-entered ones. Outside a
+  // request (a script) there is nothing to send them after; the morning run
+  // picks them up.
+  if (outcome.recorded > 0) {
+    await sendToQuickBooksSoon(input.organizationId, { invoices: [input.invoiceId] }).catch(() => {});
   }
 
   return {

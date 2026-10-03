@@ -4,6 +4,7 @@ import type { TokenSet } from "./oauth";
 import type { QuickBooksEnvironment } from "./settings";
 import { prisma } from "../db";
 import { open as openSecret, seal } from "../secret-box";
+import { todayIn } from "../time-zone";
 
 /**
  * A business's QuickBooks connection, kept in the Integration table like its
@@ -36,6 +37,21 @@ export type QuickBooksConfig = {
   firstSentAt: string | null;
   /** Intuit refused the tokens: shown as "connect again", and nothing is tried. */
   needsReconnect: boolean;
+  /**
+   * Invoices issued, and expenses spent, on or after this day (YYYY-MM-DD)
+   * go over; earlier ones are assumed to be in the books already. The day
+   * of first connecting unless the owner picks another.
+   */
+  sendFrom: string;
+  /** The company's country as QuickBooks has it; sales tax is US-shaped there. */
+  country: string | null;
+  /** The income account the items Matlock One makes are filed under. */
+  incomeAccountId: string | null;
+  /** Expense category → QuickBooks expense account id, as the owner chose. */
+  expenseAccounts: Record<string, string>;
+  /** The bank or card account expenses are paid from, and which it is. */
+  paidFromAccountId: string | null;
+  paidFromIsCard: boolean;
 };
 
 export type QuickBooksConnection = QuickBooksConfig & {
@@ -55,6 +71,22 @@ function readConfig(raw: string | null | undefined): QuickBooksConfig | null {
       connectedAt: typeof value.connectedAt === "string" ? value.connectedAt : "",
       firstSentAt: typeof value.firstSentAt === "string" ? value.firstSentAt : null,
       needsReconnect: value.needsReconnect === true,
+      sendFrom:
+        typeof value.sendFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.sendFrom)
+          ? value.sendFrom
+          : (typeof value.connectedAt === "string" ? value.connectedAt : new Date().toISOString()).slice(0, 10),
+      country: typeof value.country === "string" ? value.country : null,
+      incomeAccountId: typeof value.incomeAccountId === "string" ? value.incomeAccountId : null,
+      expenseAccounts:
+        value.expenseAccounts && typeof value.expenseAccounts === "object"
+          ? Object.fromEntries(
+              Object.entries(value.expenseAccounts).filter(
+                (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1] !== "",
+              ),
+            )
+          : {},
+      paidFromAccountId: typeof value.paidFromAccountId === "string" ? value.paidFromAccountId : null,
+      paidFromIsCard: value.paidFromIsCard === true,
     };
   } catch {
     return null;
@@ -115,6 +147,8 @@ export async function saveConnection(input: {
   companyName: string;
   environment: QuickBooksEnvironment;
   tokens: TokenSet;
+  /** The business's time zone, so "from today" means its today. */
+  timeZone?: string;
   now?: Date;
 }) {
   const now = input.now ?? new Date();
@@ -134,6 +168,17 @@ export async function saveConnection(input: {
     connectedAt: now.toISOString(),
     firstSentAt: sameCompany ? previous.firstSentAt : null,
     needsReconnect: false,
+    sendFrom: sameCompany
+      ? previous.sendFrom
+      : input.timeZone
+        ? todayIn(input.timeZone)
+        : now.toISOString().slice(0, 10),
+    country: sameCompany ? previous.country : null,
+    // Account ids belong to one company; another company starts unmapped.
+    incomeAccountId: sameCompany ? previous.incomeAccountId : null,
+    expenseAccounts: sameCompany ? previous.expenseAccounts : {},
+    paidFromAccountId: sameCompany ? previous.paidFromAccountId : null,
+    paidFromIsCard: sameCompany ? previous.paidFromIsCard : false,
   };
 
   const data = {
@@ -177,8 +222,23 @@ export async function storeTokens(organizationId: string, tokens: TokenSet) {
   });
 }
 
-export function setCompanyName(organizationId: string, companyName: string) {
-  return updateConfig(organizationId, { companyName });
+export function setCompanyName(organizationId: string, companyName: string, country: string | null) {
+  return updateConfig(organizationId, { companyName, country });
+}
+
+export function setSendFrom(organizationId: string, sendFrom: string) {
+  return updateConfig(organizationId, { sendFrom });
+}
+
+export function setIncomeAccount(organizationId: string, incomeAccountId: string) {
+  return updateConfig(organizationId, { incomeAccountId });
+}
+
+export function setExpenseAccounts(
+  organizationId: string,
+  choice: { expenseAccounts: Record<string, string>; paidFromAccountId: string | null; paidFromIsCard: boolean },
+) {
+  return updateConfig(organizationId, choice);
 }
 
 export function setOverwriteMatches(organizationId: string, overwriteMatches: boolean) {

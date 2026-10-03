@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
 import { disconnectQuickBooks, setQuickBooksOverwrite } from "./actions";
-import { SendNow } from "./send-now";
+import { ExpenseAccountsForm, SendNow, StartDateForm, type AccountOption } from "./forms";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
@@ -12,18 +12,19 @@ import { FormError, FormSuccess } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit";
 import { requirePermission } from "@/lib/auth";
 import { dataStaysOnThisMachine } from "@/lib/config";
-import { prisma } from "@/lib/db";
+import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS } from "@/lib/constants";
 import { can } from "@/lib/permissions";
 import { loadConnection, quickbooksStatus } from "@/lib/quickbooks/connection";
+import { accountChoices } from "@/lib/quickbooks/expenses";
 import { quickbooksSettings } from "@/lib/quickbooks/settings";
-import { customerSyncSummary } from "@/lib/quickbooks/sync";
+import { syncSummary, type KindSummary } from "@/lib/quickbooks/sync";
 import { encryptionAvailable } from "@/lib/secret-box";
 import { formatIn } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "QuickBooks" };
 
-// Send now works through as many customers as it can in this long.
+// Send now works through as much as it can in this long.
 export const maxDuration = 60;
 
 const PROBLEMS: Record<string, string> = {
@@ -55,33 +56,33 @@ export default async function QuickBooksSettingsPage({
   const status = await quickbooksStatus(org.id);
   const problem = params.problem ? (PROBLEMS[params.problem] ?? PROBLEMS.refused) : null;
 
-  const intro = (
-    <CardHeader
-      title="QuickBooks Online"
-      description="Keep QuickBooks' customer list matching this one, without typing anybody in twice. Invoices and payments come next."
-    />
-  );
-
   if (!status) {
     return (
       <div className="space-y-4">
         <FormError>{problem}</FormError>
         <Card>
-          {intro}
+          <CardHeader
+            title="QuickBooks Online"
+            description="Keep QuickBooks matching this business's books, without typing anything in twice."
+          />
           <CardBody className="space-y-3 text-sm text-ink-muted">
             {available ? (
               <>
                 <p>Once connected:</p>
                 <ul className="list-disc space-y-1.5 pl-5">
-                  <li>Every customer that is not archived goes to QuickBooks.</li>
                   <li>
-                    A customer you add or change goes over a moment after you save. Anything that
-                    could not go over is tried again in the morning, and Send now does it on the
-                    spot.
+                    Every customer that is not archived goes to QuickBooks, and invoices once they
+                    are sent, with their payments. Sales tax travels as its own line, so totals
+                    match to the cent.
+                  </li>
+                  <li>Expenses go to the QuickBooks account you choose for each category.</li>
+                  <li>
+                    Anything you add or change goes over a moment after you save. Whatever could not
+                    go over is tried again in the morning, and Send now does it on the spot.
                   </li>
                   <li>
                     A customer QuickBooks already has under the same name is linked rather than
-                    duplicated. Whether its details there are replaced with these is your choice.
+                    duplicated.
                   </li>
                   <li>Nothing is sent until you press Send now the first time.</li>
                 </ul>
@@ -118,16 +119,39 @@ export default async function QuickBooksSettingsPage({
   }
 
   const connection = await loadConnection(org.id);
-  const summary = connection ? await customerSyncSummary(connection) : null;
-  const total = await prisma.client.count({
-    where: { organizationId: org.id, status: { not: "ARCHIVED" } },
-  });
   const company = status.companyName || "your QuickBooks company";
+  const needsReconnect = status.needsReconnect || !connection;
+  const summary = connection && !needsReconnect ? await syncSummary(connection, org.timeZone) : null;
+
+  let accounts: { expense: AccountOption[]; paidFrom: AccountOption[] } | null = null;
+  if (connection && !needsReconnect) {
+    try {
+      accounts = await accountChoices(connection);
+    } catch {
+      accounts = null;
+    }
+  }
+
   // The "just connected" note stops making sense once Send now has been
   // pressed on this connection, though the address still says ?connected=1.
   const sentSinceConnecting =
     Boolean(status.firstSentAt) && status.firstSentAt! > status.connectedAt;
-  const needsReconnect = status.needsReconnect || !connection;
+
+  const kinds: { label: string; summary: KindSummary }[] = summary
+    ? [
+        { label: org.labelClientPlural, summary: summary.customers },
+        { label: "Invoices", summary: summary.invoices },
+        { label: "Payments", summary: summary.payments },
+        { label: "Expenses", summary: summary.expenses },
+      ]
+    : [];
+  const failing = kinds.flatMap(({ label, summary: kind }) =>
+    kind.failing.map((row) => ({ ...row, kind: label })),
+  );
+  const waitingForAccounts = summary
+    ? [...summary.expensesWithoutAccount.values()].reduce((sum, n) => sum + n, 0)
+    : 0;
+  const upToDate = kinds.every(({ summary: kind }) => kind.waiting === 0 && kind.failing.length === 0);
 
   return (
     <div className="space-y-4">
@@ -137,7 +161,7 @@ export default async function QuickBooksSettingsPage({
           Connected to {company}.{" "}
           {status.firstSentAt
             ? "Sending carries on from where it left off."
-            : "Nothing has been sent yet — check the switch below, then press Send now."}
+            : "Nothing has been sent yet — check the settings below, then press Send now."}
         </FormSuccess>
       ) : null}
 
@@ -169,49 +193,94 @@ export default async function QuickBooksSettingsPage({
                 </a>
               ) : null}
             </div>
-          ) : summary ? (
+          ) : (
             <>
-              <div className="flex flex-wrap gap-2">
-                <Badge tone="success">{count(summary.sent, "customer in QuickBooks", "customers in QuickBooks")}</Badge>
-                {summary.waiting > 0 ? (
-                  <Badge>{count(summary.waiting, "waiting", "waiting")}</Badge>
-                ) : null}
-                {summary.failing.length > 0 ? (
-                  <Badge tone="danger">{count(summary.failing.length, "could not be sent", "could not be sent")}</Badge>
-                ) : null}
+              <div className="divide-y divide-line rounded-lg border border-line">
+                {kinds.map(({ label, summary: kind }) => (
+                  <div key={label} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                    <span className="text-sm font-medium text-ink">{label}</span>
+                    <span className="flex flex-wrap gap-1.5">
+                      <Badge tone="success">{kind.sent.toLocaleString("en-US")} in QuickBooks</Badge>
+                      {kind.waiting > 0 ? <Badge>{kind.waiting.toLocaleString("en-US")} waiting</Badge> : null}
+                      {kind.failing.length > 0 ? (
+                        <Badge tone="danger">{kind.failing.length.toLocaleString("en-US")} could not be sent</Badge>
+                      ) : null}
+                    </span>
+                  </div>
+                ))}
               </div>
               <p className="text-sm text-ink-muted">
                 {status.firstSentAt
-                  ? `${org.labelClientPlural} you add or change go over a moment after you save; the morning run tries again whatever could not. ${total === summary.sent && summary.waiting === 0 ? "Everything is up to date." : ""}`
-                  : `Nothing has gone over yet. ${count(summary.waiting, `${org.labelClientSingular.toLowerCase()} is`, `${org.labelClientPlural.toLowerCase()} are`)} ready. After the first Send now, changes go over by themselves.`}
+                  ? `Anything you add or change goes over a moment after you save; the morning run tries again whatever could not.${upToDate ? " Everything is up to date." : ""}`
+                  : "Nothing has gone over yet. Check the start date, expense accounts and overwrite switch below, then press Send now. After that, changes go over by themselves."}
+                {waitingForAccounts > 0
+                  ? ` ${count(waitingForAccounts, "expense waits", "expenses wait")} for an account to be chosen below.`
+                  : ""}
               </p>
               {writable ? <SendNow /> : null}
             </>
-          ) : null}
+          )}
         </CardBody>
       </Card>
 
-      {summary && summary.failing.length > 0 ? (
+      {failing.length > 0 ? (
         <Card>
           <CardHeader
             title="Could not be sent"
-            description="Fix what QuickBooks says, and the customer goes over again on the next save, Send now or morning run."
+            description="Fix what QuickBooks says, and it goes over again on the next save, Send now or morning run."
           />
           <ul className="divide-y divide-line">
-            {summary.failing.slice(0, 25).map((row) => (
-              <li key={row.id} className="px-5 py-3 text-sm">
-                <Link href={`/clients/${row.id}`} className="font-medium text-ink hover:text-brand">
+            {failing.slice(0, 25).map((row) => (
+              <li key={`${row.kind}:${row.id}`} className="px-5 py-3 text-sm">
+                <span className="text-xs text-ink-subtle">{row.kind} · </span>
+                <Link href={row.href} className="font-medium text-ink hover:text-brand">
                   {row.name}
                 </Link>
                 <p className="mt-0.5 text-ink-muted">{row.error}</p>
               </li>
             ))}
           </ul>
-          {summary.failing.length > 25 ? (
+          {failing.length > 25 ? (
             <p className="border-t border-line px-5 py-3 text-xs text-ink-subtle">
-              and {count(summary.failing.length - 25, "more", "more")}
+              and {count(failing.length - 25, "more", "more")}
             </p>
           ) : null}
+        </Card>
+      ) : null}
+
+      {!needsReconnect ? (
+        <Card>
+          <CardHeader
+            title="Where the books start"
+            description={`${org.labelClientPlural} all go over. Invoices and expenses dated before this day are left out, on the assumption they are in QuickBooks already.`}
+          />
+          <StartDateForm sendFrom={status.sendFrom} readOnly={!writable} />
+        </Card>
+      ) : null}
+
+      {!needsReconnect ? (
+        <Card>
+          <CardHeader
+            title="Expenses"
+            description="Choose the QuickBooks account each category goes to, and the account expenses are paid from. A category left as Not sent stays here."
+          />
+          {accounts ? (
+            <ExpenseAccountsForm
+              categories={EXPENSE_CATEGORIES.map((value) => ({ value, label: EXPENSE_CATEGORY_LABELS[value] }))}
+              expenseAccounts={accounts.expense}
+              paidFromAccounts={accounts.paidFrom}
+              chosen={status.expenseAccounts}
+              paidFrom={status.paidFromAccountId}
+              waiting={Object.fromEntries(summary?.expensesWithoutAccount ?? [])}
+              readOnly={!writable}
+            />
+          ) : (
+            <CardBody>
+              <p className="text-sm text-danger">
+                QuickBooks could not be reached for its list of accounts. Reload the page to try again.
+              </p>
+            </CardBody>
+          )}
         </Card>
       ) : null}
 

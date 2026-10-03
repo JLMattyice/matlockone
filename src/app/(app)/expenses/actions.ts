@@ -9,6 +9,7 @@ import { requirePermission } from "@/lib/auth";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { parseMoneyToCents } from "@/lib/money";
+import { sendToQuickBooksSoon } from "@/lib/quickbooks/sync";
 import type { Prisma } from "@/generated/prisma/client";
 
 const expenseSchema = z
@@ -191,6 +192,7 @@ export async function createExpense(
     return created;
   });
 
+  await sendToQuickBooksSoon(org.id, { expenses: [expense.id] });
   revalidatePath("/expenses");
   if (schedule) revalidatePath("/tasks");
   redirect(`/expenses/${expense.id}`);
@@ -237,6 +239,7 @@ export async function updateExpense(
     },
   });
 
+  await sendToQuickBooksSoon(org.id, { expenses: [id] });
   revalidatePath("/expenses");
   revalidatePath(`/expenses/${id}`);
   return saved("Expense updated.");
@@ -260,6 +263,7 @@ export async function toggleExpenseReimbursed(formData: FormData) {
     data: { reimbursedAt: expense.reimbursedAt ? null : new Date() },
   });
 
+  await sendToQuickBooksSoon(org.id, { expenses: [id] });
   revalidatePath("/expenses");
   revalidatePath(`/expenses/${id}`);
 }
@@ -293,6 +297,7 @@ export async function deleteExpense(formData: FormData) {
 
   await prisma.expense.deleteMany({ where: { id, organizationId: org.id } });
 
+  await sendToQuickBooksSoon(org.id, { cleanup: true });
   revalidatePath("/expenses");
   redirect("/expenses");
 }
@@ -313,6 +318,7 @@ export async function deleteExpenses(formData: FormData) {
 
   if (count === 0) return;
 
+  await sendToQuickBooksSoon(org.id, { cleanup: true });
   revalidatePath("/expenses");
   revalidatePath("/reports");
 }

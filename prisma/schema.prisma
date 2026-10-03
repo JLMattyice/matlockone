@@ -1190,17 +1190,18 @@ model Integration {
 }
 
 /**
- * A record here and its twin in an accounting package.
+ * A record here and its twin in an accounting package — a customer, invoice,
+ * payment or expense and the QuickBooks Online record it was sent as, plus
+ * the QuickBooks items and suppliers made along the way.
  *
- * Today that is a customer and the QuickBooks Online customer it was sent as.
- * The link is what lets a later edit update that same customer instead of
- * making a second one, and what tells the settings page what is waiting and
- * what failed.
+ * The link is what lets a later edit update that same record instead of
+ * making a second one, what lets a deletion here void or delete it there,
+ * and what tells the settings page what is waiting and what failed.
  *
  * Keyed by the QuickBooks company (realmId) as well as the record: a business
  * that connects a different company starts afresh there rather than updating
- * ids that mean nothing to it. entityId is not a foreign key, because the same
- * table will hold invoices and payments.
+ * ids that mean nothing to it. entityId is not a foreign key, because it
+ * names rows in several tables (and, for suppliers, a name).
  */
 model AccountingLink {
   id             String       @id @default(cuid())
@@ -1209,7 +1210,9 @@ model AccountingLink {
 
   provider   String // QUICKBOOKS
   realmId    String
-  entityType String // CLIENT
+  /// CLIENT | INVOICE | PAYMENT | EXPENSE | ITEM (a price book entry) |
+  /// ITEM_KIND (a fallback item per line kind) | VENDOR (by name)
+  entityType String
   entityId   String
 
   /// The record's id over there; null until it first arrives.
@@ -1219,6 +1222,9 @@ model AccountingLink {
   /// CREATED when Matlock One made it there; MATCHED when one by the same
   /// name was already there and was taken over.
   origin     String  @default("CREATED")
+  /// ACTIVE, or what was done to it there once it went here: VOIDED (an
+  /// invoice cancelled) or DELETED (a payment or expense removed).
+  remoteStatus String @default("ACTIVE")
 
   /// When the record as it then stood reached the accounting package.
   syncedAt    DateTime?
@@ -1228,7 +1234,9 @@ model AccountingLink {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([provider, realmId, entityType, entityId])
+  // The business is part of the key: the general items and suppliers are
+  // keyed by a kind or a name, which two businesses could share.
+  @@unique([organizationId, provider, realmId, entityType, entityId])
   @@index([organizationId, provider, entityType])
 }
 

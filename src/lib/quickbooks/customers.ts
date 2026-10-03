@@ -1,7 +1,8 @@
 import "server-only";
 
-import { QuickBooksError, queryValue, quickbooksQuery, quickbooksRequest } from "./api";
+import { QuickBooksError, queryValue, quickbooksQuery } from "./api";
 import type { QuickBooksConnection } from "./connection";
+import { createRemote, isGone, updateRemote } from "./records";
 import { formatPhone } from "../utils";
 
 /**
@@ -136,45 +137,6 @@ export type CustomerLink = {
   origin: string;
 };
 
-/** The record was merged away or removed over there: it has to be found or made again. */
-function isGone(error: unknown) {
-  return error instanceof QuickBooksError && (error.code === "610" || error.status === 404);
-}
-
-/**
- * A sparse update — only the fields sent change. If somebody edited the
- * customer in QuickBooks since it was last read, QuickBooks refuses the old
- * SyncToken (5010); the customer is read again and the update tried once more,
- * because Matlock One's details are the ones meant to win.
- */
-async function update(
-  connection: QuickBooksConnection,
-  id: string,
-  syncToken: string | null,
-  fields: QboCustomerFields,
-): Promise<QboCustomer> {
-  const send = async (token: string) =>
-    (
-      await quickbooksRequest<{ Customer: QboCustomer }>(connection, "POST", "customer", {
-        ...fields,
-        Id: id,
-        SyncToken: token,
-        sparse: true,
-      })
-    ).Customer;
-
-  const fresh = async () =>
-    (await quickbooksRequest<{ Customer: QboCustomer }>(connection, "GET", `customer/${encodeURIComponent(id)}`))
-      .Customer.SyncToken;
-
-  try {
-    return await send(syncToken ?? (await fresh()));
-  } catch (error) {
-    if (error instanceof QuickBooksError && error.code === "5010") return send(await fresh());
-    throw error;
-  }
-}
-
 /**
  * Sends one customer: updates the one it was sent as before, takes over one
  * QuickBooks already has by the same name, or makes a new one.
@@ -193,7 +155,7 @@ export async function pushCustomer(
       return { externalId: link.externalId, syncToken: link.syncToken, origin };
     }
     try {
-      const updated = await update(connection, link.externalId, link.syncToken, fields);
+      const updated = await updateRemote(connection, "customer", link.externalId, link.syncToken, fields);
       return { externalId: updated.Id, syncToken: updated.SyncToken, origin };
     } catch (error) {
       if (!isGone(error)) throw error;
@@ -211,18 +173,13 @@ export async function pushCustomer(
     if (!connection.overwriteMatches) {
       return { externalId: existing.Id, syncToken: existing.SyncToken, origin: "MATCHED" };
     }
-    const updated = await update(connection, existing.Id, existing.SyncToken, fields);
+    const updated = await updateRemote(connection, "customer", existing.Id, existing.SyncToken, fields);
     return { externalId: updated.Id, syncToken: updated.SyncToken, origin: "MATCHED" };
   }
 
   try {
-    const { Customer } = await quickbooksRequest<{ Customer: QboCustomer }>(
-      connection,
-      "POST",
-      "customer",
-      fields,
-    );
-    return { externalId: Customer.Id, syncToken: Customer.SyncToken, origin: "CREATED" };
+    const created = await createRemote(connection, "customer", fields);
+    return { externalId: created.Id, syncToken: created.SyncToken, origin: "CREATED" };
   } catch (error) {
     if (error instanceof QuickBooksError && error.code === "6240") {
       throw new QuickBooksError(

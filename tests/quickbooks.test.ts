@@ -42,22 +42,27 @@ vi.mock("next/server", async (importOriginal) => ({
 
 import {
   disconnectQuickBooks,
+  saveQuickBooksExpenseAccounts,
   sendToQuickBooksNow,
   setQuickBooksOverwrite,
+  setQuickBooksStartDate,
 } from "@/app/(app)/settings/quickbooks/actions";
 import { GET as callback } from "@/app/api/integrations/quickbooks/callback/route";
 import { GET as connect } from "@/app/api/integrations/quickbooks/connect/route";
 import { IDLE } from "@/lib/action-state";
 import { prisma } from "@/lib/db";
-import { loadConnection, quickbooksStatus } from "@/lib/quickbooks/connection";
+import { loadConnection, quickbooksStatus, setSendFrom } from "@/lib/quickbooks/connection";
 import { customerFields, quickbooksName } from "@/lib/quickbooks/customers";
 import { signState, verifyState } from "@/lib/quickbooks/oauth";
 import { quickbooksSettings } from "@/lib/quickbooks/settings";
 import {
   customerSyncSummary,
   sendCustomersSoon,
+  sendToQuickBooksSoon,
   sweepQuickBooks,
   syncCustomers,
+  syncQuickBooks,
+  syncSummary,
 } from "@/lib/quickbooks/sync";
 
 const ENV_KEYS = [
@@ -389,7 +394,7 @@ describe("sending customers", () => {
 
     expect(await sendToQuickBooksNow(IDLE, new FormData())).toEqual({
       ok: true,
-      message: "3 customers sent to QuickBooks.",
+      message: "Sent to QuickBooks: 3 customers.",
     });
     expect([...qb.customers.values()].map((c) => c.DisplayName).sort()).toEqual([
       "Jane Doe",
@@ -608,5 +613,357 @@ describe("sending by itself", () => {
     expect(sweep).toMatchObject({ sent: 1, failed: 0, stoppedEarly: false });
     expect(await linkOf(jane.id)).toMatchObject({ lastError: null });
     expect(await linkOf(waiting.id)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------- the books too ---
+
+async function addInvoice(
+  clientId: string,
+  data: {
+    number: string;
+    status?: string;
+    issueDate?: Date;
+    discountCents?: number;
+    taxCents?: number;
+    lines: { name: string; kind?: string; quantity: number; unitPriceCents: number; totalCents: number }[];
+  },
+) {
+  const subtotal = data.lines.reduce((sum, line) => sum + line.totalCents, 0);
+  const total = subtotal - (data.discountCents ?? 0) + (data.taxCents ?? 0);
+  return prisma.invoice.create({
+    data: {
+      organizationId,
+      number: data.number,
+      status: data.status ?? "SENT",
+      clientId,
+      issueDate: data.issueDate ?? new Date(),
+      sentAt: new Date(),
+      subtotalCents: subtotal,
+      discountCents: data.discountCents ?? 0,
+      taxCents: data.taxCents ?? 0,
+      totalCents: total,
+      balanceCents: total,
+      lineItems: {
+        create: data.lines.map((line, i) => ({
+          kind: line.kind ?? "SERVICE",
+          name: line.name,
+          quantity: line.quantity,
+          unitPriceCents: line.unitPriceCents,
+          totalCents: line.totalCents,
+          sortOrder: i,
+        })),
+      },
+    },
+  });
+}
+
+async function addExpense(data: {
+  description: string;
+  category: string;
+  amountCents: number;
+  vendor?: string;
+  method?: string;
+  spentAt?: Date;
+  reimbursable?: boolean;
+}) {
+  return prisma.expense.create({
+    data: {
+      organizationId,
+      description: data.description,
+      category: data.category,
+      amountCents: data.amountCents,
+      vendor: data.vendor ?? null,
+      method: data.method ?? "CARD",
+      spentAt: data.spentAt ?? new Date(),
+      reimbursable: data.reimbursable ?? false,
+    },
+  });
+}
+
+/** Connected, with the books open from long ago, as a test wants them. */
+async function connectedFromTheStart() {
+  await connected();
+  await setSendFrom(organizationId, "2000-01-01");
+}
+
+const invoiceLink = (invoiceId: string) =>
+  prisma.accountingLink.findFirst({ where: { entityType: "INVOICE", entityId: invoiceId } });
+
+type QboLine = { Amount: number; Description?: string; SalesItemLineDetail: Record<string, unknown> };
+
+describe("sending invoices", () => {
+  it("sends a sent invoice with its lines, and tax and discount as lines of their own", async () => {
+    const jane = await addClient({ displayName: "Jane Doe", email: "jane@example.com" });
+    await prisma.priceBookItem.create({
+      data: { organizationId, kind: "SERVICE", name: "Lawn mowing", unit: "visit", unitPriceCents: 6_500 },
+    });
+    const invoice = await addInvoice(jane.id, {
+      number: "INV-1001",
+      discountCents: 1_000,
+      taxCents: 2_000,
+      lines: [
+        { name: "Lawn Mowing", quantity: 2, unitPriceCents: 6_500, totalCents: 13_000 },
+        { name: "Mulch", kind: "MATERIAL", quantity: 1.5, unitPriceCents: 8_500, totalCents: 12_750 },
+        { name: "Pruning", kind: "LABOR", quantity: 1.333, unitPriceCents: 7_500, totalCents: 9_998 },
+      ],
+    });
+    await addInvoice(jane.id, {
+      number: "INV-1002",
+      status: "DRAFT",
+      lines: [{ name: "Draft", quantity: 1, unitPriceCents: 100, totalCents: 100 }],
+    });
+    await connectedFromTheStart();
+
+    expect(await sendToQuickBooksNow(IDLE, new FormData())).toEqual({
+      ok: true,
+      message: "Sent to QuickBooks: 1 customer and 1 invoice.",
+    });
+
+    const sent = qb.invoices.get((await invoiceLink(invoice.id))!.externalId!)!;
+    expect(sent).toMatchObject({ DocNumber: "INV-1001", TotalAmt: 367.48, BillEmail: { Address: "jane@example.com" } });
+    expect(qb.invoices.size).toBe(1);
+
+    const lines = sent.Line as QboLine[];
+    const itemName = (line: QboLine) =>
+      qb.items.get((line.SalesItemLineDetail.ItemRef as { value: string }).value)?.Name;
+    expect(lines.map((line) => [itemName(line), line.Amount])).toEqual([
+      ["Lawn mowing", 130],
+      ["Materials", 127.5],
+      ["Labor", 99.98],
+      ["Discount", -10],
+      ["Sales tax", 20],
+    ]);
+    // QuickBooks checks quantity × price, so 1.333 hours goes as its amount alone.
+    expect(lines[0].SalesItemLineDetail).toMatchObject({ Qty: 2, UnitPrice: 65 });
+    expect(lines[2].SalesItemLineDetail.Qty).toBeUndefined();
+    // Non-taxable everywhere, so QuickBooks' own sales tax adds nothing on top.
+    expect(
+      lines.every((line) => (line.SalesItemLineDetail.TaxCodeRef as { value: string }).value === "NON"),
+    ).toBe(true);
+    expect([...qb.items.values()].find((item) => item.Name === "Materials")?.Type).toBe("NonInventory");
+  });
+
+  it("files lines under an item QuickBooks already has by that name", async () => {
+    const services = qb.addItem({ Name: "Services", IncomeAccountRef: { value: "1" } });
+    const jane = await addClient({ displayName: "Jane Doe" });
+    const invoice = await addInvoice(jane.id, {
+      number: "INV-1",
+      lines: [{ name: "Visit", quantity: 1, unitPriceCents: 5_000, totalCents: 5_000 }],
+    });
+    await connectedFromTheStart();
+    await sendToQuickBooksNow(IDLE, new FormData());
+
+    const sent = qb.invoices.get((await invoiceLink(invoice.id))!.externalId!)!;
+    expect(((sent.Line as QboLine[])[0].SalesItemLineDetail.ItemRef as { value: string }).value).toBe(services.Id);
+    expect(qb.items.size).toBe(1);
+  });
+
+  it("updates an edited invoice, voids a cancelled one, and voids one deleted here", async () => {
+    const jane = await addClient({ displayName: "Jane Doe" });
+    const visit = (cents: number) => [{ name: "Visit", quantity: 1, unitPriceCents: cents, totalCents: cents }];
+    const kept = await addInvoice(jane.id, { number: "INV-1", lines: visit(5_000) });
+    const cancelled = await addInvoice(jane.id, { number: "INV-2", lines: visit(7_000) });
+    const deleted = await addInvoice(jane.id, { number: "INV-3", lines: visit(9_000) });
+    await connectedFromTheStart();
+    await sendToQuickBooksNow(IDLE, new FormData());
+    const keptId = (await invoiceLink(kept.id))!.externalId!;
+    const cancelledId = (await invoiceLink(cancelled.id))!.externalId!;
+    const deletedId = (await invoiceLink(deleted.id))!.externalId!;
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await prisma.invoiceLineItem.updateMany({
+      where: { invoiceId: kept.id },
+      data: { unitPriceCents: 5_500, totalCents: 5_500 },
+    });
+    await prisma.invoice.update({
+      where: { id: kept.id },
+      data: { subtotalCents: 5_500, totalCents: 5_500, balanceCents: 5_500 },
+    });
+    await prisma.invoice.update({ where: { id: cancelled.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    await prisma.invoice.delete({ where: { id: deleted.id } });
+
+    expect(await syncQuickBooks(organizationId)).toMatchObject({
+      failed: 0,
+      kinds: { invoices: { sent: 3, failed: 0 } },
+    });
+    expect(qb.invoices.get(keptId)).toMatchObject({ TotalAmt: 55, SyncToken: "1" });
+    expect(qb.invoices.get(cancelledId)).toMatchObject({ TotalAmt: 0, PrivateNote: "Voided" });
+    expect(await invoiceLink(cancelled.id)).toMatchObject({ remoteStatus: "VOIDED" });
+    expect(qb.invoices.get(deletedId)).toMatchObject({ TotalAmt: 0, PrivateNote: "Voided" });
+    expect(await invoiceLink(deleted.id)).toBeNull();
+    expect(qb.invoices.size).toBe(3);
+
+    // Nothing more to do the next time round.
+    expect(await syncQuickBooks(organizationId)).toMatchObject({ sent: 0, failed: 0, remaining: 0 });
+  });
+
+  it("leaves invoices dated before the start date, until it is moved", async () => {
+    const jane = await addClient({ displayName: "Jane Doe" });
+    const old = await addInvoice(jane.id, {
+      number: "INV-OLD",
+      issueDate: new Date("2026-01-15T15:00:00Z"),
+      lines: [{ name: "Visit", quantity: 1, unitPriceCents: 5_000, totalCents: 5_000 }],
+    });
+    await connected();
+    await sendToQuickBooksNow(IDLE, new FormData());
+    expect(await invoiceLink(old.id)).toBeNull();
+
+    const form = new FormData();
+    form.set("sendFrom", "2026-01-01");
+    expect(await setQuickBooksStartDate(IDLE, form)).toEqual({ ok: true, message: "Start date saved." });
+    for (const task of deferred.splice(0)) await task();
+    expect(await invoiceLink(old.id)).toMatchObject({ remoteStatus: "ACTIVE", lastError: null });
+  });
+});
+
+describe("sending payments", () => {
+  it("applies each payment to its invoice in Undeposited Funds, and deletes one deleted here", async () => {
+    const jane = await addClient({ displayName: "Jane Doe" });
+    const invoice = await addInvoice(jane.id, {
+      number: "INV-1",
+      lines: [{ name: "Visit", quantity: 1, unitPriceCents: 10_000, totalCents: 10_000 }],
+    });
+    const first = await prisma.payment.create({
+      data: { organizationId, invoiceId: invoice.id, clientId: jane.id, amountCents: 4_000, method: "CHECK", reference: "1042" },
+    });
+    await connectedFromTheStart();
+
+    expect(await sendToQuickBooksNow(IDLE, new FormData())).toEqual({
+      ok: true,
+      message: "Sent to QuickBooks: 1 customer, 1 invoice and 1 payment.",
+    });
+
+    const invoiceId = (await invoiceLink(invoice.id))!.externalId!;
+    const [payment] = [...qb.payments.values()];
+    expect(payment).toMatchObject({
+      TotalAmt: 40,
+      PaymentRefNum: "1042",
+      Line: [{ Amount: 40, LinkedTxn: [{ TxnId: invoiceId, TxnType: "Invoice" }] }],
+    });
+    expect(payment.DepositToAccountRef).toBeUndefined();
+    expect(qb.invoices.get(invoiceId)?.Balance).toBe(60);
+
+    // A second payment arrives, then the first is deleted here.
+    await prisma.payment.create({ data: { organizationId, invoiceId: invoice.id, clientId: jane.id, amountCents: 6_000 } });
+    await prisma.payment.delete({ where: { id: first.id } });
+    await syncQuickBooks(organizationId);
+
+    expect(qb.payments.size).toBe(1);
+    expect([...qb.payments.values()][0].TotalAmt).toBe(60);
+    expect(qb.invoices.get(invoiceId)?.Balance).toBe(40);
+  });
+
+  it("goes in the background with its invoice when recorded", async () => {
+    const jane = await addClient({ displayName: "Jane Doe" });
+    const invoice = await addInvoice(jane.id, {
+      number: "INV-1",
+      lines: [{ name: "Visit", quantity: 1, unitPriceCents: 10_000, totalCents: 10_000 }],
+    });
+    await connectedFromTheStart();
+    await sendToQuickBooksNow(IDLE, new FormData());
+
+    await prisma.payment.create({ data: { organizationId, invoiceId: invoice.id, clientId: jane.id, amountCents: 10_000 } });
+    await sendToQuickBooksSoon(organizationId, { invoices: [invoice.id] });
+    for (const task of deferred.splice(0)) await task();
+
+    expect(qb.payments.size).toBe(1);
+  });
+});
+
+describe("sending expenses", () => {
+  const choose = async (choices: Record<string, string>) => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(choices)) form.set(key, value);
+    return saveQuickBooksExpenseAccounts(IDLE, form);
+  };
+
+  const purchaseOf = async (expenseId: string) => {
+    const link = await prisma.accountingLink.findFirst({ where: { entityType: "EXPENSE", entityId: expenseId } });
+    return qb.purchases.get(link!.externalId!)!;
+  };
+
+  it("waits for accounts, then sends each to the account chosen for its category, with its supplier", async () => {
+    const fuel = await addExpense({ description: "Diesel", category: "FUEL", amountCents: 4_520, vendor: "Shell" });
+    const parts = await addExpense({
+      description: "Fittings",
+      category: "MATERIALS",
+      amountCents: 10_000,
+      vendor: "Ferguson",
+      method: "CHECK",
+    });
+    await addExpense({ description: "Stamps", category: "OFFICE", amountCents: 1_100 });
+    await connectedFromTheStart();
+    await sendToQuickBooksNow(IDLE, new FormData());
+    expect(qb.purchases.size).toBe(0);
+
+    const connection = (await loadConnection(organizationId))!;
+    expect((await syncSummary(connection, "UTC")).expensesWithoutAccount).toEqual(
+      new Map([
+        ["FUEL", 1],
+        ["MATERIALS", 1],
+        ["OFFICE", 1],
+      ]),
+    );
+
+    // An account that is not the company's — a tampered form — is refused.
+    expect(
+      await choose({ "category:FUEL": "3", "category:MATERIALS": "4", "category:OFFICE": "999", paidFrom: "6" }),
+    ).toEqual({ ok: true, message: "Expense accounts saved." });
+    expect((await quickbooksStatus(organizationId))?.expenseAccounts).toEqual({ FUEL: "3", MATERIALS: "4" });
+    for (const task of deferred.splice(0)) await task();
+
+    expect(qb.purchases.size).toBe(2);
+    expect(await purchaseOf(fuel.id)).toMatchObject({
+      PaymentType: "Cash",
+      AccountRef: { value: "6" },
+      Line: [{ Amount: 45.2, AccountBasedExpenseLineDetail: { AccountRef: { value: "3" } } }],
+    });
+    expect(await purchaseOf(parts.id)).toMatchObject({ PaymentType: "Check" });
+    expect([...qb.vendors.values()].map((v) => v.DisplayName).sort()).toEqual(["Ferguson", "Shell"]);
+  });
+
+  it("pays from a card account as card purchases, and names a supplier QuickBooks will not take in the memo", async () => {
+    const shared = await addClient({ displayName: "Acme Supply" });
+    await addExpense({ description: "Bolts", category: "MATERIALS", amountCents: 2_500, vendor: "Acme Supply" });
+    await connectedFromTheStart();
+    await sendToQuickBooksNow(IDLE, new FormData());
+    expect(await linkOf(shared.id)).toMatchObject({ lastError: null });
+
+    await choose({ "category:MATERIALS": "4", paidFrom: "7" });
+    await syncQuickBooks(organizationId);
+
+    const [purchase] = [...qb.purchases.values()];
+    expect(purchase).toMatchObject({
+      PaymentType: "CreditCard",
+      AccountRef: { value: "7" },
+      PrivateNote: "Bolts · Supplier: Acme Supply",
+    });
+    expect(purchase.EntityRef).toBeUndefined();
+  });
+
+  it("sends a teammate's expense once paid back, takes it out if that is undone, and deletes one deleted here", async () => {
+    const owed = await addExpense({ description: "Gloves", category: "MATERIALS", amountCents: 1_800, reimbursable: true });
+    await connectedFromTheStart();
+    await choose({ "category:MATERIALS": "4", paidFrom: "6" });
+    await sendToQuickBooksNow(IDLE, new FormData());
+    expect(qb.purchases.size).toBe(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await prisma.expense.update({ where: { id: owed.id }, data: { reimbursedAt: new Date() } });
+    await syncQuickBooks(organizationId);
+    expect(qb.purchases.size).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await prisma.expense.update({ where: { id: owed.id }, data: { reimbursedAt: null } });
+    await syncQuickBooks(organizationId);
+    expect(qb.purchases.size).toBe(0);
+
+    const gone = await addExpense({ description: "Tape", category: "MATERIALS", amountCents: 600 });
+    await syncQuickBooks(organizationId);
+    expect(qb.purchases.size).toBe(1);
+    await prisma.expense.delete({ where: { id: gone.id } });
+    await syncQuickBooks(organizationId);
+    expect(qb.purchases.size).toBe(0);
   });
 });

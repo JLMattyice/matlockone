@@ -1,8 +1,9 @@
 -- Where each record went in an accounting package.
 --
--- One new table: a customer here and the QuickBooks Online customer it was
--- sent as, so a later edit updates that customer instead of making another.
--- Nothing existing changes, and a desktop copy gains the table on launch.
+-- One new table: a customer, invoice, payment or expense here and the
+-- QuickBooks Online record it was sent as, so a later edit updates that record
+-- instead of making another. Nothing existing changes, and a desktop copy
+-- gains the table on launch.
 
 -- CreateTable
 CREATE TABLE "AccountingLink" (
@@ -15,6 +16,7 @@ CREATE TABLE "AccountingLink" (
     "externalId" TEXT,
     "syncToken" TEXT,
     "origin" TEXT NOT NULL DEFAULT 'CREATED',
+    "remoteStatus" TEXT NOT NULL DEFAULT 'ACTIVE',
     "syncedAt" TIMESTAMP(3),
     "lastTriedAt" TIMESTAMP(3),
     "lastError" TEXT,
@@ -28,7 +30,7 @@ CREATE TABLE "AccountingLink" (
 CREATE INDEX "AccountingLink_organizationId_provider_entityType_idx" ON "AccountingLink"("organizationId", "provider", "entityType");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "AccountingLink_provider_realmId_entityType_entityId_key" ON "AccountingLink"("provider", "realmId", "entityType", "entityId");
+CREATE UNIQUE INDEX "AccountingLink_organizationId_provider_realmId_entityType_entityId_key" ON "AccountingLink"("organizationId", "provider", "realmId", "entityType", "entityId");
 
 -- AddForeignKey
 ALTER TABLE "AccountingLink" ADD CONSTRAINT "AccountingLink_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;

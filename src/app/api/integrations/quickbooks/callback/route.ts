@@ -51,17 +51,20 @@ export async function GET(request: Request) {
       companyName: "",
       environment: settings.environment,
       tokens,
+      timeZone: org.timeZone,
     });
 
     const connection = await loadConnection(org.id);
     if (connection) {
       try {
-        const info = await quickbooksRequest<{ CompanyInfo?: { CompanyName?: string } }>(
-          connection,
-          "GET",
-          `companyinfo/${encodeURIComponent(realmId)}`,
+        const info = await quickbooksRequest<{
+          CompanyInfo?: { CompanyName?: string; Country?: string };
+        }>(connection, "GET", `companyinfo/${encodeURIComponent(realmId)}`);
+        await setCompanyName(
+          org.id,
+          info.CompanyInfo?.CompanyName?.trim() ?? "",
+          info.CompanyInfo?.Country?.trim() || null,
         );
-        await setCompanyName(org.id, info.CompanyInfo?.CompanyName?.trim() ?? "");
       } catch (error) {
         // A name is a nicety; the connection works without one.
         if (!(error instanceof QuickBooksError)) throw error;

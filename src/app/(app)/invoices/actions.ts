@@ -14,6 +14,7 @@ import {
 import { record } from "@/lib/activity";
 import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
+import { sendToQuickBooksSoon } from "@/lib/quickbooks/sync";
 import { recalculateInvoice } from "@/lib/invoice-balance";
 import { publicUrl, sendMessage } from "@/lib/messaging";
 import { attachPaymentLink } from "@/lib/payments/link";
@@ -286,6 +287,7 @@ export async function updateInvoice(
     await recalculateInvoice(tx, id);
   });
 
+  await sendToQuickBooksSoon(org.id, { invoices: [id] });
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
   return saved("Invoice updated.");
@@ -577,6 +579,7 @@ export async function sendInvoice(
     metadata: { payLink: Boolean(payUrl) },
   });
 
+  await sendToQuickBooksSoon(org.id, { invoices: [id] });
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
 
@@ -742,6 +745,7 @@ export async function recordPayment(
     });
   }
 
+  await sendToQuickBooksSoon(org.id, { invoices: [invoice.id] });
   revalidatePath("/invoices");
   revalidatePath("/payments");
   revalidatePath("/tasks");
@@ -772,6 +776,7 @@ export async function deletePayment(formData: FormData) {
     await recalculateInvoice(tx, payment.invoiceId);
   });
 
+  await sendToQuickBooksSoon(org.id, { invoices: [payment.invoiceId], cleanup: true });
   revalidatePath("/invoices");
   revalidatePath("/payments");
   revalidatePath(`/invoices/${payment.invoiceId}`);
@@ -811,6 +816,7 @@ export async function setInvoiceCancelled(formData: FormData) {
     if (!cancel) await recalculateInvoice(tx, id);
   });
 
+  await sendToQuickBooksSoon(org.id, { invoices: [id] });
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
 }
@@ -905,6 +911,7 @@ export async function deleteInvoice(formData: FormData) {
   // is the loss the warning is about.
   await prisma.invoice.deleteMany({ where: { id, organizationId: org.id } });
 
+  await sendToQuickBooksSoon(org.id, { cleanup: true });
   revalidatePath("/invoices");
   redirect("/invoices");
 }
@@ -934,6 +941,7 @@ export async function deleteInvoices(formData: FormData) {
 
   if (count === 0) return;
 
+  await sendToQuickBooksSoon(org.id, { cleanup: true });
   revalidatePath("/invoices");
   revalidatePath("/payments");
   revalidatePath("/reports");
