@@ -8,6 +8,7 @@ import {
 } from "@/components/marketing/product-ui";
 import { buttonClasses } from "@/components/ui/button";
 import { GRACE_DAYS } from "@/lib/billing/entitlement";
+import { BUSINESS_TYPES } from "@/lib/business-types";
 import {
   ANNUAL_DISCOUNT_BP,
   formatPrice,
@@ -28,7 +29,7 @@ const FROM_PRICE = formatPrice(Math.min(...PLANS.map((plan) => plan.monthlyCents
 export const metadata: Metadata = {
   title: { absolute: "Matlock One — your business, all in one place" },
   description:
-    "Customers, jobs, scheduling, quoting, invoicing and payments in one workspace. Built by Matlock Software Development.",
+    "Customers, jobs, scheduling, quotes, invoices, payments and expenses in one workspace. Built by Matlock Software Development.",
 };
 
 function Section({
@@ -74,9 +75,9 @@ function Hero() {
         </h1>
 
         <p className="mt-7 max-w-xl text-lg text-pretty text-ink-muted">
-          Matlock One brings customers, jobs, scheduling, quoting, invoicing and
-          payments together in one workspace — so the same job never gets typed
-          in twice.
+          Matlock One brings your customers, jobs, schedule, quotes, invoices,
+          payments and expenses together in one workspace — so the same job
+          never gets typed in twice.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -104,7 +105,7 @@ function Hero() {
 
         <p className="mt-2 text-sm text-ink-subtle">
           Plans from {FROM_PRICE} a month, paid through PayPal. Every plan has
-          every part of it, and you can cancel whenever you like.
+          every part of it, and you can cancel from the app whenever you like.
         </p>
 
         {/* Cropped by the fold on purpose: it reads as continuing, not ending. */}
@@ -170,8 +171,8 @@ function Platform() {
         Everything works together
       </h2>
       <p className="mt-5 max-w-xl text-ink-muted">
-        Ten modules and the dashboard that reads them, not ten products bolted
-        together. Pick any one to see the actual screen.
+        Every screen in the app, grouped the way the app groups them — one
+        product, not a stack of them bolted together. Pick any one to see it.
       </p>
 
       <div className="mt-12">
@@ -233,7 +234,7 @@ function Real({ demo }: { demo: boolean }) {
               </p>
               <p className="mt-4 text-ink-muted">
                 Plans start at {FROM_PRICE} a month, and you can cancel from
-                PayPal whenever you like.
+                Billing whenever you like.
               </p>
               <Link
                 href="/signup"
@@ -302,18 +303,17 @@ function Real({ demo }: { demo: boolean }) {
 
 /* --------------------------------------------------------- 05 industries --- */
 
-const INDUSTRIES = [
-  { trade: "Construction & trades", job: "Jobs", client: "Customers" },
-  { trade: "Consulting", job: "Engagements", client: "Clients" },
-  { trade: "Professional services", job: "Matters", client: "Clients" },
-  { trade: "Field services", job: "Work orders", client: "Sites" },
-  { trade: "Agencies", job: "Projects", client: "Accounts" },
-  { trade: "Maintenance & facilities", job: "Call-outs", client: "Properties" },
-  { trade: "Photography & video", job: "Sessions", client: "Clients" },
-  { trade: "Salons & wellness", job: "Bookings", client: "Clients" },
-  { trade: "Events & hospitality", job: "Events", client: "Clients" },
-  { trade: "Retail & shops", job: "Orders", client: "Customers" },
-];
+/**
+ * The presets signup actually offers, in the order it offers them. Read from
+ * business-types.ts rather than retyped: this table once listed "Matters",
+ * "Call-outs" and "Sites", none of which the app had ever called anything.
+ */
+const INDUSTRIES = BUSINESS_TYPES.map((type) => ({
+  trade: type.name,
+  job: type.labels.jobPlural,
+  client: type.labels.clientPlural,
+  estimate: type.labels.estimatePlural,
+}));
 
 function Industries() {
   return (
@@ -322,13 +322,14 @@ function Industries() {
         One platform. Your words for it.
       </h2>
       <p className="mt-5 max-w-xl text-ink-muted">
-        The record names are yours to set. Change them once in settings and the
-        whole workspace speaks your trade&rsquo;s language — no rebuild, no
-        custom version.
+        Choose your kind of business when you sign up and the whole workspace
+        speaks its language. Change any of the words later in Settings — no
+        rebuild, no custom version. Invoices and payments keep their names,
+        because your bank and your accountant need them to.
       </p>
 
       <div className="mt-12 overflow-x-auto">
-        <table className="w-full min-w-[30rem] text-left text-sm">
+        <table className="w-full min-w-[36rem] text-left text-sm">
           <thead>
             <tr className="border-b border-line">
               <th
@@ -341,13 +342,19 @@ function Industries() {
                 scope="col"
                 className="py-3 pr-4 text-xs tracking-[0.16em] text-ink-subtle uppercase"
               >
-                A job is called
+                A job is
+              </th>
+              <th
+                scope="col"
+                className="py-3 pr-4 text-xs tracking-[0.16em] text-ink-subtle uppercase"
+              >
+                A customer is
               </th>
               <th
                 scope="col"
                 className="py-3 text-xs tracking-[0.16em] text-ink-subtle uppercase"
               >
-                A customer is called
+                A quote is
               </th>
             </tr>
           </thead>
@@ -356,7 +363,8 @@ function Industries() {
               <tr key={row.trade} className="border-b border-line last:border-0">
                 <td className="py-4 pr-4 text-ink">{row.trade}</td>
                 <td className="py-4 pr-4 text-gold">{row.job}</td>
-                <td className="py-4 text-ink-muted">{row.client}</td>
+                <td className="py-4 pr-4 text-ink-muted">{row.client}</td>
+                <td className="py-4 text-ink-muted">{row.estimate}</td>
               </tr>
             ))}
           </tbody>
@@ -376,10 +384,13 @@ function Industries() {
  */
 const INCLUDED = [
   "The desktop app for Windows and Mac",
-  "Customers, leads, jobs and scheduling",
-  "Estimates, invoices and payments",
-  "Documents, job photos and reports",
-  "Roles and permissions",
+  "Clients, leads, jobs and scheduling",
+  "Estimates, invoices and online payments",
+  "Repeating invoices with PayPal auto-pay",
+  "Expenses, including repeating bills",
+  "Tasks, automations and team messages",
+  "Files, job photos and reports",
+  "Google, Outlook and Apple calendar sync",
   "Your own mailbox and payment accounts",
 ];
 
@@ -500,7 +511,7 @@ function Pricing() {
             </li>
             <li>
               3. Move to a bigger plan from Billing when you need more people,
-              or cancel in PayPal whenever you like.
+              or cancel there whenever you like.
             </li>
           </ol>
         </div>
@@ -512,7 +523,8 @@ function Pricing() {
           <p className="mt-3 text-sm text-ink-muted">
             If PayPal can&rsquo;t take a payment, it tries again and your
             account stays open for {GRACE_DAYS} more days while it does. A
-            cancelled plan stays open until the end of the time you paid for.
+            cancelled plan stays open until the end of the time you paid for;
+            unused time isn&rsquo;t refunded.
           </p>
           <p className="mt-3 text-sm text-ink-muted">
             When a plan does end, the account closes but nothing is deleted.
@@ -628,8 +640,9 @@ async function DownloadSection() {
             the office is already on the laptop.
           </p>
           <p className="mt-4 text-ink-muted">
-            Away from your own computers, sign in from any browser instead. The
-            app needs an internet connection.
+            Away from your own computers, sign in from any browser instead. On
+            a phone, add it to your home screen and it opens like an app. Every
+            one of them needs an internet connection.
           </p>
           <p className="mt-4 text-ink-muted">
             The download itself costs nothing. The app opens your account, so

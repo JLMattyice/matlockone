@@ -112,10 +112,10 @@ partly paid, a payment recorded twice.
   owning your data behind the most expensive door, which contradicts the
   product's own strongest claim. Seat count is also the only line the software
   could plausibly enforce.
-- **There is no macOS build.** `desktop:pack` runs `electron-builder --win`
-  only, and a signed, notarized Mac app cannot be produced from Windows. A Mac
-  install must not be advertised until a real build exists — it needs a Mac or a
-  CI runner, and it is unstarted work.
+- **Mac builds come from CI, not from this machine.** `desktop:pack` runs
+  `electron-builder --win` only; a signed, notarized Mac app cannot be produced
+  from Windows. The site's download cards ask GitHub what is published
+  (`src/lib/releases.ts`), so they only ever offer a build that exists.
 - **Hosted businesses pay by PayPal subscription; desktop installs by
   licence key.** The plan sets the seats either way. A subscription carries
   the business's id and opens it the moment PayPal confirms (`src/lib/billing`).
@@ -157,12 +157,10 @@ partly paid, a payment recorded twice.
 - **The site leads with `/signup`.** Hosted sign-up is how a customer gets the
   account the desktop app signs in to, and it lands on choosing a plan.
   `ALLOW_SIGNUP=false` closes sign-up if that ever needs to stop.
-- **There is no public download URL yet.** The installer builds locally into
-  `dist-installer/`; nothing is hosted. Any download link is a placeholder until
-  a real URL exists.
-- **"Projects" and "Tasks" are not modules.** The real set is Customers, Leads,
-  Jobs, Scheduling, Estimates, Invoices, Payments, Expenses, Team, Documents and
-  Reports. Nothing outside that list may be advertised.
+- **The modules are the app's sidebar, and nothing else.** The site's tour is
+  built from `NAVIGATION` (`src/components/marketing/showcase.ts`), and
+  `tests/marketing-showcase.test.ts` fails when a screen is added without a
+  place on the page. "Projects" is a label some presets give Jobs, not a module.
 - **Expenses tracks spend; it is not bookkeeping.** It records what went out,
   by category, against a job or as overhead, with receipts and reimbursements.
   It does not post to a ledger, file a tax return, or sync with an accounting

@@ -1,29 +1,23 @@
 "use client";
 
 import * as React from "react";
-import {
-  BarChart3,
-  Briefcase,
-  Calendar,
-  CreditCard,
-  FileText,
-  FolderClosed,
-  HardHat,
-  LayoutDashboard,
-  Receipt,
-  Target,
-  Users,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 
+import { NavIcon } from "@/components/app-shell/nav-icon";
 import { cn } from "@/lib/utils";
+
+import {
+  MODULE_GROUPS,
+  MODULES,
+  type BadgeTone,
+  type Module,
+} from "./showcase";
 
 /**
  * The product, drawn from the application's own component vocabulary.
  *
- * Every module below exists in the software. Figures are authored demonstration
- * data for a business that does not exist — the page says so where a visitor
- * could mistake them for a customer's real numbers.
+ * The screens come from the app's own sidebar (see showcase.ts). Figures are
+ * authored demonstration data for a business that does not exist — the page
+ * says so where a visitor could mistake them for a customer's real numbers.
  */
 
 // ------------------------------------------------------------ the chrome ---
@@ -62,14 +56,24 @@ const REVENUE = [
   18, 24, 21, 30, 27, 36, 33, 41, 38, 47, 44, 52,
 ] as const;
 
-const MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+// The twelve months to September, the month the sample figures are for.
+const MONTHS = ["O", "N", "D", "J", "F", "M", "A", "M", "J", "J", "A", "S"];
 
-function RevenueChart({ height = 132 }: { height?: number }) {
+/** The last `months` of the year, as the dashboard (six) or reports (twelve) shows them. */
+function RevenueChart({
+  height = 132,
+  months = 12,
+}: {
+  height?: number;
+  months?: number;
+}) {
+  const values = REVENUE.slice(-months);
+  const labels = MONTHS.slice(-months);
   const width = 560;
-  const max = Math.max(...REVENUE) * 1.12;
-  const step = width / (REVENUE.length - 1);
+  const max = Math.max(...values) * 1.12;
+  const step = width / (values.length - 1);
 
-  const points = REVENUE.map((value, index) => ({
+  const points = values.map((value, index) => ({
     x: index * step,
     y: height - (value / max) * height,
   }));
@@ -86,7 +90,7 @@ function RevenueChart({ height = 132 }: { height?: number }) {
         viewBox={`0 0 ${width} ${height}`}
         className="h-auto w-full"
         role="img"
-        aria-label="Revenue rising over twelve months"
+        aria-label={`Revenue rising over ${months} months`}
         preserveAspectRatio="none"
       >
         <defs>
@@ -132,7 +136,7 @@ function RevenueChart({ height = 132 }: { height?: number }) {
         aria-hidden
         className="mt-2 flex justify-between text-[10px] text-ink-subtle"
       >
-        {MONTHS.map((month, index) => (
+        {labels.map((month, index) => (
           <span key={`${month}-${index}`}>{month}</span>
         ))}
       </div>
@@ -142,10 +146,11 @@ function RevenueChart({ height = 132 }: { height?: number }) {
 
 // ---------------------------------------------------------- hero dashboard ---
 
+// The dashboard's own tiles, under its own names (business-health.ts).
 const HERO_TILES = [
-  { label: "Revenue", value: "$42,850", note: "this month" },
-  { label: "Jobs", value: "18", note: "in progress" },
-  { label: "Customers", value: "126", note: "active" },
+  { label: "Collected", value: "$42,850", note: "September" },
+  { label: "Outstanding", value: "$9,860", note: "7 invoices" },
+  { label: "Active jobs", value: "18", note: "Scheduled or under way" },
 ];
 
 export function HeroDashboard() {
@@ -157,8 +162,9 @@ export function HeroDashboard() {
           className="hidden border-r border-line bg-surface-2 p-3 sm:block"
         >
           {/*
-            Six, not all eleven. The full list is the Platform section's job a
-            screen below, and printing it twice spends the reveal early.
+            The first six, not the whole sidebar. The full list is the Platform
+            section's job a screen below, and printing it twice spends the
+            reveal early.
           */}
           {MODULES.slice(0, 6).map((module, index) => (
             <span
@@ -168,12 +174,12 @@ export function HeroDashboard() {
                 index === 0 ? "bg-brand/12 text-ink" : "text-ink-subtle",
               )}
             >
-              <module.icon
+              <NavIcon
+                name={module.icon}
                 className={cn(
                   "h-3.5 w-3.5 shrink-0",
                   index === 0 && "text-brand",
                 )}
-                strokeWidth={1.75}
               />
               {module.label}
             </span>
@@ -205,10 +211,10 @@ export function HeroDashboard() {
 
           <div className="mt-4 rounded-lg border border-line bg-surface-2 p-4">
             <div className="mb-3 flex items-baseline justify-between">
-              <p className="text-xs font-medium text-ink">Revenue overview</p>
-              <p className="text-[10px] text-ink-subtle">Last 12 months</p>
+              <p className="text-xs font-medium text-ink">Revenue</p>
+              <p className="text-[10px] text-ink-subtle">Last six months</p>
             </div>
-            <RevenueChart />
+            <RevenueChart months={6} />
           </div>
         </div>
       </div>
@@ -218,221 +224,12 @@ export function HeroDashboard() {
 
 // ------------------------------------------------------------ the modules ---
 
-type Column = { key: string; label: string; align?: "right" };
-type Row = Record<string, string> & { status?: string; tone?: BadgeTone };
-type BadgeTone = "green" | "gold" | "neutral" | "warn";
-
-type Module = {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  headline: string;
-  body: string;
-  columns: Column[];
-  rows: Row[];
-  chart?: boolean;
-};
-
 const TONES: Record<BadgeTone, string> = {
   green: "border-brand/30 bg-brand/12 text-brand",
   gold: "border-gold/30 bg-gold/12 text-gold",
   warn: "border-warning/30 bg-warning/12 text-warning",
   neutral: "border-line-strong bg-surface-3 text-ink-muted",
 };
-
-const MODULES: Module[] = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    headline: "The morning read",
-    body: "Money in, money owed, what is booked today and what is running late — before the first call.",
-    columns: [
-      { key: "item", label: "Today" },
-      { key: "detail", label: "Detail" },
-      { key: "status", label: "Status" },
-    ],
-    rows: [
-      { item: "Booked today", detail: "6 jobs · 4 crew", status: "On track", tone: "green" },
-      { item: "Awaiting payment", detail: "$9,860 across 7 invoices", status: "Sent", tone: "neutral" },
-      { item: "Past due", detail: "$1,240 across 2 invoices", status: "Overdue", tone: "warn" },
-      { item: "Quotes out", detail: "$18,300 across 5 estimates", status: "Pending", tone: "gold" },
-    ],
-  },
-  {
-    id: "customers",
-    label: "Customers",
-    icon: Users,
-    headline: "One record per customer",
-    body: "Every address, every job, every quote and every dollar they have ever paid, on one page.",
-    columns: [
-      { key: "name", label: "Customer" },
-      { key: "where", label: "Location" },
-      { key: "jobs", label: "Jobs" },
-      { key: "balance", label: "Balance", align: "right" },
-    ],
-    rows: [
-      { name: "Lakeshore Dental", where: "Fairhaven", jobs: "14", balance: "$0.00" },
-      { name: "Bev Hollingsworth", where: "Kingsbury", jobs: "3", balance: "$480.00" },
-      { name: "Oscar Nakamura", where: "Beaumont Ave", jobs: "7", balance: "$0.00" },
-      { name: "Delia Moreau", where: "Old Mill Ct", jobs: "2", balance: "$1,240.00" },
-    ],
-  },
-  {
-    id: "leads",
-    label: "Leads",
-    icon: Target,
-    headline: "Before they are customers",
-    body: "Where each enquiry came from, what it is worth, and which ones turned into paying work.",
-    columns: [
-      { key: "name", label: "Lead" },
-      { key: "source", label: "Source" },
-      { key: "value", label: "Value", align: "right" },
-      { key: "status", label: "Status" },
-    ],
-    rows: [
-      { name: "Marisol Vega", source: "Referral", value: "$3,200", status: "Quoted", tone: "gold" },
-      { name: "Tom Delacroix", source: "Google", value: "$980", status: "Contacted", tone: "neutral" },
-      { name: "Priya Raghavan", source: "Repeat", value: "$6,400", status: "Won", tone: "green" },
-    ],
-  },
-  {
-    id: "jobs",
-    label: "Jobs",
-    icon: Briefcase,
-    headline: "The work itself",
-    body: "Materials, hours, before-and-after photos and notes — all attached to the job they belong to.",
-    columns: [
-      { key: "ref", label: "Job" },
-      { key: "customer", label: "Customer" },
-      { key: "crew", label: "Crew" },
-      { key: "status", label: "Status" },
-    ],
-    rows: [
-      { ref: "JOB-1167", customer: "Lakeshore Dental", crew: "Priya, Tom", status: "In progress", tone: "green" },
-      { ref: "JOB-1166", customer: "Oscar Nakamura", crew: "Simone", status: "Scheduled", tone: "neutral" },
-      { ref: "JOB-1164", customer: "Delia Moreau", crew: "Tariq", status: "Complete", tone: "gold" },
-    ],
-  },
-  {
-    id: "scheduling",
-    label: "Scheduling",
-    icon: Calendar,
-    headline: "Drag it to move it",
-    body: "Day, week and month. Unscheduled work waits in a queue you drag onto the grid; recurring visits are real bookings you can move one at a time.",
-    columns: [
-      { key: "time", label: "Time" },
-      { key: "what", label: "Job" },
-      { key: "who", label: "Crew" },
-      { key: "status", label: "Status" },
-    ],
-    rows: [
-      { time: "08:30", what: "AC unit replacement", who: "Priya + Tom", status: "Confirmed", tone: "green" },
-      { time: "10:30", what: "Drain clearing", who: "Simone", status: "Confirmed", tone: "green" },
-      { time: "11:30", what: "Panel upgrade — quote", who: "Tariq", status: "Scheduled", tone: "neutral" },
-      { time: "14:00", what: "Thermostat replacement", who: "Priya", status: "On site", tone: "gold" },
-    ],
-  },
-  {
-    id: "estimates",
-    label: "Estimates",
-    icon: FileText,
-    headline: "Quotes that turn into work",
-    body: "The customer accepts on a private link. An accepted quote becomes a scheduled job without anything being retyped.",
-    columns: [
-      { key: "ref", label: "Estimate" },
-      { key: "customer", label: "Customer" },
-      { key: "total", label: "Total", align: "right" },
-      { key: "status", label: "Status" },
-    ],
-    rows: [
-      { ref: "EST-1043", customer: "Bev Hollingsworth", total: "$2,480.00", status: "Accepted", tone: "green" },
-      { ref: "EST-1042", customer: "Marisol Vega", total: "$3,200.00", status: "Viewed", tone: "gold" },
-      { ref: "EST-1041", customer: "Tom Delacroix", total: "$980.00", status: "Sent", tone: "neutral" },
-    ],
-  },
-  {
-    id: "invoices",
-    label: "Invoices",
-    icon: Receipt,
-    headline: "Billed, and chased",
-    body: "Amounts are whole cents, never floating point. Overdue is worked out from the calendar, so an invoice cannot sit in the database claiming to be current the day after it lapsed.",
-    columns: [
-      { key: "ref", label: "Invoice" },
-      { key: "customer", label: "Customer" },
-      { key: "balance", label: "Balance", align: "right" },
-      { key: "status", label: "Status" },
-    ],
-    rows: [
-      { ref: "INV-0461", customer: "Lakeshore Dental", balance: "$0.00", status: "Paid", tone: "green" },
-      { ref: "INV-0460", customer: "Delia Moreau", balance: "$1,240.00", status: "Overdue", tone: "warn" },
-      { ref: "INV-0459", customer: "Bev Hollingsworth", balance: "$480.00", status: "Part paid", tone: "gold" },
-    ],
-  },
-  {
-    id: "payments",
-    label: "Payments",
-    icon: CreditCard,
-    headline: "However you already take money",
-    body: "PayPal, Stripe, Square, or a payment link you already have. Customers pay on the processor's own page — Matlock One never sees a card.",
-    columns: [
-      { key: "date", label: "Date" },
-      { key: "customer", label: "Customer" },
-      { key: "method", label: "Method" },
-      { key: "amount", label: "Amount", align: "right" },
-    ],
-    rows: [
-      { date: "Sep 4", customer: "Lakeshore Dental", method: "PayPal", amount: "$2,480.00" },
-      { date: "Sep 2", customer: "Oscar Nakamura", method: "Card · Stripe", amount: "$615.00" },
-      { date: "Aug 29", customer: "Bev Hollingsworth", method: "Check", amount: "$500.00" },
-    ],
-  },
-  {
-    id: "team",
-    label: "Team",
-    icon: HardHat,
-    headline: "Who can see what",
-    body: "An employee sees the jobs assigned to them and nothing financial. Roles are re-checked on the server for every page and every action.",
-    columns: [
-      { key: "name", label: "Name" },
-      { key: "role", label: "Role" },
-      { key: "week", label: "This week" },
-      { key: "status", label: "Money" },
-    ],
-    rows: [
-      { name: "Lane Matlock", role: "Owner", week: "—", status: "Full access", tone: "gold" },
-      { name: "Priya Raghavan", role: "Manager", week: "32h", status: "Billing", tone: "green" },
-      { name: "Tariq Nasser", role: "Employee", week: "38h", status: "No access", tone: "neutral" },
-    ],
-  },
-  {
-    id: "documents",
-    label: "Documents",
-    icon: FolderClosed,
-    headline: "Photos and paperwork, attached",
-    body: "Before-and-after photos pair up on the job. Files are served by database id and scoped to your business — a filename never selects a file.",
-    columns: [
-      { key: "file", label: "File" },
-      { key: "job", label: "Attached to" },
-      { key: "size", label: "Size", align: "right" },
-    ],
-    rows: [
-      { file: "panel-before.jpg", job: "JOB-1164", size: "2.4 MB" },
-      { file: "panel-after.jpg", job: "JOB-1164", size: "2.1 MB" },
-      { file: "permit-4471.pdf", job: "JOB-1167", size: "184 KB" },
-    ],
-  },
-  {
-    id: "reports",
-    label: "Reports",
-    icon: BarChart3,
-    headline: "Billed is not the same as banked",
-    body: "Invoiced and collected are shown side by side rather than merged into one revenue number, because billing in a month is not the same as being paid in it.",
-    columns: [],
-    rows: [],
-    chart: true,
-  },
-];
 
 function Badge({ children, tone }: { children: string; tone: BadgeTone }) {
   return (
@@ -547,40 +344,50 @@ export function ProductShowcase() {
     // panel's nowrap table would otherwise widen the column past the viewport
     // and take the selector list out with it.
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[16rem_1fr] lg:gap-10">
-      <div className="min-w-0">
-        <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-1">
-          {MODULES.map((item) => {
-            const selected = item.id === active;
-            return (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => setActive(item.id)}
-                  aria-pressed={selected}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
-                    selected
-                      ? "border-brand/40 bg-brand/12 text-ink"
-                      : "border-transparent text-ink-muted hover:border-line hover:bg-surface-2 hover:text-ink",
-                  )}
-                >
-                  <item.icon
-                    className={cn(
-                      "h-4 w-4 shrink-0",
-                      selected ? "text-brand" : "text-ink-subtle",
-                    )}
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                  {item.label}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      {/* Grouped under the sidebar's own headings, so the list reads the way
+          the app does once someone is signed in. */}
+      <div className="min-w-0 space-y-5">
+        {MODULE_GROUPS.map((group) => (
+          <div key={group.title}>
+            <p className="px-3 text-[11px] font-medium tracking-[0.16em] text-ink-subtle uppercase">
+              {group.title}
+            </p>
+            <ul className="mt-1.5 grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-1">
+              {group.modules.map((item) => {
+                const selected = item.id === active;
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => setActive(item.id)}
+                      aria-pressed={selected}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                        selected
+                          ? "border-brand/40 bg-brand/12 text-ink"
+                          : "border-transparent text-ink-muted hover:border-line hover:bg-surface-2 hover:text-ink",
+                      )}
+                    >
+                      <NavIcon
+                        name={item.icon}
+                        className={cn(
+                          "h-4 w-4 shrink-0",
+                          selected ? "text-brand" : "text-ink-subtle",
+                        )}
+                      />
+                      {item.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
 
-      <div className="min-w-0">
+      {/* The list runs longer than any one screen, so on a wide window the
+          screen stays in view while the list scrolls past it. */}
+      <div className="min-w-0 lg:sticky lg:top-24 lg:self-start">
         <div className="mb-4">
           <h3 className="display text-2xl text-ink sm:text-3xl">
             {module.headline}

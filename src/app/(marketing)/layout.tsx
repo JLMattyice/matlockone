@@ -58,9 +58,8 @@ provenance.
 // header and footer sit over the legal pages, where a bare "#pricing" would
 // go nowhere. On the homepage itself the browser just scrolls.
 const NAV = [
-  { href: "/#platform", label: "Platform" },
-  { href: "/#product", label: "Product" },
-  { href: "/#industries", label: "Solutions" },
+  { href: "/#platform", label: "Features" },
+  { href: "/#industries", label: "Industries" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/#download", label: "Download" },
 ];
