@@ -89,6 +89,10 @@ partly paid, a payment recorded twice.
 - Estimates & Invoices: shared line-item editor with discounts and tax, a
   client-facing link to accept or decline, estimate-to-job conversion, partial
   payments, printable documents.
+- Tasks: a module of its own, not just notes on a record. A to-do with a due
+  date, optionally assigned and optionally tied to a client, job or lead;
+  open / due today / overdue / done views; panels on the job and client pages;
+  a dashboard tile. Automations and repeating bills raise tasks here.
 - Team: roles and permissions, workload, hours, deactivation that preserves
   history.
 - Messages: team conversations inside the app, direct or group, with an
