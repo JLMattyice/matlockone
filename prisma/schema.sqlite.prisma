@@ -48,6 +48,10 @@ model Organization {
   /// requests. On unless the owner turns it off.
   requestsEnabled Boolean @default(true)
 
+  /// Where the "ask for a review" email sends customers — a Google, Yelp or
+  /// Facebook review page. That automation waits until one is set.
+  reviewUrl String?
+
   /// Which preset the terminology below started from. Kept so settings can
   /// show what was chosen and re-apply it, and so the defaults for anything
   /// named later have somewhere to come from. It is a starting point, never a

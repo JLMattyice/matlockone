@@ -87,11 +87,11 @@ beforeEach(async () => {
 });
 
 describe("the catalog", () => {
-  it("gives every automation a sentence and a task to raise", () => {
+  it("gives every automation a sentence, and every task automation a task to raise", () => {
     for (const template of WORKFLOW_TEMPLATES) {
       expect(template.name, template.id).toBeTruthy();
       expect(template.description, template.id).toBeTruthy();
-      expect(template.taskTitle, template.id).toContain("{subject}");
+      if (template.action === "TASK") expect(template.taskTitle, template.id).toContain("{subject}");
       expect(template.defaults.dueInDays, template.id).toBeGreaterThanOrEqual(0);
     }
   });

@@ -2,6 +2,7 @@ import "server-only";
 
 import { entitlement } from "../billing/entitlement";
 import { prisma } from "../db";
+import { sweepCustomerEmails } from "./emails";
 import {
   isScheduled,
   resolveConfig,
@@ -176,11 +177,11 @@ export async function sweep(organizationId: string): Promise<WorkflowOutcome[]> 
     const config = resolveConfig(template, row.config);
     const created: string[] = [];
 
-    if (template.trigger === "invoice.overdue") {
+    if (template.action === "EMAIL") {
+      created.push(...(await sweepCustomerEmails(row, template, config.days)));
+    } else if (template.trigger === "invoice.overdue") {
       created.push(...(await sweepOverdueInvoices(row, template, config.days, config.dueInDays)));
-    }
-
-    if (template.trigger === "client.idle") {
+    } else if (template.trigger === "client.idle") {
       created.push(...(await sweepIdleClients(row, template, config.days, config.dueInDays)));
     }
 

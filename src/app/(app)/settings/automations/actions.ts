@@ -97,19 +97,43 @@ export async function runWorkflowSweep(
   const { org } = await requirePermission("settings:write");
 
   const outcomes = await sweep(org.id);
-  const created = outcomes.flatMap((outcome) => outcome.created);
+  const isEmail = (templateId: string) => templateById(templateId)?.action === "EMAIL";
+  const emailed = outcomes.filter((o) => isEmail(o.templateId)).flatMap((o) => o.created);
+  const raised = outcomes.filter((o) => !isEmail(o.templateId)).flatMap((o) => o.created);
 
   revalidatePath("/settings/automations");
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
 
-  if (created.length === 0) {
+  if (raised.length === 0 && emailed.length === 0) {
     return saved("Nothing to do — every automation is up to date.");
   }
 
-  return saved(
-    created.length === 1
-      ? `Raised 1 task: ${created[0]}`
-      : `Raised ${created.length} tasks.`,
-  );
+  const parts: string[] = [];
+  if (raised.length === 1) parts.push(`Raised 1 task: ${raised[0]}`);
+  else if (raised.length > 1) parts.push(`Raised ${raised.length} tasks.`);
+  if (emailed.length === 1) parts.push(`${emailed[0]}.`);
+  else if (emailed.length > 1) parts.push(`Sent ${emailed.length} customer emails.`);
+  return saved(parts.join(" "));
+}
+
+/** The review page the "ask for a review" email sends customers to. */
+export async function saveReviewUrl(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { org } = await requirePermission("settings:write");
+  const raw = String(formData.get("reviewUrl") ?? "").trim();
+
+  let reviewUrl: string | null = null;
+  if (raw) {
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("not a web address");
+      reviewUrl = url.toString().slice(0, 500);
+    } catch {
+      return { ok: false, fieldErrors: { reviewUrl: "Paste the whole web address, starting https://" } };
+    }
+  }
+
+  await prisma.organization.update({ where: { id: org.id }, data: { reviewUrl } });
+  revalidatePath("/settings/automations");
+  return saved(reviewUrl ? "Review link saved." : "Review link removed.");
 }

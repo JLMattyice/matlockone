@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { AutomationsForm } from "./automations-form";
 import { requirePermission } from "@/lib/auth";
 import { sweepSchedule } from "@/lib/config";
+import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { workflowRunCount, workflowSettings } from "@/lib/workflows/run";
 
@@ -11,9 +12,13 @@ export const metadata: Metadata = { title: "Automations" };
 export default async function AutomationsPage() {
   const { user, org } = await requirePermission("settings:read");
 
-  const [rows, raised] = await Promise.all([
+  const [rows, raised, mail] = await Promise.all([
     workflowSettings(org.id),
     workflowRunCount(org.id),
+    prisma.integration.findUnique({
+      where: { organizationId_kind: { organizationId: org.id, kind: "EMAIL" } },
+      select: { isActive: true },
+    }),
   ]);
 
   return (
@@ -28,6 +33,8 @@ export default async function AutomationsPage() {
         lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
       }))}
       raised={raised}
+      reviewUrl={org.reviewUrl}
+      emailConnected={Boolean(mail?.isActive)}
       automatic={sweepSchedule()}
       readOnly={!can(user, "settings:write")}
     />

@@ -4,9 +4,11 @@ import { useActionState } from "react";
 
 import {
   runWorkflowSweep,
+  saveReviewUrl,
   setWorkflowActive,
   updateWorkflowSettings,
 } from "./actions";
+import { Badge } from "@/components/ui/badge";
 import { useTimeZone } from "@/components/app-shell/time-zone";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/form";
@@ -38,9 +40,15 @@ export function AutomationsForm({
   raised,
   automatic,
   readOnly,
+  reviewUrl,
+  emailConnected,
 }: {
   automations: AutomationRow[];
   raised: number;
+  /** Where the review request sends customers; that automation waits for it. */
+  reviewUrl: string | null;
+  /** Whether a mail account is connected to send the customer emails through. */
+  emailConnected: boolean;
   /** Whether this deployment runs the date-based check every morning itself. */
   /** When the date-based check runs by itself here, if it does. */
   automatic: "daily" | "while-open" | null;
@@ -52,18 +60,25 @@ export function AutomationsForm({
   );
 
   const anyScheduledOn = automations.some((row) => row.scheduled && row.isActive);
+  const anyEmailOn = automations.some((row) => row.template.action === "EMAIL" && row.isActive);
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader
           title="Automations"
-          description="Things Matlock One does by itself. Each one raises a task — nothing here emails a customer on your behalf."
+          description="Things Matlock One does by itself. Most raise a task for you; the ones marked “Emails the customer” write to your customer instead, through your own email account. All start off."
         />
 
         <CardBody className="space-y-4">
+          {anyEmailOn && !emailConnected ? (
+            <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+              No email account is connected, so customer emails wait in the outbox. Connect one
+              under Settings → Email and they go out.
+            </p>
+          ) : null}
           {automations.map((row) => (
-            <Automation key={row.template.id} row={row} readOnly={readOnly} />
+            <Automation key={row.template.id} row={row} readOnly={readOnly} reviewUrl={reviewUrl} />
           ))}
         </CardBody>
       </Card>
@@ -79,21 +94,21 @@ export function AutomationsForm({
               // somebody presses this. Claiming a schedule that is not there
               // would leave overdue invoices unchased.
               automatic === "daily"
-                ? "Two of these wait for a date to pass rather than for something to happen. They are checked every morning by themselves; this runs the same check now."
+                ? "Some of these wait for a date to pass rather than for something to happen. They are checked every morning by themselves; this runs the same check now."
                 : automatic === "while-open"
-                  ? "Two of these wait for a date to pass rather than for something to happen. They are checked by themselves every few hours while Matlock One is open on this computer; this runs the same check now."
-                  : "Two of these wait for a date to pass rather than for something to happen. Nothing in Matlock One wakes up on its own, so this is where that check runs."
+                  ? "Some of these wait for a date to pass rather than for something to happen. They are checked by themselves every few hours while Matlock One is open on this computer; this runs the same check now."
+                  : "Some of these wait for a date to pass rather than for something to happen. Nothing in Matlock One wakes up on its own, so this is where that check runs."
             }
           />
 
           <CardBody>
             <p className="text-sm text-ink-muted">
-              Safe to press as often as you like: each automation raises one
-              task per invoice or customer, however many times it runs.
+              Safe to press as often as you like: each automation acts once per
+              invoice, estimate, visit or customer, however many times it runs.
             </p>
             {raised > 0 ? (
               <p className="mt-2 text-sm text-ink-subtle">
-                {raised} {raised === 1 ? "task has" : "tasks have"} been raised
+                {raised} {raised === 1 ? "task or email has" : "tasks and emails have"} gone out
                 automatically so far.
               </p>
             ) : null}
@@ -113,7 +128,15 @@ export function AutomationsForm({
   );
 }
 
-function Automation({ row, readOnly }: { row: AutomationRow; readOnly: boolean }) {
+function Automation({
+  row,
+  readOnly,
+  reviewUrl,
+}: {
+  row: AutomationRow;
+  readOnly: boolean;
+  reviewUrl: string | null;
+}) {
   const zone = useTimeZone();
   const [state, save] = useActionState<ActionState, FormData>(
     updateWorkflowSettings,
@@ -135,7 +158,10 @@ function Automation({ row, readOnly }: { row: AutomationRow; readOnly: boolean }
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-ink">{template.name}</p>
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+            {template.name}
+            {template.action === "EMAIL" ? <Badge tone="info">Emails the customer</Badge> : null}
+          </p>
           <p className="mt-1 text-sm text-ink-muted">{template.description}</p>
           {row.scheduled && row.lastRunAt ? (
             <p className="mt-2 text-xs text-ink-subtle">
@@ -208,6 +234,46 @@ function Automation({ row, readOnly }: { row: AutomationRow; readOnly: boolean }
           <ActionStatus state={state} />
         </form>
       ) : null}
+
+      {template.id === "review.request.email" && row.isActive ? (
+        <ReviewLink reviewUrl={reviewUrl} readOnly={readOnly} />
+      ) : null}
     </div>
+  );
+}
+
+/** The review page the request sends customers to; nothing goes until it is set. */
+function ReviewLink({ reviewUrl, readOnly }: { reviewUrl: string | null; readOnly: boolean }) {
+  const [state, save] = useActionState<ActionState, FormData>(saveReviewUrl, IDLE);
+  const keep = useKeepTyped(state);
+
+  return (
+    <form ref={keep} action={save} className="mt-4 space-y-2">
+      <Field
+        label="Your review link"
+        htmlFor="reviewUrl"
+        error={state.fieldErrors?.reviewUrl}
+        hint={
+          reviewUrl
+            ? "Where customers are sent to leave a review: your Google, Yelp or Facebook review page."
+            : "Nothing is sent until this is set. In your Google Business Profile it is under Ask for reviews."
+        }
+      >
+        <Input
+          id="reviewUrl"
+          name="reviewUrl"
+          type="url"
+          defaultValue={reviewUrl ?? ""}
+          placeholder="https://g.page/r/…/review"
+          disabled={readOnly}
+        />
+      </Field>
+      {readOnly ? null : (
+        <div className="flex items-center gap-3">
+          <SubmitButton pendingLabel="Saving…">Save link</SubmitButton>
+          <ActionStatus state={state} />
+        </div>
+      )}
+    </form>
   );
 }
