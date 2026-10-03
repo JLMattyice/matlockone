@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus, Users } from "lucide-react";
+import { Plus, Upload, Users } from "lucide-react";
 
 import { clientStatusCounts, listClients, type ClientSort } from "./queries";
 import { Avatar } from "@/components/ui/avatar";
@@ -71,10 +71,16 @@ export default async function ClientsPage({
         description={`${counts.get("ACTIVE") ?? 0} active · ${list.total} shown`}
         actions={
           writable ? (
-            <Link href="/clients/new" className={buttonClasses("primary", "md")}>
-              <Plus className="h-4 w-4" strokeWidth={2} />
-              New {org.labelClientSingular.toLowerCase()}
-            </Link>
+            <>
+              <Link href="/clients/import" className={buttonClasses("outline", "md")}>
+                <Upload className="h-4 w-4" strokeWidth={1.75} />
+                Import
+              </Link>
+              <Link href="/clients/new" className={buttonClasses("primary", "md")}>
+                <Plus className="h-4 w-4" strokeWidth={2} />
+                New {org.labelClientSingular.toLowerCase()}
+              </Link>
+            </>
           ) : null
         }
       />
@@ -122,14 +128,20 @@ export default async function ClientsPage({
             description={
               isFiltered
                 ? "Try a different search or clear the filters."
-                : "Add your first customer to start scheduling work and sending invoices."
+                : "Add your first customer to start scheduling work and sending invoices, or bring in the list you already keep."
             }
             action={
               !isFiltered && writable ? (
-                <Link href="/clients/new" className={buttonClasses("primary", "md")}>
-                  <Plus className="h-4 w-4" strokeWidth={2} />
-                  New {org.labelClientSingular.toLowerCase()}
-                </Link>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Link href="/clients/new" className={buttonClasses("primary", "md")}>
+                    <Plus className="h-4 w-4" strokeWidth={2} />
+                    New {org.labelClientSingular.toLowerCase()}
+                  </Link>
+                  <Link href="/clients/import" className={buttonClasses("outline", "md")}>
+                    <Upload className="h-4 w-4" strokeWidth={1.75} />
+                    Import a spreadsheet
+                  </Link>
+                </div>
               ) : null
             }
           />

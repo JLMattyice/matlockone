@@ -81,6 +81,9 @@ partly paid, a payment recorded twice.
   payments, overdue invoices.
 - Clients & Leads: full database, multiple addresses per client, search across
   names/emails/phones/addresses, lead pipeline with conversion to client.
+  Import from a CSV (Excel, Google Sheets, QuickBooks or another app's export):
+  columns guessed from their headings, a preview of every line, and anyone
+  already on file — same email, or same name and phone — skipped.
 - Scheduling: day/week/month calendars, drag-and-drop rescheduling, an
   unscheduled queue you drag onto the grid, recurring appointments, crew
   assignment.

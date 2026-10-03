@@ -180,7 +180,7 @@ export const SHOWCASE: Record<string, Showcase> = {
   },
   "/clients": {
     headline: "One record per client",
-    body: "Every address, every job, every quote and every dollar they have ever paid on one page, with a timeline of everything that has happened.",
+    body: "Every address, every job, every quote and every dollar they have ever paid on one page, with a timeline of everything that has happened. Already keep a list? Bring it in from a spreadsheet in one go.",
     columns: [
       { key: "name", label: "Client" },
       { key: "where", label: "Location" },
