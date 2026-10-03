@@ -21,6 +21,7 @@ import { record } from "@/lib/activity";
 import { joinJobThread } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
 import { parseCategoryValue } from "@/lib/job-categories";
+import { attachCategoryChecklists } from "@/lib/job-checklist";
 import { parseMoneyToCents } from "@/lib/money";
 import { notify } from "@/lib/notifications";
 import { allocateNumber } from "@/lib/numbering";
@@ -270,6 +271,14 @@ export async function createJob(
           select: { id: true },
         });
 
+        // Every visit gets its own copy of the category's checklists.
+        await attachCategoryChecklists(tx, {
+          organizationId: org.id,
+          jobId: created.id,
+          kind: category.kind,
+          categoryId: category.categoryId,
+        });
+
         if (parentId === null) parentId = created.id;
       }
 
@@ -317,8 +326,11 @@ export async function updateJob(
     select: {
       id: true,
       title: true,
+      kind: true,
+      categoryId: true,
       scheduledStart: true,
       assignments: { select: { userId: true } },
+      _count: { select: { checklistItems: true } },
     },
   });
   if (!existing) return failed("That job no longer exists.");
@@ -361,6 +373,19 @@ export async function updateJob(
         estimatedMinutes: input.durationMinutes,
       },
     });
+
+    // Moved into a category with its own checklist before any was put on:
+    // it gets that list, as it would have if booked there in the first place.
+    const recategorized =
+      existing.kind !== category.kind || existing.categoryId !== category.categoryId;
+    if (recategorized && existing._count.checklistItems === 0) {
+      await attachCategoryChecklists(tx, {
+        organizationId: org.id,
+        jobId: id,
+        kind: category.kind,
+        categoryId: category.categoryId,
+      });
+    }
 
     // Replace the assignments wholesale — the form submits the complete set.
     await tx.jobAssignment.deleteMany({ where: { jobId: id } });

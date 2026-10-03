@@ -148,6 +148,12 @@ export async function deleteJobCategory(formData: FormData) {
       where: { organizationId: org.id, categoryId: id },
       data: { categoryId: null },
     }),
+    // A checklist that went on this category's entries goes back to being
+    // put on by hand.
+    prisma.checklistTemplate.updateMany({
+      where: { organizationId: org.id, categoryId: id },
+      data: { categoryId: null },
+    }),
     prisma.jobCategory.deleteMany({ where: { id, organizationId: org.id } }),
   ]);
 

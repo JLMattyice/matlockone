@@ -149,6 +149,8 @@ model Organization {
   priceBookItems PriceBookItem[]
   integrations   Integration[]
   accountingLinks AccountingLink[]
+  checklistTemplates ChecklistTemplate[]
+  jobChecklistItems  JobChecklistItem[]
   tasks          Task[]
   workflows      Workflow[]
   workflowRuns   WorkflowRun[]
@@ -213,6 +215,7 @@ model User {
   conversations    ConversationMember[]
   startedThreads   Conversation[]  @relation("ConversationCreator")
   messages         Message[]       @relation("MessageAuthor")
+  checkedItems     JobChecklistItem[] @relation("ChecklistItemDoneBy")
 
   @@unique([organizationId, email])
   @@index([organizationId, isActive])
@@ -462,6 +465,7 @@ model Job {
   assignments    JobAssignment[]
   materials      JobMaterial[]
   timeEntries    TimeEntry[]
+  checklistItems JobChecklistItem[]
   expenses       Expense[]
   attachments    Attachment[]
   notes          Note[]
@@ -493,8 +497,64 @@ model JobCategory {
   updatedAt DateTime @updatedAt
 
   jobs Job[]
+  /// Checklists that go onto this category's jobs by themselves.
+  checklistTemplates ChecklistTemplate[]
 
   @@index([organizationId])
+}
+
+/**
+ * A checklist a business reuses — "HVAC service", "Move-out clean" — kept as
+ * a name and its items. Putting one on a job copies the items there, so
+ * editing the template later changes the next job, not one already worked.
+ *
+ * With a category set — one of the built-in kinds, or one of the business's
+ * own — every new job in that category gets it by itself. At most one of
+ * `kind` and `categoryId` is set; neither means it is put on by hand.
+ */
+model ChecklistTemplate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name  String
+  /// The items, in order, as a JSON array of strings.
+  items String
+
+  /// A built-in kind ("JOB", "APPOINTMENT"…) whose new entries get this.
+  kind       String?
+  categoryId String?
+  category   JobCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+/**
+ * One line of a job's checklist, ticked off in the field. The owner chose
+ * "track only": a job can be completed with items open — they are shown,
+ * never a block.
+ */
+model JobChecklistItem {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  label     String
+  sortOrder Int    @default(0)
+
+  doneAt   DateTime?
+  doneById String?
+  doneBy   User?     @relation("ChecklistItemDoneBy", fields: [doneById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
 }
 
 model JobAssignment {

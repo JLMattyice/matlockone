@@ -10,6 +10,7 @@ import { DISCOUNT_TYPES, LINE_ITEM_KINDS } from "@/lib/constants";
 import { record } from "@/lib/activity";
 import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
+import { attachCategoryChecklists } from "@/lib/job-checklist";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import { publicUrl, sendMessage } from "@/lib/messaging";
 import {
@@ -545,6 +546,13 @@ export async function convertEstimateToJob(formData: FormData) {
           createdById: user.id,
         },
         select: { id: true },
+      });
+
+      await attachCategoryChecklists(tx, {
+        organizationId: org.id,
+        jobId: created.id,
+        kind: "JOB",
+        categoryId: null,
       });
 
       await tx.estimate.update({

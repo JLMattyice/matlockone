@@ -158,6 +158,10 @@ export async function getJob(ctx: AppContext, id: string) {
         orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
         include: { author: { select: { name: true } } },
       },
+      checklistItems: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        select: { id: true, label: true, doneAt: true, doneBy: { select: { name: true } } },
+      },
       invoices: {
         orderBy: { issueDate: "desc" },
         select: {

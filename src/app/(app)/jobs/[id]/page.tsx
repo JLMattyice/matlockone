@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { CancelJob } from "./cancel-job";
+import { JobChecklist } from "./checklist";
 import { CategoryMark } from "../category-mark";
 import { MaterialForm } from "./material-form";
 import { TimeForm } from "./time-form";
@@ -57,6 +58,7 @@ import {
   type JobStatus,
 } from "@/lib/constants";
 import { inboxStamp } from "@/lib/chat";
+import { readChecklistItems } from "@/lib/checklists";
 import { jobThreadSummary } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
 import { currencySymbol, formatMoney } from "@/lib/money";
@@ -116,6 +118,22 @@ export default async function JobDetailPage({
   const mark = entryCategory(job, org.labelJobSingular);
   const costs = jobCostTotals(job, expenses?.totalCents ?? 0);
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
+
+  // The saved lists, offered only to whoever may change what is on the job.
+  const templates = writable
+    ? (
+        await prisma.checklistTemplate.findMany({
+          where: { organizationId: org.id },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, items: true },
+        })
+      ).map((template) => ({
+        id: template.id,
+        name: template.name,
+        count: readChecklistItems(template.items).length,
+      }))
+    : [];
+  const checklistOpen = job.checklistItems.filter((item) => !item.doneAt).length;
 
   // Cancel gets its own control, since it asks for a reason.
   const nextStatuses = (JOB_STATUS_FLOW[status] ?? []).filter(
@@ -242,6 +260,13 @@ export default async function JobDetailPage({
             {status !== "CANCELLED" && status !== "COMPLETED" ? (
               <CancelJob jobId={job.id} />
             ) : null}
+
+            {/* Track only, by the owner's choice: said, never a block. */}
+            {nextStatuses.includes("COMPLETED") && checklistOpen > 0 ? (
+              <span className="text-xs text-ink-muted">
+                {checklistOpen} checklist {checklistOpen === 1 ? "item" : "items"} not ticked yet
+              </span>
+            ) : null}
           </div>
         ) : null}
       </Card>
@@ -253,6 +278,43 @@ export default async function JobDetailPage({
       */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
+          {/* ------------------------------------------------- checklist --- */}
+          {job.checklistItems.length > 0 || writable ? (
+            <Card className="overflow-hidden">
+              <CardHeader
+                title="Checklist"
+                description={
+                  status === "COMPLETED" && checklistOpen > 0
+                    ? `Completed with ${checklistOpen} not ticked.`
+                    : "The steps for this one, ticked off on site."
+                }
+                action={
+                  job.checklistItems.length > 0 ? (
+                    <span className="tabular text-sm font-semibold text-ink">
+                      {job.checklistItems.length - checklistOpen} of {job.checklistItems.length}
+                    </span>
+                  ) : null
+                }
+              />
+              <JobChecklist
+                jobId={job.id}
+                items={job.checklistItems.map((item) => ({
+                  id: item.id,
+                  label: item.label,
+                  done: Boolean(item.doneAt),
+                  doneNote: item.doneAt
+                    ? [item.doneBy?.name, formatIn(item.doneAt, "MMM d, h:mm a", zone)]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : null,
+                }))}
+                canTick={canLogTime}
+                canEdit={writable}
+                templates={templates}
+              />
+            </Card>
+          ) : null}
+
           {/* ------------------------------------------------- materials --- */}
           <Card className="overflow-hidden">
             <CardHeader
