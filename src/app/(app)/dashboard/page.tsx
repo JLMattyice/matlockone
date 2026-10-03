@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { isToday, isTomorrow } from "date-fns";
 import {
   Banknote,
@@ -52,6 +53,10 @@ export const metadata: Metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const ctx = await requireContext();
   const { user, org } = ctx;
+
+  // The business-wide view. Somebody who sees only their own work starts on
+  // My Day instead — sign-in, the home-screen icon and old links all land here.
+  if (!can(user, "jobs:read:all") && can(user, "jobs:log-time")) redirect("/my-day");
   const zone = await viewerTimeZone();
   const data = await loadDashboard(ctx, zone);
   const tasks = await taskSummary(org.id, user, zone);

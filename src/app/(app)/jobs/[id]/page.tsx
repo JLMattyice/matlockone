@@ -66,7 +66,7 @@ import { entryCategory } from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
 import { describeRecurrence } from "@/lib/recurrence";
 import { formatIn, toDateTimeLocal } from "@/lib/time-zone";
-import { directionsUrl, formatPhone } from "@/lib/utils";
+import { directionsUrl, formatMinutes, formatPhone } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export async function generateMetadata({
@@ -456,7 +456,8 @@ export default async function JobDetailPage({
                         {formatIn(entry.startedAt, "MMM d, h:mm a", zone)}
                       </Td>
                       <Td align="right" className="tabular whitespace-nowrap">
-                        {formatMinutes(entry.minutes)}
+                        {/* A timer still running from My Day. */}
+                        {entry.endedAt ? formatMinutes(entry.minutes) : <Badge tone="info" dot>Running</Badge>}
                       </Td>
                       {seesMoney ? (
                         <Td align="right" className="tabular font-medium">
@@ -646,7 +647,7 @@ export default async function JobDetailPage({
           ) : null}
 
           {/* ----------------------------------------------------- notes --- */}
-          <Card className="overflow-hidden">
+          <Card id="notes" className="scroll-mt-20 overflow-hidden">
             <CardHeader title="Notes" />
             <NotesPanel
               notes={job.notes}
@@ -941,10 +942,3 @@ function Row({
   );
 }
 
-function formatMinutes(minutes: number) {
-  if (minutes === 0) return "0h";
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (hours === 0) return `${rest}m`;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
-}

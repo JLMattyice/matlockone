@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Receipt,
   Settings,
+  Sun,
   Tag,
   Target,
   Users,
@@ -36,6 +37,7 @@ const ICONS = {
   folder: FolderClosed,
   tag: Tag,
   settings: Settings,
+  sun: Sun,
 } as const;
 
 export function NavIcon({

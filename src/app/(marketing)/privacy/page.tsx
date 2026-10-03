@@ -91,6 +91,15 @@ export default function PrivacyPage() {
               dates.
             </>,
             <>
+              <strong>Time on the clock:</strong> when each team member clocks in and out, and
+              when they start and stop work on a job. No location is recorded.
+            </>,
+            <>
+              <strong>Notification sign-ups:</strong> if you turn on notifications on a phone or
+              browser, the address its push service gave it for them, and which browser it is.
+              Turning them off deletes it.
+            </>,
+            <>
               <strong>Security records:</strong> each signed-in session notes the browser and IP
               address it started from, kept until the session ends. IP addresses are also counted
               briefly to stop repeated sign-in guessing. Your workspace keeps a history of
@@ -155,6 +164,12 @@ export default function PrivacyPage() {
               <strong>GitHub</strong> hosts the Windows app’s downloads and updates; the app
               checks there for new versions.
             </>,
+            <>
+              <strong>Push services</strong> (Google, Apple, Mozilla and Microsoft, depending on
+              the browser) carry notifications to the phones and browsers that turned them on — a
+              short line such as a job’s title or the start of a team message. It is encrypted on
+              the way, so the push service cannot read it.
+            </>,
           ]}
         />
         <p>When you connect a service of your own, information goes to it to do the job you set up:</p>
@@ -171,9 +186,10 @@ export default function PrivacyPage() {
             </>,
             <>
               <strong>QuickBooks Online</strong> (Intuit), if you connect it, receives each of your
-              customers’ names, company, email, phone numbers, website and addresses, so its
-              customer list matches yours. Customers already sent stay in QuickBooks if you
-              disconnect it.
+              customers’ names, company, email, phone numbers, website and addresses; your
+              invoices, with their lines, tax and dates; the payments you receive; and the expenses
+              you record, with who they were paid to — so your books match. What was already sent
+              stays in QuickBooks if you disconnect it.
             </>,
             <>
               <strong>Calendar apps</strong> (Google, Outlook, Apple) receive a team member’s

@@ -98,3 +98,12 @@ export function hexToRgbChannels(hex: string): string | null {
   const int = parseInt(value, 16);
   return `${(int >> 16) & 255} ${(int >> 8) & 255} ${int & 255}`;
 }
+
+/** "2h 15m", "45m", "3h" — a length of time as the time cards show it. */
+export function formatMinutes(minutes: number) {
+  if (minutes <= 0) return "0h";
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest}m`;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}

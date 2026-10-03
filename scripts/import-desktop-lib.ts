@@ -62,6 +62,7 @@ export const EXCLUDED: Record<string, string> = {
   AutopaySubscription: "auto-pay has to be set up again online",
   Notification: "old alerts",
   WorkflowRun: "automation history",
+  PushSubscription: "notifications belong to the phone that asked for them; turn them on again there",
   Attachment: "the files themselves are on the PC; upload them again",
   MessageAttachment: "the files themselves are on the PC; upload them again",
 };

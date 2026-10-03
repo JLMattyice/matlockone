@@ -39,6 +39,7 @@ export type NavIcon =
   | "folder"
   | "tag"
   | "check-square"
+  | "sun"
   | "message-square"
   | "settings";
 
@@ -50,7 +51,14 @@ export const NAVIGATION: NavGroup[] = [
         href: "/dashboard",
         label: "Dashboard",
         icon: "dashboard",
-        permission: "jobs:read",
+        // The business-wide view. The crew's home is My Day.
+        permission: "jobs:read:all",
+      },
+      {
+        href: "/my-day",
+        label: "My Day",
+        icon: "sun",
+        permission: "jobs:log-time",
       },
       {
         href: "/tasks",

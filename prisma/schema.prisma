@@ -151,6 +151,8 @@ model Organization {
   accountingLinks AccountingLink[]
   checklistTemplates ChecklistTemplate[]
   jobChecklistItems  JobChecklistItem[]
+  clockEntries   ClockEntry[]
+  pushSubscriptions PushSubscription[]
   tasks          Task[]
   workflows      Workflow[]
   workflowRuns   WorkflowRun[]
@@ -216,6 +218,9 @@ model User {
   startedThreads   Conversation[]  @relation("ConversationCreator")
   messages         Message[]       @relation("MessageAuthor")
   checkedItems     JobChecklistItem[] @relation("ChecklistItemDoneBy")
+  clockEntries     ClockEntry[]
+  fixedClockEntries ClockEntry[]  @relation("ClockEntryEditor")
+  pushSubscriptions PushSubscription[]
 
   @@unique([organizationId, email])
   @@index([organizationId, isActive])
@@ -611,6 +616,56 @@ model TimeEntry {
 
   @@index([jobId])
   @@index([userId, startedAt])
+}
+
+/**
+ * A stretch on the day clock: when somebody started work and when they
+ * stopped. Separate from time on a job — a day also has driving, the yard and
+ * the supply house. No location is kept, by the owner's choice.
+ *
+ * A person has at most one open entry; the actions see to it.
+ */
+model ClockEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clockedInAt  DateTime
+  /// Null while still on the clock.
+  clockedOutAt DateTime?
+
+  /// Who last corrected the times, when it was not the person themselves.
+  editedById String?
+  editedBy   User?   @relation("ClockEntryEditor", fields: [editedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, clockedInAt])
+  @@index([userId, clockedInAt])
+}
+
+/**
+ * A phone or browser that asked for push notifications. The endpoint is the
+ * push service's address for that one device; the two keys encrypt what is
+ * sent to it, so the service carrying it cannot read it.
+ */
+model PushSubscription {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint  String  @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model RecurrenceRule {

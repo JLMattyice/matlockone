@@ -18,6 +18,7 @@ import {
   startConversation,
 } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
+import { pushTeamMessage } from "@/lib/push";
 import { can } from "@/lib/permissions";
 import { storageRoom } from "@/lib/quotas";
 import { isImageMime, putFile, removeFile } from "@/lib/storage";
@@ -197,6 +198,14 @@ export async function sendMessage(formData: FormData): Promise<SendResult> {
   // Photos recorded above stay on the job even if the message itself failed:
   // they were taken on site and are worth keeping without the words.
   if (!message) return { ok: false, error: "That conversation is not available." };
+
+  await pushTeamMessage({
+    conversationId,
+    authorId: user.id,
+    authorName: user.name,
+    body,
+    photoCount: photoIds.length,
+  });
 
   // Re-sorts the inbox beside the thread with this one on top.
   revalidatePath("/messages", "layout");

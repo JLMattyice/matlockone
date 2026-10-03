@@ -41,7 +41,7 @@ export const ROLE_META: Record<Role, StatusMeta> = {
   EMPLOYEE: {
     label: "Employee",
     tone: "neutral",
-    description: "Sees only their own assigned work. No financial access.",
+    description: "Sees only their own assigned work, from My Day: clock in, start and finish their visits. No financial access.",
   },
 };
 

@@ -1,6 +1,7 @@
 /**
- * Matlock One's service worker, with one job: when a phone has no signal,
- * show a page that says so instead of the browser's own error.
+ * Matlock One's service worker. Two jobs: when a phone has no signal, show a
+ * page that says so instead of the browser's own error; and show the push
+ * notifications a person turned on, opening the right page when tapped.
  *
  * Nothing else is kept. Every page here is somebody's live business — today's
  * schedule, what an invoice still owes — and a saved copy shown as if it were
@@ -37,4 +38,40 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
   event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_PAGE)));
+});
+
+// A push: the server sends a title, a line, where to open and a tag. A later
+// push with the same tag replaces the earlier one instead of stacking.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Matlock One", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: data.tag || undefined,
+      renotify: Boolean(data.tag),
+      data: { url: typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/" },
+    }),
+  );
+});
+
+// Tapped: bring an open Matlock One window to that page, or open one.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((client) => client.url.startsWith(self.location.origin));
+      if (open) {
+        return open.focus().then((client) => (client && "navigate" in client ? client.navigate(url) : client));
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
 });

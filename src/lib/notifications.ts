@@ -3,11 +3,13 @@ import "server-only";
 import type { NotificationType } from "./constants";
 import { prisma } from "./db";
 import { sendMessage } from "./messaging";
+import { PUSHED_TYPES, pushSoon } from "./push";
 
 /**
  * In-app notifications, with email as an optional second channel.
  *
- * Everything lands in the `Notification` table so it shows in the bell menu.
+ * Everything lands in the `Notification` table so it shows in the bell menu,
+ * and the kinds in PUSHED_TYPES also go to the phones people signed up.
  * When `email` is supplied the same message also goes through the outbox, which
  * is stubbed by default — so a demo produces a full, readable notification
  * trail without sending anything.
@@ -51,6 +53,16 @@ export async function notify(input: NotifyInput) {
     });
   } catch (error) {
     console.error("Failed to write notifications", error);
+  }
+
+  // The few that matter in the field also reach the phone in a pocket.
+  if (PUSHED_TYPES.has(input.type)) {
+    pushSoon(recipients, {
+      title: input.title,
+      body: input.body,
+      url: input.actionUrl,
+      tag: input.entityId ? `${input.type}:${input.entityId}` : undefined,
+    });
   }
 }
 

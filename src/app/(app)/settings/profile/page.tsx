@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 
 import { CalendarFeedCard } from "./calendar-feed-card";
 import { PasswordForm, ProfileForm } from "./profile-forms";
+import { PushCard } from "./push-card";
 import { requireContext } from "@/lib/auth";
 import { feedAddresses } from "@/lib/calendar-feed-server";
 import { dataStaysOnThisMachine } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
+import { pushKeys } from "@/lib/push";
 
 export const metadata: Metadata = { title: "Your profile" };
 
@@ -15,6 +17,9 @@ export default async function ProfileSettingsPage() {
 
   // Not on the session user: the token is a credential, and the session is
   // read on every request by every page that never needs it.
+  // Only offered where the keys are set; never in the desktop app.
+  const push = dataStaysOnThisMachine() ? null : pushKeys();
+
   const feed = can(user, "schedule:read")
     ? await prisma.user.findUnique({
         where: { id: user.id },
@@ -44,6 +49,7 @@ export default async function ProfileSettingsPage() {
           online={!dataStaysOnThisMachine()}
         />
       ) : null}
+      {push ? <PushCard publicKey={push.publicKey} /> : null}
       <PasswordForm />
     </div>
   );

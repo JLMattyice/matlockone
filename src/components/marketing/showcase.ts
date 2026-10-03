@@ -57,6 +57,20 @@ export const SHOWCASE: Record<string, Showcase> = {
       { item: "Open pipeline", detail: "5 leads", amount: "$18,300.00" },
     ],
   },
+  "/my-day": {
+    headline: "The crew's day on one screen",
+    body: "Clock in, today's visits in order, and the big buttons a tech reaches for: directions, call the customer, start the timer, a photo, a note, done. A buzz on their phone when they are put on a job or the day changes.",
+    columns: [
+      { key: "time", label: "Time" },
+      { key: "visit", label: "Visit" },
+      { key: "status", label: "Status", align: "right" },
+    ],
+    rows: [
+      { time: "8:00 AM", visit: "Water heater swap · Ellis", status: "Completed", tone: "gold" },
+      { time: "10:30 AM", visit: "Leak under the sink · Ortega", status: "In Progress", tone: "green" },
+      { time: "1:00 PM", visit: "Annual inspection · Park", status: "Scheduled", tone: "neutral" },
+    ],
+  },
   "/tasks": {
     headline: "Nothing slips through",
     body: "To-dos with a due date and a person, tied to the client, job or lead they are about. Automations add some for you: an overdue invoice to chase, an accepted estimate to book, a client who has gone quiet.",

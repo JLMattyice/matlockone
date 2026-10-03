@@ -10,8 +10,6 @@ import {
   asStatus,
   JOB_KINDS,
   JOB_PRIORITIES,
-  JOB_STATUS_FLOW,
-  JOB_STATUS_META,
   JOB_STATUSES,
   RECURRENCE_FREQUENCIES,
   type JobKind,
@@ -22,6 +20,7 @@ import { joinJobThread } from "@/lib/conversations";
 import { prisma } from "@/lib/db";
 import { parseCategoryValue } from "@/lib/job-categories";
 import { attachCategoryChecklists } from "@/lib/job-checklist";
+import { changeJobStatus } from "@/lib/job-status";
 import { parseMoneyToCents } from "@/lib/money";
 import { notify } from "@/lib/notifications";
 import { allocateNumber } from "@/lib/numbering";
@@ -445,53 +444,23 @@ export async function updateJob(
 
 // ------------------------------------------------------------------ status ---
 
-/**
- * Status changes carry timestamps with them, and moving backwards clears the
- * ones that no longer apply — a job reopened from Completed should not keep
- * claiming it finished.
- */
+/** Moves a job along its status flow; the rules live in changeJobStatus. */
 export async function setJobStatus(formData: FormData) {
   const { user, org } = await requirePermission("jobs:write");
 
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "") as JobStatus;
-  if (!id || !JOB_STATUSES.includes(status)) return;
+  if (!id) return;
 
-  const job = await prisma.job.findFirst({
-    where: { id, organizationId: org.id },
-    select: { status: true, startedAt: true, number: true, title: true },
-  });
-  if (!job) return;
-
-  const current = job.status as JobStatus;
-  if (current !== status && !JOB_STATUS_FLOW[current]?.includes(status)) return;
-
-  const now = new Date();
-
-  await prisma.job.update({
-    where: { id },
-    data: {
-      status,
-      startedAt:
-        status === "IN_PROGRESS" ? (job.startedAt ?? now) : job.startedAt,
-      completedAt: status === "COMPLETED" ? now : null,
-      cancelledAt: status === "CANCELLED" ? now : null,
-      cancelReason:
-        status === "CANCELLED"
-          ? (text(formData, "cancelReason") ?? null)
-          : null,
-    },
-  });
-
-  await record({
+  const moved = await changeJobStatus({
     organizationId: org.id,
-    userId: user.id,
-    action: "job.status",
-    entityType: "JOB",
-    entityId: id,
-    summary: `${org.labelJobSingular} ${job.number} marked ${JOB_STATUS_META[status].label.toLowerCase()}`,
-    metadata: { from: current, to: status },
+    actorId: user.id,
+    jobLabel: org.labelJobSingular,
+    jobId: id,
+    status,
+    cancelReason: text(formData, "cancelReason"),
   });
+  if (!moved) return;
 
   revalidatePath("/jobs");
   revalidatePath("/schedule");

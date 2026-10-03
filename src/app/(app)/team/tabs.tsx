@@ -1,15 +1,16 @@
 import { TabLinks } from "@/components/ui/tab-links";
 
 /**
- * The two ways of looking at the same staff: one by one, or by the groups
- * they work in. Shared so both pages keep the same counts and order.
+ * The ways of looking at the same staff: one by one, by the groups they work
+ * in, and by their hours on the clock. Shared so the pages keep the same
+ * counts and order.
  */
 export function TeamTabs({
   active,
   members,
   groups,
 }: {
-  active: "members" | "groups";
+  active: "members" | "groups" | "clock";
   members: number;
   groups: number;
 }) {
@@ -27,6 +28,11 @@ export function TeamTabs({
           label: "Groups",
           count: groups,
           active: active === "groups",
+        },
+        {
+          href: "/team/time-clock",
+          label: "Time clock",
+          active: active === "clock",
         },
       ]}
     />
