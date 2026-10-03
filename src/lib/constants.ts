@@ -465,6 +465,7 @@ export const NOTIFICATION_TYPES = [
   "AUTOPAY",
   "EXPENSE_DUE",
   "ESTIMATE_RESPONSE",
+  "SERVICE_REQUEST",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

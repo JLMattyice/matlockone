@@ -285,3 +285,13 @@ export async function changeOwnPassword(
 
   return saved("Password changed. Other devices have been signed out.");
 }
+
+/** Whether the public "Request service" form takes requests. */
+export async function setRequestsEnabled(formData: FormData) {
+  const { org } = await requirePermission("settings:write");
+  await prisma.organization.update({
+    where: { id: org.id },
+    data: { requestsEnabled: formData.get("enabled") === "on" },
+  });
+  revalidatePath("/settings");
+}

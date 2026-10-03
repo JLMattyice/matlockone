@@ -16,7 +16,18 @@ const QUALITY = 0.85;
 /** Small enough already, if it is also within the long edge. */
 const SMALL_BYTES = 1.5 * 1024 * 1024;
 
-export async function downscaleImage(file: File): Promise<File> {
+/**
+ * `longEdge` and `smallBytes` default to a job photo's; the public request
+ * form asks for less, so five photos fit in one upload.
+ */
+export async function downscaleImage(
+  file: File,
+  options: { longEdge?: number; quality?: number; smallBytes?: number } = {},
+): Promise<File> {
+  const longEdge = options.longEdge ?? LONG_EDGE;
+  const quality = options.quality ?? QUALITY;
+  const smallBytes = options.smallBytes ?? SMALL_BYTES;
+
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
 
   let bitmap: ImageBitmap;
@@ -28,8 +39,8 @@ export async function downscaleImage(file: File): Promise<File> {
   }
 
   try {
-    const scale = Math.min(1, LONG_EDGE / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size <= SMALL_BYTES) return file;
+    const scale = Math.min(1, longEdge / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size <= smallBytes) return file;
 
     const width = Math.round(bitmap.width * scale);
     const height = Math.round(bitmap.height * scale);
@@ -46,7 +57,7 @@ export async function downscaleImage(file: File): Promise<File> {
     context.drawImage(bitmap, 0, 0, width, height);
 
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", QUALITY),
+      canvas.toBlob(resolve, "image/jpeg", quality),
     );
     if (!blob || blob.size >= file.size) return file;
 

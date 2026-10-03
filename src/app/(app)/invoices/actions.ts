@@ -14,6 +14,7 @@ import {
 import { record } from "@/lib/activity";
 import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
+import { portalLine } from "@/lib/portal";
 import { priorBilling } from "@/lib/progress-billing";
 import { sendToQuickBooksSoon } from "@/lib/quickbooks/sync";
 import { recalculateInvoice } from "@/lib/invoice-balance";
@@ -562,6 +563,7 @@ export async function sendInvoice(
       ...payLines,
       `View it online: ${link}`,
       "",
+      ...(await portalLine(invoice.clientId)),
       "Thank you,",
       org.name,
     ].join("\n"),

@@ -17,7 +17,7 @@ import {
   JobsTable,
   PaymentsTable,
 } from "./history";
-import { deleteClient, setClientStatus } from "../actions";
+import { deleteClient, replaceClientPortalLink, setClientStatus } from "../actions";
 import {
   clientAttachments,
   clientEstimates,
@@ -28,6 +28,7 @@ import {
   clientPayments,
   getClient,
 } from "../queries";
+import { CopyLink } from "@/app/(app)/estimates/[id]/estimate-actions";
 import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { ActivityTimeline } from "@/components/activity/timeline";
 import { TaskList } from "@/components/tasks/task-list";
@@ -55,6 +56,7 @@ import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { canSeeBusinessActivity, clientTimeline } from "@/lib/activity";
 import { can } from "@/lib/permissions";
+import { ensurePortalToken, portalUrl } from "@/lib/portal";
 import { formatIn } from "@/lib/time-zone";
 import { directionsUrl, formatPhone } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
@@ -116,6 +118,9 @@ export default async function ClientDetailPage({
   const statusMeta = CLIENT_STATUS_META[status];
 
   const financials = seesMoney ? await clientFinancials(org.id, client.id) : null;
+  // The portal link is made the first time somebody who can share it looks.
+  const portalToken =
+    writable && client.status !== "ARCHIVED" ? await ensurePortalToken(client.id) : null;
 
   return (
     <div className="space-y-6">
@@ -287,6 +292,7 @@ export default async function ClientDetailPage({
           zone={zone}
           jobLabel={org.labelJobPlural}
           seesMoney={seesMoney}
+          portalToken={portalToken}
         />
       ) : null}
 
@@ -399,12 +405,14 @@ async function Overview({
   zone,
   jobLabel,
   seesMoney,
+  portalToken,
 }: {
   client: Awaited<ReturnType<typeof getClient>>;
   org: { id: string; currency: string; locale: string; labelJobPlural: string };
   zone: string;
   jobLabel: string;
   seesMoney: boolean;
+  portalToken: string | null;
 }) {
   const [upcoming, recentJobs, recentInvoices, notes] = await Promise.all([
     clientJobs(org.id, client.id, { upcomingOnly: true, take: 5 }),
@@ -555,6 +563,29 @@ async function Overview({
           )}
         </Card>
 
+        {portalToken ? (
+          <Card>
+            <CardHeader
+              title="Customer portal"
+              description="Their visits, estimates, invoices and requests on one private page. It goes out with every estimate and invoice you email."
+            />
+            <div className="space-y-3 px-5 py-4">
+              <CopyLink url={portalUrl(portalToken)} />
+              <form action={replaceClientPortalLink}>
+                <input type="hidden" name="id" value={client.id} />
+                <ConfirmButton
+                  variant="ghost"
+                  size="sm"
+                  confirmLabel="Old link stops working — sure?"
+                  pendingLabel="Making it…"
+                >
+                  Make a new link
+                </ConfirmButton>
+              </form>
+            </div>
+          </Card>
+        ) : null}
+
         <Card>
           <CardHeader title="Details" />
           <dl className="divide-y divide-line text-sm">
@@ -596,7 +627,7 @@ async function Overview({
                     {note.body}
                   </p>
                   <p className="mt-1.5 text-xs text-ink-subtle">
-                    {note.author?.name ?? "Removed user"} ·{" "}
+                    {note.author?.name ?? "Matlock One"} ·{" "}
                     {formatIn(note.createdAt, "MMM d, yyyy", zone)}
                   </p>
                 </li>

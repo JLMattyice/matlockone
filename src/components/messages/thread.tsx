@@ -267,7 +267,7 @@ export function Thread({
 
     setPreparing(true);
     try {
-      const ready = await Promise.all(picked.slice(0, Math.max(room, 0)).map(downscaleImage));
+      const ready = await Promise.all(picked.slice(0, Math.max(room, 0)).map((file) => downscaleImage(file)));
       const chosen = ready.map((file) => {
         const url = URL.createObjectURL(file);
         urlsRef.current.add(url);

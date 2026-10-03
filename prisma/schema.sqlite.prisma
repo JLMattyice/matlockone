@@ -44,6 +44,10 @@ model Organization {
   locale   String @default("en-US")
   timeZone String @default("America/New_York")
 
+  /// Whether the public "Request service" form at /request/{slug} takes
+  /// requests. On unless the owner turns it off.
+  requestsEnabled Boolean @default(true)
+
   /// Which preset the terminology below started from. Kept so settings can
   /// show what was chosen and re-apply it, and so the defaults for anything
   /// named later have somewhere to come from. It is a starting point, never a
@@ -290,6 +294,12 @@ model Client {
   status    String  @default("ACTIVE") // ACTIVE | INACTIVE | ARCHIVED
   source    String?
   taxExempt Boolean @default(false)
+
+  /// The whole credential for the customer's portal — their visits,
+  /// estimates, invoices and requests on one page — so 32 characters from a
+  /// cryptographic source, like a share link's. Made the first time it is
+  /// needed; replacing it stops the old link working.
+  portalToken String? @unique
 
   createdById String?
   createdBy   User?   @relation("ClientCreator", fields: [createdById], references: [id], onDelete: SetNull)

@@ -19,6 +19,7 @@ import {
   setLeadStatus,
 } from "../actions";
 import { getLead } from "../queries";
+import { AttachmentPanel } from "@/components/files/attachment-panel";
 import { NotesPanel } from "@/components/notes/notes-panel";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -102,11 +103,11 @@ export default async function LeadDetailPage({
         <div className="flex flex-wrap items-center gap-3 rounded-card border border-success/30 bg-success/8 px-4 py-3">
           <Check className="h-4 w-4 shrink-0 text-success" strokeWidth={2} />
           <p className="text-sm text-ink">
-            Converted to a {org.labelClientSingular.toLowerCase()}
+            {/* A request from an existing customer's portal points at them
+                from the start; only a won lead was converted. */}
             {lead.convertedAt
-              ? ` on ${formatIn(lead.convertedAt, "MMM d, yyyy", zone)}`
-              : ""}
-            .
+              ? `Converted to a ${org.labelClientSingular.toLowerCase()} on ${formatIn(lead.convertedAt, "MMM d, yyyy", zone)}.`
+              : `Already a ${org.labelClientSingular.toLowerCase()}.`}
           </p>
           <Link
             href={`/clients/${lead.client.id}`}
@@ -301,6 +302,22 @@ export default async function LeadDetailPage({
             canWrite={writable}
             placeholder="What did they ask for? What did you quote?"
             emptyDescription="Log what was discussed so whoever picks this up next has the context."
+          />
+        </Card>
+
+        {/* Photos a request came with, and anything filed since. */}
+        <Card className="overflow-hidden lg:col-span-2">
+          <CardHeader title="Photos & files" />
+          <AttachmentPanel
+            attachments={await prisma.attachment.findMany({
+              where: { organizationId: org.id, leadId: lead.id },
+              orderBy: { createdAt: "desc" },
+              include: { uploadedBy: { select: { name: true } } },
+            })}
+            zone={zone}
+            entityType="lead"
+            entityId={lead.id}
+            canWrite={can(user, "files:write")}
           />
         </Card>
 

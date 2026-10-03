@@ -9,6 +9,7 @@ import { requirePermission } from "@/lib/auth";
 import { CLIENT_STATUSES, CLIENT_TYPES } from "@/lib/constants";
 import { record } from "@/lib/activity";
 import { prisma } from "@/lib/db";
+import { replacePortalToken } from "@/lib/portal";
 import { sendCustomersSoon } from "@/lib/quickbooks/sync";
 
 const addressSchema = z.object({
@@ -250,6 +251,18 @@ export async function updateClient(
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);
   return saved("Client updated.");
+}
+
+/**
+ * A new portal link for the customer, for when the old one went somewhere it
+ * should not have. The old link stops working at once.
+ */
+export async function replaceClientPortalLink(formData: FormData) {
+  const { org } = await requirePermission("clients:write");
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await replacePortalToken(org.id, id);
+  revalidatePath(`/clients/${id}`);
 }
 
 export async function setClientStatus(formData: FormData) {

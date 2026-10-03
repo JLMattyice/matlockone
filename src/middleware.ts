@@ -11,7 +11,9 @@ import { SESSION_COOKIE } from "@/lib/session-cookie";
  */
 
 // /download is the installer redirect behind the homepage's download buttons,
-// which are for people who do not have an account yet.
+// which are for people who do not have an account yet. /portal and /request
+// are a business's customers' pages — their private portal, and the public
+// form for asking for work — so they are for people who never sign in.
 const PUBLIC_PREFIXES = [
   "/login",
   "/signup",
@@ -20,6 +22,8 @@ const PUBLIC_PREFIXES = [
   "/share",
   "/session-expired",
   "/download",
+  "/portal",
+  "/request",
 ];
 
 /**

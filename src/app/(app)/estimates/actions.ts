@@ -27,6 +27,7 @@ import {
   type StageRequest,
 } from "@/lib/progress-billing";
 import { allocateNumber } from "@/lib/numbering";
+import { portalLine } from "@/lib/portal";
 import { parseDateTimeLocal } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 import type { Prisma } from "@/generated/prisma/client";
@@ -343,6 +344,7 @@ export async function sendEstimate(
 
   const link = publicUrl(`/share/estimate/${estimate.publicToken}`);
   const amount = formatMoney(estimate.totalCents, org.currency, org.locale);
+  const portal = await portalLine(estimate.clientId);
 
   const result = await sendMessage({
     organizationId: org.id,
@@ -361,6 +363,7 @@ export async function sendEstimate(
         ? `This estimate is valid until ${estimate.expiresAt.toDateString()}.`
         : "",
       "",
+      ...portal,
       `Thank you,`,
       org.name,
     ]

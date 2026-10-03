@@ -62,7 +62,7 @@ export function NotesPanel({
             >
               <div className="mb-1.5 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-ink">
-                  {note.author?.name ?? "Removed user"}
+                  {note.author?.name ?? "Matlock One"}
                 </span>
                 <span className="text-xs text-ink-subtle">
                   {formatIn(note.createdAt, "MMM d, yyyy 'at' h:mm a", zone)}

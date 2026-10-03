@@ -76,6 +76,11 @@ export default function PrivacyPage() {
               they used are kept with the estimate, with a copy of what they agreed to.
             </>,
             <>
+              <strong>Requests sent to you:</strong> what someone enters on your “Request service”
+              form — their name, contact details, address, what they need and any photos — comes
+              to you as a lead. We count requests by internet address only to stop floods.
+            </>,
+            <>
               <strong>Accounts you connect:</strong> the passwords and keys for the email account,
               payment processor and QuickBooks company you link to Matlock One. These are encrypted
               (AES-256-GCM) and only unlocked at the moment they’re used.

@@ -138,6 +138,15 @@ export const RESET_REQUEST_PER_IP: RateLimitRule = { limit: 10, windowSeconds: H
 export const SHARE_MISSES_PER_IP: RateLimitRule = { limit: 30, windowSeconds: HOUR };
 
 /**
+ * The public "Request service" form. A real customer sends one, perhaps two;
+ * five an hour from one address is somebody testing it or something worse.
+ * The business-wide ceiling keeps a flood from many addresses from burying
+ * the leads board (and the photos from filling the business's storage).
+ */
+export const REQUESTS_PER_IP: RateLimitRule = { limit: 5, windowSeconds: HOUR };
+export const REQUESTS_PER_BUSINESS: RateLimitRule = { limit: 60, windowSeconds: HOUR };
+
+/**
  * Counts one attempt against a key.
  *
  * Returns whether it is allowed *after* counting: the attempt that trips the

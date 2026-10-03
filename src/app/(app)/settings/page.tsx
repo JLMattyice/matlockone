@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { BusinessForm } from "./business-form";
+import { RequestsCard } from "./requests-card";
 
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -34,6 +35,13 @@ export default async function BusinessSettingsPage() {
         readOnly: !can(user, "settings:write"),
       }}
     />
+
+      <RequestsCard
+        slug={org.slug}
+        enabled={org.requestsEnabled}
+        brandColor={org.primaryColor}
+        writable={can(user, "settings:write")}
+      />
 
       <BuildStamp zone={zone} />
     </div>
