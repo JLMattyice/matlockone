@@ -370,7 +370,8 @@ export default async function InvoiceDetailPage({
         </Card>
 
         <div className="space-y-6 no-print">
-          {series || (writable && !cancelled) ? (
+          {/* A stage of billing an estimate is billed once, never on a schedule. */}
+          {series || (writable && !cancelled && !invoice.billingStage) ? (
             <RepeatCard
               invoice={invoice}
               series={series}

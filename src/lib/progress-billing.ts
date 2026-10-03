@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "./db";
 import { BP_DIVISOR, computeTotals, depositCentsFor, formatMoney } from "./money";
 import { allocateNumber } from "./numbering";
+import { formatIn, parseDateTimeLocal } from "./time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 /**
@@ -158,6 +159,7 @@ type OrgForBilling = {
   labelEstimateSingular: string;
   defaultPaymentTermsDays: number;
   invoiceFooter: string | null;
+  timeZone: string;
 };
 
 export type StageRequest =
@@ -167,8 +169,14 @@ export type StageRequest =
 
 export class BillingRefused extends Error {}
 
-function dueDate(issueDate: Date, days: number) {
-  return new Date(issueDate.getTime() + days * 24 * 60 * 60 * 1000);
+/**
+ * The end of the due day in the business's own time zone. A deposit is due
+ * the day it is asked for, and an invoice judged overdue the moment its due
+ * time passes must not be overdue the second it is made.
+ */
+function dueDate(issueDate: Date, days: number, zone: string) {
+  const day = formatIn(new Date(issueDate.getTime() + days * 24 * 60 * 60 * 1000), "yyyy-MM-dd", zone);
+  return parseDateTimeLocal(`${day}T23:59`, zone) ?? issueDate;
 }
 
 /**
@@ -287,7 +295,7 @@ export async function createStageInvoice(
       billingStage: request.stage,
       issueDate: now,
       paymentTermsDays: request.stage === "DEPOSIT" ? 0 : org.defaultPaymentTermsDays,
-      dueDate: dueDate(now, request.stage === "DEPOSIT" ? 0 : org.defaultPaymentTermsDays),
+      dueDate: dueDate(now, request.stage === "DEPOSIT" ? 0 : org.defaultPaymentTermsDays, org.timeZone),
       subtotalCents: totals.subtotalCents,
       discountType: discount.type,
       discountValue: discount.value,
@@ -359,4 +367,5 @@ export const ORG_BILLING_SELECT = {
   labelEstimateSingular: true,
   defaultPaymentTermsDays: true,
   invoiceFooter: true,
+  timeZone: true,
 } as const;

@@ -338,7 +338,7 @@ function TotalRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <dt className="text-ink-muted">{label}</dt>
-      <dd className="tabular font-medium text-ink">{children}</dd>
+      <dd className="tabular font-medium whitespace-nowrap text-ink">{children}</dd>
     </div>
   );
 }
