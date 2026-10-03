@@ -573,6 +573,18 @@ model Estimate {
   declinedAt    DateTime?
   declineReason String?
 
+  /// The customer's electronic signature, when they accepted on the link:
+  /// the name they typed after ticking "I agree", when, and from where. The
+  /// hash and snapshot are of exactly what they saw — lines, totals, terms —
+  /// so the record shows what was agreed even if anything here changes.
+  /// Null for an estimate accepted by the office on the customer's word.
+  signedName      String?
+  signedAt        DateTime?
+  signedIp        String?
+  signedUserAgent String?
+  signedHash      String?
+  signedSnapshot  String?
+
   subtotalCents Int    @default(0)
   discountType  String @default("NONE") // NONE | PERCENT | FIXED
   discountValue Int    @default(0) // basis points when PERCENT, cents when FIXED

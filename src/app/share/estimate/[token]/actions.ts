@@ -1,11 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
+import { record } from "@/lib/activity";
+import { isRole } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
+import {
+  cleanSignatureName,
+  requestAddress,
+  signedSnapshot,
+  snapshotHash,
+} from "@/lib/estimate-signature";
+import { notify } from "@/lib/notifications";
+import { can } from "@/lib/permissions";
 import { retryAfterPhrase } from "@/lib/rate-limit";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
+import { runEventWorkflows } from "@/lib/workflows/run";
 
 /**
  * Actions on the public estimate link.
@@ -57,10 +69,31 @@ export async function markEstimateViewed(token: string) {
 
 export type RespondResult = { ok: boolean; error?: string };
 
+/** Who hears that a customer answered: everyone who works on estimates, and whoever wrote it. */
+async function whoHears(organizationId: string, createdById: string | null) {
+  const people = await prisma.user.findMany({
+    where: { organizationId, isActive: true },
+    select: { id: true, role: true },
+  });
+  return people
+    .filter(
+      (person) =>
+        person.id === createdById ||
+        (isRole(person.role) && can({ role: person.role, id: person.id }, "estimates:write")),
+    )
+    .map((person) => person.id);
+}
+
+/**
+ * The customer accepts or declines. Accepting takes a signature: the name
+ * they typed and their tick against "I agree". The office hears either way,
+ * and an acceptance starts the "quote accepted" automation just as marking
+ * it accepted in the office does.
+ */
 export async function respondToEstimate(
   token: string,
   decision: "ACCEPTED" | "DECLINED",
-  reason?: string,
+  answer: { reason?: string; signature?: { name: string; agreed: boolean } } = {},
 ): Promise<RespondResult> {
   if (!token) return { ok: false, error: "This link is no longer valid." };
 
@@ -74,7 +107,37 @@ export async function respondToEstimate(
 
   const estimate = await prisma.estimate.findUnique({
     where: { publicToken: token },
-    select: { id: true, status: true, expiresAt: true, organization: { select: { isDemo: true } } },
+    select: {
+      id: true,
+      organizationId: true,
+      number: true,
+      title: true,
+      status: true,
+      issueDate: true,
+      expiresAt: true,
+      subtotalCents: true,
+      discountCents: true,
+      taxRateBp: true,
+      taxCents: true,
+      totalCents: true,
+      notes: true,
+      terms: true,
+      clientId: true,
+      createdById: true,
+      client: { select: { displayName: true } },
+      lineItems: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          name: true,
+          description: true,
+          quantity: true,
+          unit: true,
+          unitPriceCents: true,
+          totalCents: true,
+        },
+      },
+      organization: { select: { isDemo: true, labelEstimateSingular: true, estimateFooter: true } },
+    },
   });
   if (!estimate) {
     await shareMissed();
@@ -109,19 +172,92 @@ export async function respondToEstimate(
   }
 
   const now = new Date();
+  const accepted = decision === "ACCEPTED";
+  let signer = "";
 
-  await prisma.estimate.update({
-    where: { id: estimate.id },
-    data:
-      decision === "ACCEPTED"
-        ? { status: "ACCEPTED", acceptedAt: now, viewedAt: now }
-        : {
-            status: "DECLINED",
-            declinedAt: now,
-            viewedAt: now,
-            declineReason: reason?.trim()?.slice(0, 500) || null,
-          },
+  if (accepted) {
+    const name = cleanSignatureName(answer.signature?.name);
+    if (!name) return { ok: false, error: "Type your full name to sign." };
+    if (answer.signature?.agreed !== true) {
+      return { ok: false, error: "Tick the box to agree to this estimate." };
+    }
+    signer = name;
+
+    const request = await headers();
+    // The terms as the page showed them: the estimate's own, else the
+    // business's standard footer.
+    const snapshot = signedSnapshot({
+      ...estimate,
+      terms: estimate.terms ?? estimate.organization.estimateFooter,
+    });
+
+    // Only an estimate still out for a decision changes: two taps of Accept,
+    // or an answer racing the office, cannot sign it twice.
+    const { count } = await prisma.estimate.updateMany({
+      where: { id: estimate.id, status: { in: ["SENT", "VIEWED"] } },
+      data: {
+        status: "ACCEPTED",
+        acceptedAt: now,
+        viewedAt: now,
+        signedName: name,
+        signedAt: now,
+        signedIp: requestAddress(request),
+        signedUserAgent: request.get("user-agent")?.slice(0, 300) ?? null,
+        signedHash: snapshotHash(snapshot),
+        signedSnapshot: snapshot,
+      },
+    });
+    if (count === 0) return { ok: false, error: "This estimate was already answered." };
+  } else {
+    const { count } = await prisma.estimate.updateMany({
+      where: { id: estimate.id, status: { in: ["SENT", "VIEWED"] } },
+      data: {
+        status: "DECLINED",
+        declinedAt: now,
+        viewedAt: now,
+        declineReason: answer.reason?.trim()?.slice(0, 500) || null,
+      },
+    });
+    if (count === 0) return { ok: false, error: "This estimate was already answered." };
+  }
+
+  const label = estimate.organization.labelEstimateSingular;
+  const customer = estimate.client.displayName;
+
+  await record({
+    organizationId: estimate.organizationId,
+    userId: null,
+    action: accepted ? "estimate.accepted" : "estimate.declined",
+    entityType: "ESTIMATE",
+    entityId: estimate.id,
+    summary: accepted
+      ? `${label} ${estimate.number} accepted and signed by ${signer}`
+      : `${label} ${estimate.number} declined by ${customer}`,
   });
+
+  await notify({
+    organizationId: estimate.organizationId,
+    userIds: await whoHears(estimate.organizationId, estimate.createdById),
+    type: "ESTIMATE_RESPONSE",
+    title: accepted
+      ? `${customer} accepted ${label.toLowerCase()} ${estimate.number}`
+      : `${customer} declined ${label.toLowerCase()} ${estimate.number}`,
+    body: accepted ? `Signed by ${signer}.` : answer.reason?.trim()?.slice(0, 500) || null,
+    entityType: "ESTIMATE",
+    entityId: estimate.id,
+    actionUrl: `/estimates/${estimate.id}`,
+  });
+
+  if (accepted) {
+    await runEventWorkflows("estimate.accepted", {
+      organizationId: estimate.organizationId,
+      entityType: "ESTIMATE",
+      entityId: estimate.id,
+      subject: customer,
+      document: estimate.number,
+      clientId: estimate.clientId,
+    });
+  }
 
   revalidatePath(`/share/estimate/${token}`);
   revalidatePath(`/estimates/${estimate.id}`);

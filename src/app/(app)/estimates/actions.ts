@@ -380,6 +380,20 @@ export async function sendEstimate(
 
 // ------------------------------------------------------------------ status ---
 
+/**
+ * The office overruling a signed acceptance takes the signature off the
+ * estimate: it no longer describes the estimate's state. The activity log
+ * still says who signed and when.
+ */
+const NO_SIGNATURE = {
+  signedName: null,
+  signedAt: null,
+  signedIp: null,
+  signedUserAgent: null,
+  signedHash: null,
+  signedSnapshot: null,
+} as const;
+
 /** Records a response the client gave over the phone or in person. */
 export async function setEstimateResponse(formData: FormData) {
   const { user, org } = await requirePermission("estimates:write");
@@ -409,8 +423,9 @@ export async function setEstimateResponse(formData: FormData) {
             declinedAt: now,
             acceptedAt: null,
             declineReason: text(formData, "declineReason") ?? null,
+            ...NO_SIGNATURE,
           }
-        : { status: "SENT", acceptedAt: null, declinedAt: null, declineReason: null };
+        : { status: "SENT", acceptedAt: null, declinedAt: null, declineReason: null, ...NO_SIGNATURE };
 
   await prisma.estimate.update({ where: { id }, data });
 

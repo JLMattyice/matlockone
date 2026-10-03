@@ -71,6 +71,11 @@ export default function PrivacyPage() {
               invoices, payments, expenses, time, notes, files, photos and team messages.
             </>,
             <>
+              <strong>Your customers’ signatures:</strong> when a customer accepts an estimate
+              online, the name they type to sign, the time, and the internet address and browser
+              they used are kept with the estimate, with a copy of what they agreed to.
+            </>,
+            <>
               <strong>Accounts you connect:</strong> the passwords and keys for the email account,
               payment processor and QuickBooks company you link to Matlock One. These are encrypted
               (AES-256-GCM) and only unlocked at the moment they’re used.

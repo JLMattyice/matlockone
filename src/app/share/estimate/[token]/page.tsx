@@ -10,6 +10,7 @@ import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
 import { effectiveEstimateStatus, isEstimateOpen } from "@/lib/documents";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
+import { formatIn } from "@/lib/time-zone";
 import { DEFAULT_BRAND_COLOR, formatPhone, hexToRgbChannels } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -65,6 +66,7 @@ export default async function PublicEstimatePage({
           expiresAt={estimate.expiresAt}
           acceptedAt={estimate.acceptedAt}
           declinedAt={estimate.declinedAt}
+          signedName={estimate.signedName}
         />
 
         <div className="overflow-hidden rounded-card border border-line shadow-xs">
@@ -91,11 +93,18 @@ export default async function PublicEstimatePage({
             currency={org.currency}
             locale={org.locale}
           />
+          {estimate.signedName && estimate.signedAt ? (
+            <p className="border-t border-line bg-surface px-6 py-4 text-sm text-ink-muted">
+              Accepted and signed electronically by{" "}
+              <span className="font-medium text-ink">{estimate.signedName}</span> on{" "}
+              {formatIn(estimate.signedAt, "MMMM d, yyyy 'at' h:mm a", org.timeZone)}.
+            </p>
+          ) : null}
         </div>
 
         {open ? (
           <div className="no-print">
-            <RespondPanel token={token} brandColor={brand} />
+            <RespondPanel token={token} brandColor={brand} businessName={org.name} />
           </div>
         ) : null}
 
@@ -114,16 +123,18 @@ function StatusBanner({
   expiresAt,
   acceptedAt,
   declinedAt,
+  signedName,
 }: {
   status: string;
   expiresAt: Date | null;
   acceptedAt: Date | null;
   declinedAt: Date | null;
+  signedName: string | null;
 }) {
   if (status === "ACCEPTED") {
     return (
       <Banner tone="success" icon={<Check className="h-4 w-4" strokeWidth={2.5} />}>
-        You accepted this estimate
+        {signedName ? `Accepted and signed by ${signedName}` : "You accepted this estimate"}
         {acceptedAt ? ` on ${format(acceptedAt, "MMMM d, yyyy")}` : ""}. We will
         be in touch to arrange the work.
       </Banner>

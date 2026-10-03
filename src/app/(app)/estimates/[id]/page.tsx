@@ -237,9 +237,42 @@ export default async function EstimateDetailPage({
             currency={org.currency}
             locale={org.locale}
           />
+          {estimate.signedName && estimate.signedAt ? (
+            <p className="border-t border-line px-6 py-4 text-sm text-ink-muted">
+              Accepted and signed electronically by{" "}
+              <span className="font-medium text-ink">{estimate.signedName}</span> on{" "}
+              {formatIn(estimate.signedAt, "MMMM d, yyyy 'at' h:mm a", zone)}.
+            </p>
+          ) : null}
         </Card>
 
         <div className="space-y-6 no-print">
+          {estimate.signedName && estimate.signedAt ? (
+            <Card>
+              <CardHeader
+                title="Signature"
+                description="The customer accepted on their link and signed by typing their name."
+              />
+              <dl className="divide-y divide-line text-sm">
+                <Row label="Signed by">{estimate.signedName}</Row>
+                <Row label="When">{formatIn(estimate.signedAt, "MMM d, yyyy 'at' h:mm:ss a", zone)}</Row>
+                {estimate.signedIp ? <Row label="From">{estimate.signedIp}</Row> : null}
+                {estimate.signedUserAgent ? (
+                  <Row label="Browser">
+                    <span className="break-all text-xs">{estimate.signedUserAgent}</span>
+                  </Row>
+                ) : null}
+                {estimate.signedHash ? (
+                  <Row label="Version">
+                    <span className="font-mono text-xs" title={estimate.signedHash}>
+                      {estimate.signedHash.slice(0, 12)}
+                    </span>
+                  </Row>
+                ) : null}
+              </dl>
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader title="Details" />
             <dl className="divide-y divide-line text-sm">
