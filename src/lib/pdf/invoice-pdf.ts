@@ -61,6 +61,9 @@ export type InvoicePdfInput = {
     taxCents: number;
     discountCents: number;
     totalCents: number;
+    /** A final invoice's earlier stages, taken off after tax. */
+    creditCents?: number;
+    creditLabel?: string | null;
     amountPaidCents: number;
     balanceCents: number;
     notes?: string | null;
@@ -453,6 +456,9 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     totalRow("Discount", `-${money(invoice.discountCents)}`);
   }
   if (invoice.taxCents > 0) totalRow("Tax", money(invoice.taxCents));
+  if (invoice.creditCents) {
+    totalRow(invoice.creditLabel ?? "Previously billed", `-${money(invoice.creditCents)}`);
+  }
   totalRow("Total", money(invoice.totalCents), { strong: true });
 
   if (invoice.amountPaidCents > 0) {

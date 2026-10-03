@@ -186,6 +186,7 @@ export async function getEstimateByToken(token: string) {
       signedName: true,
       signedAt: true,
       subtotalCents: true,
+      depositCents: true,
       discountType: true,
       discountCents: true,
       taxRateBp: true,

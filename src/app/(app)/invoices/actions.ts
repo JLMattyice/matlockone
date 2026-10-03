@@ -14,6 +14,7 @@ import {
 import { record } from "@/lib/activity";
 import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
+import { priorBilling } from "@/lib/progress-billing";
 import { sendToQuickBooksSoon } from "@/lib/quickbooks/sync";
 import { recalculateInvoice } from "@/lib/invoice-balance";
 import { publicUrl, sendMessage } from "@/lib/messaging";
@@ -88,8 +89,12 @@ function parseDate(value: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/** Recomputed server-side; the editor's running total is feedback only. */
-function totalsFor(input: InvoiceInput) {
+/**
+ * Recomputed server-side; the editor's running total is feedback only. A
+ * final invoice's credit is never taken from the form — it is what the
+ * earlier stages billed, read fresh.
+ */
+function totalsFor(input: InvoiceInput, creditCents = 0) {
   return computeTotals({
     lineItems: input.lineItems.map((item) => ({
       quantity: item.quantity,
@@ -99,6 +104,7 @@ function totalsFor(input: InvoiceInput) {
     discountType: input.discountType,
     discountValue: input.discountValue,
     taxRateBp: input.taxRateBp,
+    creditCents,
   });
 }
 
@@ -222,7 +228,7 @@ export async function updateInvoice(
 
   const existing = await prisma.invoice.findFirst({
     where: { id, organizationId: org.id },
-    select: { status: true, amountPaidCents: true },
+    select: { status: true, amountPaidCents: true, billingStage: true, estimateId: true },
   });
   if (!existing) return failed("That invoice no longer exists.");
 
@@ -246,12 +252,17 @@ export async function updateInvoice(
   if (!refs) return { ok: false, fieldErrors: { clientId: "Choose a client." } };
 
   const issueDate = parseDate(input.issueDate) ?? new Date();
-  const totals = totalsFor(input);
+  const prior =
+    existing.billingStage === "FINAL" && existing.estimateId
+      ? await priorBilling(prisma, existing.estimateId, { excludeInvoiceId: id })
+      : null;
+  const totals = totalsFor(input, prior?.cents ?? 0);
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.invoice.update({
       where: { id },
       data: {
+        ...(prior ? { creditCents: totals.creditCents, creditLabel: prior.label } : {}),
         title: input.title ?? null,
         clientId: refs.clientId,
         addressId: refs.addressId,

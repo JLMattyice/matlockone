@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
-import { asStatus, DISCOUNT_TYPES, type DiscountType } from "@/lib/constants";
+import { asStatus, DISCOUNT_TYPES, isDiscountType, type DiscountType } from "@/lib/constants";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import { lineToDraft } from "@/lib/line-draft";
 import { centsToInput, currencySymbol } from "@/lib/money";
@@ -101,6 +101,13 @@ export default async function EditEstimatePage({
                 ? centsToInput(estimate.discountValue)
                 : "",
           taxRate: (estimate.taxRateBp / 100).toString(),
+          depositType: isDiscountType(estimate.depositType) ? estimate.depositType : "NONE",
+          depositValue:
+            estimate.depositType === "PERCENT"
+              ? (estimate.depositValue / 100).toString()
+              : estimate.depositType === "FIXED"
+                ? centsToInput(estimate.depositValue)
+                : "",
           lines: estimate.lineItems.map(lineToDraft),
         }}
       />

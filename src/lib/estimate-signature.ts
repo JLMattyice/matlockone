@@ -25,6 +25,8 @@ export type SignableEstimate = {
   taxRateBp: number;
   taxCents: number;
   totalCents: number;
+  /** The deposit agreed to with it, when one was asked for. */
+  depositCents?: number;
   notes: string | null;
   terms: string | null;
   lineItems: {
@@ -57,6 +59,7 @@ export function signedSnapshot(estimate: SignableEstimate): string {
     taxRateBp: estimate.taxRateBp,
     taxCents: estimate.taxCents,
     totalCents: estimate.totalCents,
+    depositCents: estimate.depositCents ?? 0,
     notes: estimate.notes,
     terms: estimate.terms,
   });

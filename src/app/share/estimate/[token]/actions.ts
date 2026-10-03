@@ -13,8 +13,15 @@ import {
   signedSnapshot,
   snapshotHash,
 } from "@/lib/estimate-signature";
+import { formatMoney } from "@/lib/money";
 import { notify } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
+import {
+  createStageInvoice,
+  ESTIMATE_BILLING_SELECT,
+  ORG_BILLING_SELECT,
+} from "@/lib/progress-billing";
+import { sendToQuickBooksSoon } from "@/lib/quickbooks/sync";
 import { retryAfterPhrase } from "@/lib/rate-limit";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
 import { runEventWorkflows } from "@/lib/workflows/run";
@@ -69,6 +76,39 @@ export async function markEstimateViewed(token: string) {
 
 export type RespondResult = { ok: boolean; error?: string };
 
+/** The deposit invoice for an estimate that asks for one, made as sent. */
+async function billDepositOnAcceptance(estimateId: string, organizationId: string) {
+  const estimate = await prisma.estimate.findUnique({
+    where: { id: estimateId },
+    select: ESTIMATE_BILLING_SELECT,
+  });
+  if (!estimate || estimate.depositCents <= 0) return null;
+
+  const org = await prisma.organization.findUniqueOrThrow({
+    where: { id: organizationId },
+    select: ORG_BILLING_SELECT,
+  });
+
+  try {
+    const created = await prisma.$transaction((tx) =>
+      createStageInvoice(tx, {
+        org,
+        estimate,
+        request: { stage: "DEPOSIT" },
+        createdById: null,
+        sent: true,
+      }),
+    );
+    await sendToQuickBooksSoon(organizationId, { invoices: [created.id] }).catch(() => {});
+    return { number: created.number, amount: formatMoney(estimate.depositCents, org.currency, org.locale) };
+  } catch (error) {
+    // The acceptance stands either way; the office can bill the deposit
+    // from the estimate's Billing card.
+    console.error(`[estimates] could not bill the deposit on ${estimateId}:`, error);
+    return null;
+  }
+}
+
 /** Who hears that a customer answered: everyone who works on estimates, and whoever wrote it. */
 async function whoHears(organizationId: string, createdById: string | null) {
   const people = await prisma.user.findMany({
@@ -120,6 +160,7 @@ export async function respondToEstimate(
       taxRateBp: true,
       taxCents: true,
       totalCents: true,
+      depositCents: true,
       notes: true,
       terms: true,
       clientId: true,
@@ -224,6 +265,14 @@ export async function respondToEstimate(
   const label = estimate.organization.labelEstimateSingular;
   const customer = estimate.client.displayName;
 
+  // A deposit asked for is billed the moment it is agreed to, ready for the
+  // customer to pay from the page they are on.
+  let depositNote = "";
+  if (accepted) {
+    const deposit = await billDepositOnAcceptance(estimate.id, estimate.organizationId);
+    if (deposit) depositNote = ` Their deposit invoice ${deposit.number} (${deposit.amount}) is ready for them to pay.`;
+  }
+
   await record({
     organizationId: estimate.organizationId,
     userId: null,
@@ -242,7 +291,7 @@ export async function respondToEstimate(
     title: accepted
       ? `${customer} accepted ${label.toLowerCase()} ${estimate.number}`
       : `${customer} declined ${label.toLowerCase()} ${estimate.number}`,
-    body: accepted ? `Signed by ${signer}.` : answer.reason?.trim()?.slice(0, 500) || null,
+    body: accepted ? `Signed by ${signer}.${depositNote}` : answer.reason?.trim()?.slice(0, 500) || null,
     entityType: "ESTIMATE",
     entityId: estimate.id,
     actionUrl: `/estimates/${estimate.id}`,

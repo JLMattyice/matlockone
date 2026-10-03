@@ -593,6 +593,13 @@ model Estimate {
   taxCents      Int    @default(0)
   totalCents    Int    @default(0)
 
+  /// A deposit asked for on acceptance: NONE, a PERCENT of the total (basis
+  /// points in depositValue) or a FIXED amount (cents). depositCents is the
+  /// amount it comes to, kept with the totals it was worked out from.
+  depositType  String @default("NONE")
+  depositValue Int    @default(0)
+  depositCents Int    @default(0)
+
   notes       String?
   terms       String?
   /// The whole credential for the public link, so it is 32 characters from a
@@ -677,6 +684,15 @@ model Invoice {
   totalCents      Int    @default(0)
   amountPaidCents Int    @default(0)
   balanceCents    Int    @default(0)
+
+  /// Billing a job in parts against its estimate: DEPOSIT, PROGRESS or the
+  /// FINAL invoice; null for an ordinary invoice.
+  billingStage String?
+  /// On a final invoice, what the deposit and progress invoices already
+  /// billed, taken off after tax so the tax is still the whole job's.
+  /// totalCents is net of it. creditLabel names those invoices.
+  creditCents Int     @default(0)
+  creditLabel String?
 
   notes       String?
   terms       String?

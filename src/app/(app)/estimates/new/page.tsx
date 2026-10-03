@@ -69,6 +69,8 @@ export default async function NewEstimatePage({
           discountType: "NONE",
           discountValue: "",
           taxRate: (org.defaultTaxRateBp / 100).toString(),
+          depositType: "NONE",
+          depositValue: "",
           lines: [blankLine()],
         }}
       />

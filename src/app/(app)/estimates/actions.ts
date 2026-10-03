@@ -12,7 +12,20 @@ import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import { publicUrl, sendMessage } from "@/lib/messaging";
-import { computeTotals, formatMoney } from "@/lib/money";
+import {
+  computeTotals,
+  depositCentsFor,
+  formatMoney,
+  parseMoneyToCents,
+  parseRateToBp,
+} from "@/lib/money";
+import {
+  BillingRefused,
+  createStageInvoice,
+  ESTIMATE_BILLING_SELECT,
+  ORG_BILLING_SELECT,
+  type StageRequest,
+} from "@/lib/progress-billing";
 import { allocateNumber } from "@/lib/numbering";
 import { parseDateTimeLocal } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
@@ -40,6 +53,9 @@ const estimateSchema = z.object({
   /** Basis points when PERCENT, cents when FIXED. */
   discountValue: z.coerce.number().int().min(0).max(100_000_000),
   taxRateBp: z.coerce.number().int().min(0).max(10_000),
+  /** Basis points when PERCENT, cents when FIXED; a deposit asked on acceptance. */
+  depositType: z.enum(DISCOUNT_TYPES).default("NONE"),
+  depositValue: z.coerce.number().int().min(0).max(100_000_000).default(0),
   notes: z.string().trim().nullish(),
   terms: z.string().trim().nullish(),
   lineItems: z.array(lineItemSchema).min(1, "Add at least one line."),
@@ -67,6 +83,8 @@ function parseEstimateForm(formData: FormData) {
     discountType: formData.get("discountType") ?? "NONE",
     discountValue: formData.get("discountValue") ?? 0,
     taxRateBp: formData.get("taxRateBp") ?? 0,
+    depositType: formData.get("depositType") ?? "NONE",
+    depositValue: formData.get("depositValue") ?? 0,
     notes: text(formData, "notes"),
     terms: text(formData, "terms"),
     lineItems,
@@ -117,6 +135,16 @@ async function resolveClientAndAddress(
   });
 
   return { clientId: client.id, addressId: address?.id ?? null };
+}
+
+/** The deposit as saved: the owner's choice, and what it comes to on these totals. */
+function depositFields(input: EstimateInput, totalCents: number) {
+  const value = input.depositType === "PERCENT" ? Math.min(input.depositValue, 10_000) : input.depositValue;
+  return {
+    depositType: input.depositType,
+    depositValue: input.depositType === "NONE" ? 0 : value,
+    depositCents: depositCentsFor(totalCents, input.depositType, value),
+  };
 }
 
 function lineItemRows(input: EstimateInput, lineTotals: number[]) {
@@ -184,6 +212,7 @@ export async function createEstimate(
           taxRateBp: input.taxRateBp,
           taxCents: totals.taxCents,
           totalCents: totals.totalCents,
+          ...depositFields(input, totals.totalCents),
           notes: input.notes ?? null,
           terms: input.terms ?? org.estimateFooter,
           createdById: user.id,
@@ -256,6 +285,7 @@ export async function updateEstimate(
         taxRateBp: input.taxRateBp,
         taxCents: totals.taxCents,
         totalCents: totals.totalCents,
+        ...depositFields(input, totals.totalCents),
         notes: input.notes ?? null,
         terms: input.terms ?? null,
       },
@@ -572,6 +602,9 @@ export async function duplicateEstimate(formData: FormData) {
           taxRateBp: source.taxRateBp,
           taxCents: source.taxCents,
           totalCents: source.totalCents,
+          depositType: source.depositType,
+          depositValue: source.depositValue,
+          depositCents: source.depositCents,
           notes: source.notes,
           terms: source.terms,
           createdById: user.id,
@@ -625,4 +658,71 @@ export async function deleteEstimate(formData: FormData) {
 
   revalidatePath("/estimates");
   redirect("/estimates");
+}
+
+// ----------------------------------------------------------------- billing ---
+
+/**
+ * Bills part of an accepted estimate: its deposit, a progress share (a
+ * percent or an amount of the estimate's total), or the final invoice — the
+ * whole estimate less what the earlier stages billed. Each is made as a draft
+ * for the office to look over and send.
+ */
+export async function billEstimate(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { user, org } = await requirePermission("invoices:write");
+
+  const id = text(formData, "id");
+  const stage = text(formData, "stage");
+  if (!id || (stage !== "DEPOSIT" && stage !== "PROGRESS" && stage !== "FINAL")) {
+    return failed("Choose what to bill.");
+  }
+
+  const estimate = await prisma.estimate.findFirst({
+    where: { id, organizationId: org.id },
+    select: ESTIMATE_BILLING_SELECT,
+  });
+  if (!estimate) return failed("That estimate no longer exists.");
+  if (estimate.status !== "ACCEPTED") return failed("Only an accepted estimate can be billed in parts.");
+
+  let request: StageRequest;
+  if (stage === "PROGRESS") {
+    const mode = text(formData, "mode");
+    const raw = text(formData, "value") ?? "";
+    if (mode === "PERCENT") {
+      const bp = parseRateToBp(raw);
+      if (!bp || bp <= 0 || bp > 10_000) return failed("Enter a percentage between 0 and 100.");
+      request = { stage, percentBp: bp };
+    } else {
+      const cents = parseMoneyToCents(raw);
+      if (!cents || cents <= 0) return failed("Enter an amount to bill.");
+      request = { stage, amountCents: cents };
+    }
+  } else {
+    request = { stage };
+  }
+
+  const billingOrg = await prisma.organization.findUniqueOrThrow({
+    where: { id: org.id },
+    select: ORG_BILLING_SELECT,
+  });
+
+  let invoiceId: string;
+  try {
+    invoiceId = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await createStageInvoice(tx, {
+        org: billingOrg,
+        estimate,
+        request,
+        createdById: user.id,
+      });
+      return created.id;
+    });
+  } catch (error) {
+    if (error instanceof BillingRefused) return failed(error.message);
+    throw error;
+  }
+
+  revalidatePath(`/estimates/${id}`);
+  revalidatePath("/invoices");
+  redirect(`/invoices/${invoiceId}`);
 }

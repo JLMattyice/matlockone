@@ -9,6 +9,8 @@ import { getEstimateByToken } from "@/app/(app)/estimates/queries";
 import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
 import { effectiveEstimateStatus, isEstimateOpen } from "@/lib/documents";
+import { formatMoney } from "@/lib/money";
+import { estimateBilling } from "@/lib/progress-billing";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
 import { formatIn } from "@/lib/time-zone";
 import { DEFAULT_BRAND_COLOR, formatPhone, hexToRgbChannels } from "@/lib/utils";
@@ -41,6 +43,12 @@ export default async function PublicEstimatePage({
   const status = effectiveEstimateStatus(estimate);
   const open = isEstimateOpen(status);
   const brand = hexToRgbChannels(org.primaryColor) ? org.primaryColor : DEFAULT_BRAND_COLOR;
+  const billing = status === "ACCEPTED" ? await estimateBilling(estimate.id) : null;
+  const depositDue =
+    billing?.deposit && billing.deposit.balanceCents > 0 && billing.deposit.status !== "CANCELLED"
+      ? billing.deposit
+      : null;
+  const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
 
   return (
     <div
@@ -69,6 +77,24 @@ export default async function PublicEstimatePage({
           signedName={estimate.signedName}
         />
 
+        {depositDue ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-surface p-5 no-print">
+            <div>
+              <p className="text-base font-semibold text-ink">Your deposit: {money(depositDue.balanceCents)}</p>
+              <p className="mt-0.5 text-sm text-ink-muted">
+                Paying it lets {org.name} book the work in.
+              </p>
+            </div>
+            <a
+              href={`/share/invoice/${depositDue.publicToken}`}
+              style={{ backgroundColor: brand }}
+              className="inline-flex h-11 items-center rounded-lg px-5 text-sm font-medium text-white shadow-sm transition-[filter] hover:brightness-110"
+            >
+              Pay your deposit
+            </a>
+          </div>
+        ) : null}
+
         <div className="overflow-hidden rounded-card border border-line shadow-xs">
           <DocumentView
             org={org}
@@ -87,6 +113,7 @@ export default async function PublicEstimatePage({
               taxRateBp: estimate.taxRateBp,
               taxCents: estimate.taxCents,
               totalCents: estimate.totalCents,
+              depositCents: estimate.depositCents,
             }}
             notes={estimate.notes}
             terms={estimate.terms ?? org.estimateFooter}
@@ -104,7 +131,12 @@ export default async function PublicEstimatePage({
 
         {open ? (
           <div className="no-print">
-            <RespondPanel token={token} brandColor={brand} businessName={org.name} />
+            <RespondPanel
+              token={token}
+              brandColor={brand}
+              businessName={org.name}
+              depositText={estimate.depositCents > 0 ? money(estimate.depositCents) : null}
+            />
           </div>
         ) : null}
 

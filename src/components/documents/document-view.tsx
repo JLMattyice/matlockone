@@ -54,6 +54,11 @@ export type DocumentTotals = {
   totalCents: number;
   amountPaidCents?: number;
   balanceCents?: number;
+  /** A final invoice's earlier stages, taken off after tax. */
+  creditCents?: number;
+  creditLabel?: string | null;
+  /** An estimate's deposit, due when it is accepted. */
+  depositCents?: number;
 };
 
 export function DocumentView({
@@ -256,6 +261,12 @@ export function DocumentView({
             </TotalRow>
           ) : null}
 
+          {totals.creditCents ? (
+            <TotalRow label={totals.creditLabel ?? "Previously billed"}>
+              −{money(totals.creditCents)}
+            </TotalRow>
+          ) : null}
+
           <div
             className="flex items-center justify-between gap-4 border-t pt-2"
             style={{ borderColor: accent }}
@@ -268,6 +279,10 @@ export function DocumentView({
               {money(totals.totalCents)}
             </dd>
           </div>
+
+          {totals.depositCents ? (
+            <TotalRow label="Deposit due on acceptance">{money(totals.depositCents)}</TotalRow>
+          ) : null}
 
           {totals.amountPaidCents !== undefined &&
           totals.amountPaidCents > 0 ? (

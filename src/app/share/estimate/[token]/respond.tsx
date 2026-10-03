@@ -38,10 +38,13 @@ export function RespondPanel({
   token,
   brandColor,
   businessName,
+  depositText,
 }: {
   token: string;
   brandColor: string;
   businessName: string;
+  /** The deposit due on accepting, formatted, when the estimate asks for one. */
+  depositText?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -115,7 +118,8 @@ export function RespondPanel({
               style={{ accentColor: brandColor }}
             />
             <span>
-              I agree to this estimate from {businessName}, its prices and its terms, and that
+              I agree to this estimate from {businessName}, its prices and its terms
+              {depositText ? `, including a deposit of ${depositText} due now` : ""}, and that
               typing my name above is my electronic signature.
             </span>
           </label>

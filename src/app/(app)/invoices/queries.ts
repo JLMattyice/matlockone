@@ -300,6 +300,8 @@ export async function getInvoiceByToken(token: string) {
       dueDate: true,
       viewedAt: true,
       subtotalCents: true,
+      creditCents: true,
+      creditLabel: true,
       discountCents: true,
       taxRateBp: true,
       taxCents: true,

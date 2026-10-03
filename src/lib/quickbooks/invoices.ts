@@ -25,6 +25,9 @@ export type InvoiceForQuickBooks = {
   notes: string | null;
   discountCents: number;
   taxCents: number;
+  /** A final invoice's earlier stages, taken off after tax. */
+  creditCents: number;
+  creditLabel: string | null;
   client: { email: string | null };
   lineItems: {
     kind: string;
@@ -99,6 +102,15 @@ async function linesFor(
   }
   if (invoice.taxCents > 0) {
     lines.push(line(await fallbackItem(connection, "SALES_TAX"), invoice.taxCents, "Sales tax"));
+  }
+  if (invoice.creditCents > 0) {
+    lines.push(
+      line(
+        await fallbackItem(connection, "PRIOR_BILLING"),
+        -invoice.creditCents,
+        invoice.creditLabel ?? "Previously billed",
+      ),
+    );
   }
   return lines;
 }

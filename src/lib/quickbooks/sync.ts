@@ -176,6 +176,8 @@ const INVOICE_SELECT = {
   notes: true,
   discountCents: true,
   taxCents: true,
+  creditCents: true,
+  creditLabel: true,
   clientId: true,
   updatedAt: true,
   client: { select: { email: true } },

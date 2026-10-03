@@ -52,6 +52,8 @@ export async function invoicePdfFor(org: Organization, invoiceId: string) {
       taxCents: invoice.taxCents,
       discountCents: invoice.discountCents,
       totalCents: invoice.totalCents,
+      creditCents: invoice.creditCents,
+      creditLabel: invoice.creditLabel,
       amountPaidCents: invoice.amountPaidCents,
       balanceCents: invoice.balanceCents,
       notes: invoice.notes,

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 
+import { EstimateBilling } from "./billing";
 import { ConvertToJob, CopyLink, SendEstimate } from "./estimate-actions";
 import { PrintButton } from "@/components/documents/print-button";
 import {
@@ -30,6 +31,7 @@ import { ESTIMATE_STATUS_META } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import { publicUrl } from "@/lib/messaging";
+import { estimateBilling } from "@/lib/progress-billing";
 import { can } from "@/lib/permissions";
 import { formatIn } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
@@ -62,6 +64,11 @@ export default async function EstimateDetailPage({
   const estimate = await getEstimate(org.id, id);
 
   const status = effectiveEstimateStatus(estimate);
+  // Billing in parts belongs to an accepted estimate, and stays shown for
+  // one that was billed before being reopened.
+  const billingState = await estimateBilling(estimate.id);
+  const billing =
+    billingState && (status === "ACCEPTED" || billingState.stages.length > 0) ? billingState : null;
   const meta = ESTIMATE_STATUS_META[status];
 
   const writable = can(user, "estimates:write");
@@ -231,6 +238,7 @@ export default async function EstimateDetailPage({
               taxRateBp: estimate.taxRateBp,
               taxCents: estimate.taxCents,
               totalCents: estimate.totalCents,
+              depositCents: estimate.depositCents,
             }}
             notes={estimate.notes}
             terms={estimate.terms}
@@ -247,6 +255,24 @@ export default async function EstimateDetailPage({
         </Card>
 
         <div className="space-y-6 no-print">
+          {billing ? (
+            <EstimateBilling
+              estimateId={estimate.id}
+              billing={{
+                totalCents: billing.totalCents,
+                depositCents: billing.depositCents,
+                billedCents: billing.billedCents,
+                remainingCents: billing.remainingCents,
+                hasDeposit: Boolean(billing.deposit),
+                hasFinal: Boolean(billing.final),
+                stages: billing.stages,
+              }}
+              currency={org.currency}
+              locale={org.locale}
+              canBill={can(user, "invoices:write")}
+            />
+          ) : null}
+
           {estimate.signedName && estimate.signedAt ? (
             <Card>
               <CardHeader

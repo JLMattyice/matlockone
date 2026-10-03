@@ -87,6 +87,11 @@ export type TotalsInput = {
   /** Basis points when PERCENT, cents when FIXED, ignored when NONE. */
   discountValue: number;
   taxRateBp: number;
+  /**
+   * Already billed, on a final invoice: taken off after tax, so the tax is
+   * the whole job's and only the amount still due changes.
+   */
+  creditCents?: number;
 };
 
 export type Totals = {
@@ -94,6 +99,8 @@ export type Totals = {
   subtotalCents: number;
   discountCents: number;
   taxCents: number;
+  /** The credit as applied — never more than the document comes to. */
+  creditCents: number;
   totalCents: number;
 };
 
@@ -139,9 +146,21 @@ export function computeTotals(input: TotalsInput): Totals {
   );
   const taxCents = Math.round((taxableBaseCents * input.taxRateBp) / BP_DIVISOR);
 
-  const totalCents = subtotalCents - discountCents + taxCents;
+  const grossCents = subtotalCents - discountCents + taxCents;
+  const creditCents = clamp(input.creditCents ?? 0, 0, Math.max(grossCents, 0));
+  const totalCents = grossCents - creditCents;
 
-  return { lineTotalsCents, subtotalCents, discountCents, taxCents, totalCents };
+  return { lineTotalsCents, subtotalCents, discountCents, taxCents, creditCents, totalCents };
+}
+
+/**
+ * What a deposit comes to: a percent of the total (basis points) or a fixed
+ * amount, never more than the total and never negative.
+ */
+export function depositCentsFor(totalCents: number, type: string, value: number): number {
+  if (type === "PERCENT") return clamp(Math.round((totalCents * value) / BP_DIVISOR), 0, Math.max(totalCents, 0));
+  if (type === "FIXED") return clamp(value, 0, Math.max(totalCents, 0));
+  return 0;
 }
 
 export function clamp(value: number, min: number, max: number) {

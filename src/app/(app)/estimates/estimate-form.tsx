@@ -45,6 +45,9 @@ export type EstimateFormValues = {
   discountType: DiscountType;
   discountValue: string;
   taxRate: string;
+  depositType: DiscountType;
+  /** Percent as "50", or a money string for a fixed amount. */
+  depositValue: string;
   lines: LineDraft[];
 };
 
@@ -211,6 +214,7 @@ export function EstimateForm({
             initialDiscountValue={values.discountValue}
             initialTaxRate={values.taxRate}
             taxExemptClient={client?.taxExempt ?? false}
+            deposit={{ initialType: values.depositType, initialValue: values.depositValue }}
           />
         </CardBody>
       </Card>

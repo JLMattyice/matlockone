@@ -82,6 +82,11 @@ export default async function EditInvoicePage({
       </div>
 
       <InvoiceForm
+        credit={
+          invoice.billingStage === "FINAL"
+            ? { cents: invoice.creditCents, label: invoice.creditLabel }
+            : undefined
+        }
         clients={clients}
         priceBook={book}
         currency={org.currency}

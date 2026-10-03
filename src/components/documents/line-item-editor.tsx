@@ -13,6 +13,7 @@ import {
 import { blankLine, type LineDraft } from "@/lib/line-draft";
 import {
   computeTotals,
+  depositCentsFor,
   formatMoney,
   parseMoneyToCents,
   parseRateToBp,
@@ -44,6 +45,8 @@ export function LineItemEditor({
   initialDiscountValue,
   initialTaxRate,
   taxExemptClient,
+  credit,
+  deposit,
 }: {
   initialLines: LineDraft[];
   priceBook: PriceBookOption[];
@@ -56,6 +59,10 @@ export function LineItemEditor({
   /** Percent, e.g. "7.25". */
   initialTaxRate: string;
   taxExemptClient: boolean;
+  /** A final invoice's earlier stages, taken off after tax. Shown, not edited. */
+  credit?: { cents: number; label: string | null };
+  /** An estimate's deposit on acceptance; present only where one can be asked for. */
+  deposit?: { initialType: DiscountType; initialValue: string };
 }) {
   const [lines, setLines] = useState<LineDraft[]>(
     initialLines.length ? initialLines : [blankLine()],
@@ -66,6 +73,8 @@ export function LineItemEditor({
   const [taxRate, setTaxRate] = useState(
     taxExemptClient ? "0" : initialTaxRate,
   );
+  const [depositType, setDepositType] = useState<DiscountType>(deposit?.initialType ?? "NONE");
+  const [depositValue, setDepositValue] = useState(deposit?.initialValue ?? "");
 
   function update(key: string, patch: Partial<LineDraft>) {
     setLines((current) =>
@@ -108,7 +117,7 @@ export function LineItemEditor({
   }
 
   // The same arithmetic the server runs on submit — this is feedback only.
-  const { totals, discountBpOrCents, taxRateBp, serialized } = useMemo(() => {
+  const { totals, discountBpOrCents, taxRateBp, serialized, depositRaw, depositCents } = useMemo(() => {
     const parsed = lines
       .filter((line) => line.name.trim() !== "")
       .map((line) => ({
@@ -130,22 +139,34 @@ export function LineItemEditor({
 
     const rateBp = parseRateToBp(taxRate) ?? 0;
 
+    const computed = computeTotals({
+      lineItems: parsed.map((line) => ({
+        quantity: line.quantity,
+        unitPriceCents: line.unitPriceCents,
+        taxable: line.taxable,
+      })),
+      discountType,
+      discountValue: discountRaw,
+      taxRateBp: rateBp,
+      creditCents: credit?.cents ?? 0,
+    });
+
+    const depositInput =
+      depositType === "PERCENT"
+        ? (parseRateToBp(depositValue) ?? 0)
+        : depositType === "FIXED"
+          ? (parseMoneyToCents(depositValue) ?? 0)
+          : 0;
+
     return {
-      totals: computeTotals({
-        lineItems: parsed.map((line) => ({
-          quantity: line.quantity,
-          unitPriceCents: line.unitPriceCents,
-          taxable: line.taxable,
-        })),
-        discountType,
-        discountValue: discountRaw,
-        taxRateBp: rateBp,
-      }),
+      totals: computed,
       discountBpOrCents: discountRaw,
       taxRateBp: rateBp,
       serialized: JSON.stringify(parsed),
+      depositRaw: depositInput,
+      depositCents: depositCentsFor(computed.totalCents, depositType, depositInput),
     };
-  }, [lines, discountType, discountValue, taxRate]);
+  }, [lines, discountType, discountValue, taxRate, credit?.cents, depositType, depositValue]);
 
   const money = (cents: number) => formatMoney(cents, currency, locale);
   const lineTotal = (line: LineDraft) =>
@@ -157,6 +178,12 @@ export function LineItemEditor({
       <input type="hidden" name="discountType" value={discountType} />
       <input type="hidden" name="discountValue" value={discountBpOrCents} />
       <input type="hidden" name="taxRateBp" value={taxRateBp} />
+      {deposit ? (
+        <>
+          <input type="hidden" name="depositType" value={depositType} />
+          <input type="hidden" name="depositValue" value={depositRaw} />
+        </>
+      ) : null}
 
       {/* ------------------------------------------------------- the lines --- */}
       <div className="space-y-2">
@@ -373,6 +400,10 @@ export function LineItemEditor({
             </p>
           ) : null}
 
+          {credit && totals.creditCents > 0 ? (
+            <Row label={credit.label ?? "Previously billed"}>−{money(totals.creditCents)}</Row>
+          ) : null}
+
           <div className="flex items-center justify-between gap-3 border-t border-line pt-2">
             <dt className="font-semibold text-ink">Total</dt>
             <dd
@@ -384,6 +415,37 @@ export function LineItemEditor({
               {money(totals.totalCents)}
             </dd>
           </div>
+
+          {deposit ? (
+            <div className="flex items-center justify-between gap-3 border-t border-line pt-2">
+              <dt className="flex items-center gap-2 text-ink-muted">
+                <span>Deposit</span>
+                <Select
+                  value={depositType}
+                  onChange={(e) => setDepositType(e.target.value as DiscountType)}
+                  aria-label="Deposit type"
+                  className="h-7 w-24 text-xs"
+                >
+                  <option value="NONE">None</option>
+                  <option value="PERCENT">Percent</option>
+                  <option value="FIXED">Amount</option>
+                </Select>
+                {depositType !== "NONE" ? (
+                  <Input
+                    value={depositValue}
+                    onChange={(e) => setDepositValue(e.target.value)}
+                    inputMode="decimal"
+                    aria-label="Deposit value"
+                    className="tabular h-7 w-20 text-right text-xs"
+                    placeholder={depositType === "PERCENT" ? "50" : "500.00"}
+                  />
+                ) : null}
+              </dt>
+              <dd className="tabular font-medium text-ink">
+                {depositCents > 0 ? money(depositCents) : "—"}
+              </dd>
+            </div>
+          ) : null}
         </dl>
       </div>
     </div>

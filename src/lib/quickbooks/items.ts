@@ -24,7 +24,14 @@ import { lowerSquash } from "../import-columns";
 type QboAccount = { Id: string; Name: string; AccountType?: string };
 type QboItem = { Id: string; Name: string };
 
-export type FallbackItem = "SERVICE" | "MATERIAL" | "LABOR" | "OTHER" | "SALES_TAX" | "DISCOUNT";
+export type FallbackItem =
+  | "SERVICE"
+  | "MATERIAL"
+  | "LABOR"
+  | "OTHER"
+  | "SALES_TAX"
+  | "DISCOUNT"
+  | "PRIOR_BILLING";
 
 const FALLBACK_ITEMS: Record<FallbackItem, { name: string; type: "Service" | "NonInventory" }> = {
   SERVICE: { name: "Services", type: "Service" },
@@ -33,6 +40,8 @@ const FALLBACK_ITEMS: Record<FallbackItem, { name: string; type: "Service" | "No
   OTHER: { name: "Other charges", type: "Service" },
   SALES_TAX: { name: "Sales tax", type: "Service" },
   DISCOUNT: { name: "Discount", type: "Service" },
+  // A final invoice's deposit and progress invoices, taken off.
+  PRIOR_BILLING: { name: "Previously billed", type: "Service" },
 };
 
 export function fallbackFor(kind: string): FallbackItem {

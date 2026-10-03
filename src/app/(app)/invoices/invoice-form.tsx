@@ -58,6 +58,7 @@ export function InvoiceForm({
   currency,
   locale,
   currencySymbol,
+  credit,
 }: {
   values: InvoiceFormValues;
   clients: InvoiceClientChoice[];
@@ -65,6 +66,8 @@ export function InvoiceForm({
   currency: string;
   locale: string;
   currencySymbol: string;
+  /** A final invoice's earlier stages; shown, and recalculated on save. */
+  credit?: { cents: number; label: string | null };
 }) {
   const isEdit = Boolean(values.id);
   const [state, formAction] = useActionState<ActionState, FormData>(
@@ -248,6 +251,7 @@ export function InvoiceForm({
             initialDiscountValue={values.discountValue}
             initialTaxRate={values.taxRate}
             taxExemptClient={client?.taxExempt ?? false}
+            credit={credit}
           />
         </CardBody>
       </Card>

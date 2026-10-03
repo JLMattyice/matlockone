@@ -139,6 +139,8 @@ export default async function PublicInvoicePage({
               totalCents: invoice.totalCents,
               amountPaidCents: invoice.amountPaidCents,
               balanceCents: invoice.balanceCents,
+              creditCents: invoice.creditCents,
+              creditLabel: invoice.creditLabel,
             }}
             notes={invoice.notes}
             terms={invoice.terms ?? org.invoiceFooter}
