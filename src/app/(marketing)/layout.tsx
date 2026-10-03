@@ -110,10 +110,12 @@ export default async function MarketingLayout({
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            {/* A button, on every screen. It was faint text hidden below
+                640px, so a customer on their phone had no way back in. */}
             <Link
               href={ctx ? "/dashboard" : "/login"}
-              className="hidden text-sm text-ink-muted transition-colors hover:text-ink sm:block"
+              className={buttonClasses("outline", "sm")}
             >
               {ctx ? "Dashboard" : "Log in"}
             </Link>
@@ -172,6 +174,11 @@ export default async function MarketingLayout({
                     <a href="/#download" className="hover:text-ink">
                       Download
                     </a>
+                  </li>
+                  <li>
+                    <Link href={ctx ? "/dashboard" : "/login"} className="hover:text-ink">
+                      {ctx ? "Your dashboard" : "Log in"}
+                    </Link>
                   </li>
                   {demo ? (
                     <li>

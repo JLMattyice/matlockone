@@ -89,7 +89,20 @@ function Hero() {
           </a>
         </div>
 
-        <p className="mt-4 text-sm text-ink-subtle">
+        {/* For the customer who came here to get back in, right where they
+            are looking. Someone already signed in is sent on to their
+            dashboard by the middleware. */}
+        <p className="mt-5 text-sm text-ink-muted">
+          Already have an account?{" "}
+          <Link
+            href="/login"
+            className="font-medium text-ink underline-offset-4 hover:underline"
+          >
+            Log in
+          </Link>
+        </p>
+
+        <p className="mt-2 text-sm text-ink-subtle">
           Plans from {FROM_PRICE} a month, paid through PayPal. Every plan has
           every part of it, and you can cancel whenever you like.
         </p>
