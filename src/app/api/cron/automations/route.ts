@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { MIN_CRON_SECRET } from "@/lib/config";
 import { syncAutopay } from "@/lib/autopay";
 import { sweepPayLinks } from "@/lib/payments/reconcile";
+import { sweepQuickBooks } from "@/lib/quickbooks/sync";
 import { recordDueExpenses } from "@/lib/recurring-expenses";
 import { draftDueInvoices } from "@/lib/recurring-invoices";
 import { sweepEveryBusiness } from "@/lib/workflows/run";
@@ -28,8 +29,12 @@ import { sweepEveryBusiness } from "@/lib/workflows/run";
  * Auto-pay is checked after the drafts, so a payment PayPal took this
  * morning finds this morning's invoice to land on.
  *
- * Repeating expenses come last: a bill recorded or a reminder raised waits
+ * Repeating expenses come next: a bill recorded or a reminder raised waits
  * on nothing else in the run.
+ *
+ * QuickBooks goes last, with what time is left kept short: it only catches up
+ * on customers a save could not send, and whatever it does not reach today
+ * it reaches tomorrow.
  *
  * Pay links are checked first of all. A client who paid last night must not
  * be chased this morning because the notice went astray, so every open link
@@ -68,6 +73,7 @@ export async function GET(request: Request) {
   const repeating = await draftDueInvoices();
   const autopay = await syncAutopay();
   const bills = await recordDueExpenses();
+  const quickbooks = await sweepQuickBooks({ budgetMs: 15_000 });
   const billsRecorded = bills.done.filter((item) => item.kind === "recorded").length;
 
   console.info(
@@ -82,7 +88,10 @@ export async function GET(request: Request) {
       (autopay.unmatched > 0 ? `, ${autopay.unmatched} waiting for their invoice` : "") +
       (autopay.failed.length > 0 ? `, ${autopay.failed.length} failed` : "") +
       `; repeating expenses: ${billsRecorded} recorded, ${bills.done.length - billsRecorded} to enter` +
-      (bills.failed.length > 0 ? `, ${bills.failed.length} schedules failed` : ""),
+      (bills.failed.length > 0 ? `, ${bills.failed.length} schedules failed` : "") +
+      `; QuickBooks: ${quickbooks.sent} customers sent for ${quickbooks.businesses} businesses` +
+      (quickbooks.failed > 0 ? `, ${quickbooks.failed} failed` : "") +
+      (quickbooks.stoppedEarly ? ", more waiting" : ""),
   );
 
   return NextResponse.json({
@@ -97,5 +106,7 @@ export async function GET(request: Request) {
     expensesRecorded: billsRecorded,
     expensesToEnter: bills.done.length - billsRecorded,
     expensesFailed: bills.failed,
+    quickbooksSent: quickbooks.sent,
+    quickbooksFailed: quickbooks.failed,
   });
 }

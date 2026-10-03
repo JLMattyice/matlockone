@@ -176,6 +176,13 @@ partly paid, a payment recorded twice.
   by category, against a job or as overhead, with receipts and reimbursements.
   It does not post to a ledger, file a tax return, or sync with an accounting
   package, and must not be described as doing any of those.
+- **QuickBooks Online is one-way, and customers only so far.** A business
+  connects its own QuickBooks company (Settings → QuickBooks); every customer
+  that is not archived is sent and kept up to date, a same-name customer
+  there is linked (overwritten unless the owner turns that off), and nothing
+  goes until the first Send now. Invoices, payments and expenses are later
+  phases and must not be described as syncing until they ship. Nothing is
+  ever read back from QuickBooks.
 - Email sending is real (the customer's own SMTP or Resend key). SMS and in-app
   card capture are stubbed behind the same interface and must not be described
   as working.

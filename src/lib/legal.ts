@@ -22,7 +22,7 @@ export const LEGAL_STATE = "Tennessee";
 export const LEGAL_COUNTY = "Loudon County, Tennessee";
 
 /** Shown at the top of each page. Move it whenever the wording changes. */
-export const LEGAL_UPDATED = "October 2, 2026";
+export const LEGAL_UPDATED = "October 3, 2026";
 
 export const LEGAL_PAGES = [
   { href: "/terms", label: "Terms of Service" },

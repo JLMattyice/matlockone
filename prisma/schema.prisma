@@ -140,6 +140,7 @@ model Organization {
   auditLogs      AuditLog[]
   priceBookItems PriceBookItem[]
   integrations   Integration[]
+  accountingLinks AccountingLink[]
   tasks          Task[]
   workflows      Workflow[]
   workflowRuns   WorkflowRun[]
@@ -1186,6 +1187,49 @@ model Integration {
   // One connection per kind: choosing SMTP replaces Resend rather than
   // leaving two live and ambiguous.
   @@unique([organizationId, kind])
+}
+
+/**
+ * A record here and its twin in an accounting package.
+ *
+ * Today that is a customer and the QuickBooks Online customer it was sent as.
+ * The link is what lets a later edit update that same customer instead of
+ * making a second one, and what tells the settings page what is waiting and
+ * what failed.
+ *
+ * Keyed by the QuickBooks company (realmId) as well as the record: a business
+ * that connects a different company starts afresh there rather than updating
+ * ids that mean nothing to it. entityId is not a foreign key, because the same
+ * table will hold invoices and payments.
+ */
+model AccountingLink {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  provider   String // QUICKBOOKS
+  realmId    String
+  entityType String // CLIENT
+  entityId   String
+
+  /// The record's id over there; null until it first arrives.
+  externalId String?
+  /// QuickBooks' edit counter, which every update has to send back.
+  syncToken  String?
+  /// CREATED when Matlock One made it there; MATCHED when one by the same
+  /// name was already there and was taken over.
+  origin     String  @default("CREATED")
+
+  /// When the record as it then stood reached the accounting package.
+  syncedAt    DateTime?
+  lastTriedAt DateTime?
+  lastError   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, realmId, entityType, entityId])
+  @@index([organizationId, provider, entityType])
 }
 
 model PriceBookItem {

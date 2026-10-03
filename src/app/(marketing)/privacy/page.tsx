@@ -71,9 +71,9 @@ export default function PrivacyPage() {
               invoices, payments, expenses, time, notes, files, photos and team messages.
             </>,
             <>
-              <strong>Accounts you connect:</strong> the passwords and keys for the email account
-              and payment processor you link to Matlock One. These are encrypted (AES-256-GCM)
-              and only unlocked at the moment they’re used.
+              <strong>Accounts you connect:</strong> the passwords and keys for the email account,
+              payment processor and QuickBooks company you link to Matlock One. These are encrypted
+              (AES-256-GCM) and only unlocked at the moment they’re used.
             </>,
             <>
               <strong>Billing:</strong> PayPal takes the payment for your plan, and we never see
@@ -158,6 +158,12 @@ export default function PrivacyPage() {
               <strong>Your payment processor</strong> (PayPal, Stripe, Square or another) receives
               an invoice’s number, title and amount, your business name, and your customer’s name
               and email, so it can make a payment link.
+            </>,
+            <>
+              <strong>QuickBooks Online</strong> (Intuit), if you connect it, receives each of your
+              customers’ names, company, email, phone numbers, website and addresses, so its
+              customer list matches yours. Customers already sent stay in QuickBooks if you
+              disconnect it.
             </>,
             <>
               <strong>Calendar apps</strong> (Google, Outlook, Apple) receive a team member’s

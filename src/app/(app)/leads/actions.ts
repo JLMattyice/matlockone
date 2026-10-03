@@ -15,6 +15,7 @@ import {
   type LeadStatus,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { sendCustomersSoon } from "@/lib/quickbooks/sync";
 import { parseMoneyToCents } from "@/lib/money";
 
 const leadSchema = z.object({
@@ -269,6 +270,7 @@ export async function convertLeadToClient(formData: FormData) {
     metadata: { leadId: lead.id },
   });
 
+  await sendCustomersSoon(org.id, [client.id]);
   revalidatePath("/leads");
   revalidatePath("/clients");
   redirect(`/clients/${client.id}`);

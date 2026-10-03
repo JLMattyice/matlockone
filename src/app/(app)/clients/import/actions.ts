@@ -9,6 +9,7 @@ import { requirePermission } from "@/lib/auth";
 import { isImportField, mapsAName, planImport } from "@/lib/client-import";
 import { parseCsv } from "@/lib/csv";
 import { prisma } from "@/lib/db";
+import { sendCustomersSoon } from "@/lib/quickbooks/sync";
 import {
   IMPORT_MAX_BYTES,
   inGroups,
@@ -116,6 +117,9 @@ export async function importClients(
       ...inGroups(addresses).map((data) => prisma.address.createMany({ data })),
       ...inGroups(notes).map((data) => prisma.note.createMany({ data })),
     ]);
+    // A long list goes over in part now; the rest in the morning run or on
+    // Send now.
+    await sendCustomersSoon(org.id, clients.map((client) => client.id));
     revalidatePath("/clients");
   }
 

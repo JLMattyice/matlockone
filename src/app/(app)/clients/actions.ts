@@ -9,6 +9,7 @@ import { requirePermission } from "@/lib/auth";
 import { CLIENT_STATUSES, CLIENT_TYPES } from "@/lib/constants";
 import { record } from "@/lib/activity";
 import { prisma } from "@/lib/db";
+import { sendCustomersSoon } from "@/lib/quickbooks/sync";
 
 const addressSchema = z.object({
   id: z.string().nullish(),
@@ -158,6 +159,7 @@ export async function createClient(
     summary: `${org.labelClientSingular} ${client.displayName} added`,
   });
 
+  await sendCustomersSoon(org.id, [client.id]);
   revalidatePath("/clients");
   redirect(`/clients/${client.id}`);
 }
@@ -244,6 +246,7 @@ export async function updateClient(
     }
   });
 
+  await sendCustomersSoon(org.id, [id]);
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);
   return saved("Client updated.");
@@ -265,6 +268,8 @@ export async function setClientStatus(formData: FormData) {
     data: { status },
   });
 
+  // Restoring an archived customer sends it again; archiving sends nothing.
+  await sendCustomersSoon(org.id, [id]);
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);
 }

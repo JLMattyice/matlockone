@@ -21,6 +21,7 @@ export default async function SettingsLayout({
       { href: "/settings/calendar", label: "Calendar" },
       { href: "/settings/email", label: "Email" },
       { href: "/settings/payments", label: "Payments" },
+      { href: "/settings/quickbooks", label: "QuickBooks" },
       { href: "/settings/automations", label: "Automations" },
       // The hosted app is paid by subscription, a desktop install by key.
       dataStaysOnThisMachine()
@@ -33,7 +34,7 @@ export default async function SettingsLayout({
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Business details, branding, document defaults, calendar categories, sending, payments and your licence."
+        description="Business details, branding, document defaults, calendar categories, sending, payments, QuickBooks and your licence."
       />
       <SettingsNav tabs={tabs} />
       <div className="max-w-3xl">{children}</div>
