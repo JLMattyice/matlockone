@@ -84,14 +84,30 @@ partly paid, a payment recorded twice.
   Import from a CSV (Excel, Google Sheets, QuickBooks or another app's export):
   columns guessed from their headings, a preview of every line, and anyone
   already on file — same email, or same name and phone — skipped.
+- Customer portal and request form: each customer has a private link (no
+  sign-in) showing their upcoming and past visits, estimates to answer and
+  invoices to pay. A public "Request service" form (photos allowed, up to 5)
+  turns a request into a lead, filed under the customer when sent from their
+  portal; the business can switch it off.
 - Scheduling: day/week/month calendars, drag-and-drop rescheduling, an
   unscheduled queue you drag onto the grid, recurring appointments, crew
   assignment.
 - Jobs: full status workflow, materials, labor time tracking, before/after
-  photo pairing, notes, one-click invoicing of completed work.
+  photo pairing, notes, one-click invoicing of completed work. Checklists:
+  saved lists (Settings → Checklists) put on a job by hand or on every new
+  entry in a category, ticked off on site. Track only — an open item never
+  stops a job being completed.
+- My Day: one person's day on a phone — the day clock, a per-job timer, and
+  today's visits with Navigate, Call, Start, Photo, Note and Complete. The
+  crew land on it; the crew may start and complete visits they are assigned
+  to. No location is recorded.
 - Estimates & Invoices: shared line-item editor with discounts and tax, a
   client-facing link to accept or decline, estimate-to-job conversion, partial
-  payments, printable documents.
+  payments, printable documents. A customer accepts by typing their name to
+  sign; the signature keeps a copy of what they agreed to. Deposits and
+  progress invoices: a deposit billed on acceptance, progress invoices for a
+  share of the total, and a final invoice for the rest (no retainage or change
+  orders).
 - Products & services: the price book the line-item editor picks from, with
   archive/restore. Importable from a CSV price list (QuickBooks' own export
   included); "$85/yd" reads as a price and a unit, a price that cannot be read
@@ -100,14 +116,22 @@ partly paid, a payment recorded twice.
   date, optionally assigned and optionally tied to a client, job or lead;
   open / due today / overdue / done views; panels on the job and client pages;
   a dashboard tile. Automations and repeating bills raise tasks here.
+- Automations: switched on one by one, all off to start. Most raise a task;
+  five email the customer through the business's own email account — an
+  estimate follow-up, invoice reminders before and after the due date, a
+  visit reminder the day before, and a review request once per customer.
 - Team: roles and permissions, workload, hours, deactivation that preserves
-  history.
+  history. Time clock: who is on the clock now and each person's week, which
+  whoever schedules the crews can correct.
 - Messages: team conversations inside the app, direct or group, with an
   unread badge that follows you around the app. Internal only — nothing in a
   thread is ever sent to a client — and a direct or group thread is readable
   by its members alone, the owner included. Each job can have its own thread,
   readable by the office and the crew on it, where photos sent are saved to
-  the job. New messages arrive by polling, not push.
+  the job. In the app new messages arrive by polling.
+- Push notifications, turned on per phone or browser under Your profile: new
+  job assigned, schedule changed, estimate answered, payment received, new
+  service request, and team messages.
 - Reports: revenue over time, receivables ageing, top services and clients,
   labor by person, lead-source performance, CSV export.
 - Global search across clients, leads, jobs, estimates and invoices, scoped to
@@ -174,15 +198,19 @@ partly paid, a payment recorded twice.
   place on the page. "Projects" is a label some presets give Jobs, not a module.
 - **Expenses tracks spend; it is not bookkeeping.** It records what went out,
   by category, against a job or as overhead, with receipts and reimbursements.
-  It does not post to a ledger, file a tax return, or sync with an accounting
-  package, and must not be described as doing any of those.
-- **QuickBooks Online is one-way, and customers only so far.** A business
-  connects its own QuickBooks company (Settings → QuickBooks); every customer
-  that is not archived is sent and kept up to date, a same-name customer
-  there is linked (overwritten unless the owner turns that off), and nothing
-  goes until the first Send now. Invoices, payments and expenses are later
-  phases and must not be described as syncing until they ship. Nothing is
-  ever read back from QuickBooks.
+  It does not post to a ledger or file a tax return, and must not be described
+  as doing either. With QuickBooks connected, expenses are sent there.
+- **QuickBooks Online is one-way.** A business connects its own QuickBooks
+  company (Settings → QuickBooks). Customers, invoices (sales tax as its own
+  line), payments (into Undeposited Funds) and expenses (to the account the
+  owner picks per category) are sent right after each change and in a morning
+  catch-up; a same-name customer there is linked (overwritten unless the owner
+  turns that off), and nothing goes until the first Send now. Nothing is ever
+  read back from QuickBooks.
+- **Push notifications need a VAPID key pair** (`VAPID_PUBLIC_KEY`,
+  `VAPID_PRIVATE_KEY`); without them nothing is offered. They are never offered
+  in the desktop app. On an iPhone they work only once Matlock One is added to
+  the Home Screen.
 - Email sending is real (the customer's own SMTP or Resend key). SMS and in-app
   card capture are stubbed behind the same interface and must not be described
   as working.
