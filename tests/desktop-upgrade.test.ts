@@ -145,3 +145,39 @@ describe("upgrading a desktop install to the paywall", () => {
     ]);
   });
 });
+
+describe("upgrading a desktop install with a default that holds a comma", () => {
+  it("adds the column whole, and the existing business gets the default", async () => {
+    // 0.9.0's bill roles default to 'OWNER,ADMIN,MANAGER'. Splitting the
+    // column list on every comma tore it apart and the upgrade rolled back.
+    const w = workspace();
+    initDb(w.db, w.before);
+    addBusiness(w.db, "harbor-glass");
+
+    const withRoles = path.join(path.dirname(w.db), "roles.sql");
+    fs.writeFileSync(
+      withRoles,
+      AFTER.replace(
+        '"paidThrough" DATETIME',
+        `"paidThrough" DATETIME,
+    "billsOnCalendarRoles" TEXT NOT NULL DEFAULT 'OWNER,ADMIN,MANAGER',
+    "note" TEXT DEFAULT 'it''s; fine'`,
+      ),
+    );
+
+    const result = initDb(w.db, withRoles);
+    expect(result).toMatchObject({ ok: true, needsMigration: [] });
+    expect(result.addedColumns).toEqual(
+      expect.arrayContaining(["Organization.billsOnCalendarRoles", "Organization.note"]),
+    );
+
+    const conn = new Database(w.db);
+    try {
+      expect(conn.prepare('SELECT "billsOnCalendarRoles", "note" FROM "Organization"').all()).toEqual([
+        { billsOnCalendarRoles: "OWNER,ADMIN,MANAGER", note: "it's; fine" },
+      ]);
+    } finally {
+      conn.close();
+    }
+  });
+});

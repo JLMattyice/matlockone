@@ -24,21 +24,53 @@ if (!databaseFile || !schemaSqlFile) {
 }
 
 /**
+ * Splits text on a separator where it stands outside a quoted SQL string —
+ * and, when asked, outside parentheses too.
+ *
+ * A default is a quoted literal, and a literal can hold the separator: the
+ * calendar's bill roles default to 'OWNER,ADMIN,MANAGER'. Split on every comma
+ * and that column is torn in three, the ALTER that adds it fails, and the whole
+ * upgrade rolls back. A doubled quote inside a literal ('it''s') toggles twice,
+ * so it stays inside.
+ */
+function splitOutside(text, separator, { parentheses = false } = {}) {
+  const parts = [];
+  let depth = 0;
+  let quoted = false;
+  let current = "";
+
+  for (const character of text) {
+    if (character === "'") quoted = !quoted;
+    if (!quoted && parentheses) {
+      if (character === "(") depth += 1;
+      if (character === ")") depth -= 1;
+    }
+
+    if (character === separator && !quoted && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
+/**
  * Splits the generated DDL into statements.
  *
  * Prisma emits one statement per `CREATE TABLE` / `CREATE INDEX`, separated by
- * blank lines and `-- Comment` headers, with no semicolons inside the bodies.
+ * blank lines and `-- Comment` headers. The comments go first, so an
+ * apostrophe in one cannot be taken for the start of a string.
  */
 function parseStatements(sql) {
-  return sql
-    .split(";")
-    .map((chunk) =>
-      chunk
-        .split("\n")
-        .filter((line) => !line.trim().startsWith("--"))
-        .join("\n")
-        .trim(),
-    )
+  const code = sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+  return splitOutside(code, ";")
+    .map((chunk) => chunk.trim())
     .filter(Boolean);
 }
 
@@ -60,10 +92,11 @@ function indexName(statement) {
 /**
  * Pulls the column definitions out of a CREATE TABLE body.
  *
- * Splits on top-level commas only, so a `DEFAULT (a, b)` or a multi-column
- * FOREIGN KEY clause does not get torn in half, then keeps the entries that
- * start with a quoted identifier — the rest are CONSTRAINT and PRIMARY KEY
- * clauses, which cannot be added to a table after the fact anyway.
+ * Splits on top-level commas only, so a `DEFAULT (a, b)`, a default like
+ * 'OWNER,ADMIN' or a multi-column FOREIGN KEY clause does not get torn in
+ * half, then keeps the entries that start with a quoted identifier — the rest
+ * are CONSTRAINT and PRIMARY KEY clauses, which cannot be added to a table
+ * after the fact anyway.
  */
 function columnsOf(createStatement) {
   const body = createStatement.slice(
@@ -71,23 +104,7 @@ function columnsOf(createStatement) {
     createStatement.lastIndexOf(")"),
   );
 
-  const parts = [];
-  let depth = 0;
-  let current = "";
-
-  for (const character of body) {
-    if (character === "(") depth += 1;
-    if (character === ")") depth -= 1;
-
-    if (character === "," && depth === 0) {
-      parts.push(current);
-      current = "";
-    } else {
-      current += character;
-    }
-  }
-  parts.push(current);
-
+  const parts = splitOutside(body, ",", { parentheses: true });
   const columns = new Map();
 
   for (const part of parts) {
