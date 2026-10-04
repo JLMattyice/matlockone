@@ -186,6 +186,8 @@ export async function pushCustomer(
         `QuickBooks already has a supplier or employee called “${fields.DisplayName}”, and a customer cannot share the name. Rename one of them and it will be sent again.`,
         error.status,
         error.code,
+        false,
+        error.tid,
       );
     }
     throw error;

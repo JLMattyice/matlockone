@@ -1,5 +1,6 @@
 import "server-only";
 
+import { QuickBooksError } from "./api";
 import { QUICKBOOKS, type QuickBooksConnection } from "./connection";
 import { prisma } from "../db";
 
@@ -111,5 +112,10 @@ export async function dropLink(connection: QuickBooksConnection, entityType: Ent
 /** A failure, kept short enough for the settings page. */
 export function errorText(error: unknown): string {
   const message = error instanceof Error ? error.message : "Something went wrong sending this.";
-  return message.slice(0, 500);
+  // Intuit's reference rides along, so the error a business reads out to
+  // support is one Intuit can look up.
+  const tid = error instanceof QuickBooksError ? error.tid : null;
+  if (!tid) return message.slice(0, 500);
+  const reference = ` (Intuit reference ${tid})`;
+  return message.slice(0, 500 - reference.length) + reference;
 }

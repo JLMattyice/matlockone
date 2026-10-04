@@ -24,6 +24,13 @@ export type QuickBooksSettings = {
   environment: QuickBooksEnvironment;
   /** Where Intuit sends the owner back. Must be listed on the Intuit app exactly. */
   redirectUri: string;
+  /**
+   * Intuit's discovery document, which names the three OAuth endpoints below.
+   * They are read from it (see discovery.ts); the values here are what it
+   * said when this was written, used only when it cannot be reached. Null
+   * when the endpoints are overridden, so the test suite's stand-in is used.
+   */
+  discoveryUrl: string | null;
   authorizeUrl: string;
   tokenUrl: string;
   revokeUrl: string;
@@ -56,6 +63,11 @@ export function quickbooksSettings(env: ConfigEnv = process.env): QuickBooksSett
     clientSecret,
     environment,
     redirectUri: `${resolveAppUrl(env)}/api/integrations/quickbooks/callback`,
+    discoveryUrl: oauthBase
+      ? null
+      : environment === "production"
+        ? "https://developer.api.intuit.com/.well-known/openid_configuration"
+        : "https://developer.api.intuit.com/.well-known/openid_sandbox_configuration",
     authorizeUrl: "https://appcenter.intuit.com/connect/oauth2",
     tokenUrl: `${oauthBase ?? "https://oauth.platform.intuit.com"}/oauth2/v1/tokens/bearer`,
     revokeUrl: `${oauthBase ?? "https://developer.api.intuit.com"}/v2/oauth2/tokens/revoke`,

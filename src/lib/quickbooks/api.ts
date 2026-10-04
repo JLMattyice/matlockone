@@ -3,6 +3,7 @@ import "server-only";
 import { markNeedsReconnect, storeTokens, type QuickBooksConnection } from "./connection";
 import { QuickBooksAuthError, refreshTokens } from "./oauth";
 import { QUICKBOOKS_MINOR_VERSION, quickbooksSettings } from "./settings";
+import { intuitTid, logQuickBooksFailure } from "./trace";
 
 /**
  * Talking to the QuickBooks Online accounting API for one connected company.
@@ -22,6 +23,8 @@ export class QuickBooksError extends Error {
     readonly code: string | null = null,
     /** The owner has to connect again before anything else will work. */
     readonly reconnect = false,
+    /** Intuit's reference for the request (its intuit_tid header), for its support. */
+    readonly tid: string | null = null,
   ) {
     super(message);
     this.name = "QuickBooksError";
@@ -45,7 +48,7 @@ async function renew(connection: QuickBooksConnection) {
         await markNeedsReconnect(connection.organizationId, error.message);
         connection.needsReconnect = true;
       }
-      throw new QuickBooksError(error.message, 401, null, error.reconnect);
+      throw new QuickBooksError(error.message, 401, null, error.reconnect, error.tid);
     }
     throw error;
   }
@@ -55,13 +58,15 @@ type Fault = {
   Fault?: { Error?: { Message?: string; Detail?: string; code?: string }[] };
 };
 
-function faultOf(json: unknown, status: number): QuickBooksError {
+function faultOf(json: unknown, status: number, tid: string | null): QuickBooksError {
   const first = (json as Fault | null)?.Fault?.Error?.[0];
   const message = [first?.Message, first?.Detail].filter(Boolean).join(": ");
   return new QuickBooksError(
     message || `QuickBooks answered ${status}.`,
     status,
     first?.code ?? null,
+    false,
+    tid,
   );
 }
 
@@ -113,7 +118,18 @@ export async function quickbooksRequest<T>(
     }
 
     const json = (await response.json().catch(() => null)) as unknown;
-    if (!response.ok) throw faultOf(json, response.status);
+    if (!response.ok) {
+      const fault = faultOf(json, response.status, intuitTid(response));
+      logQuickBooksFailure({
+        operation: `${method} ${path.split("?")[0]}`,
+        organizationId: connection.organizationId,
+        status: fault.status,
+        code: fault.code,
+        message: fault.message,
+        tid: fault.tid,
+      });
+      throw fault;
+    }
     return json as T;
   }
 }

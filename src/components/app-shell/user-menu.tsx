@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, Settings, UserRound } from "lucide-react";
+import { ChevronDown, LifeBuoy, LogOut, Settings, UserRound } from "lucide-react";
 
 import { logoutAction } from "@/app/(auth)/actions";
 import { Badge } from "@/components/ui/badge";
 import { ROLE_META, type Role } from "@/lib/constants";
+import { SUPPORT_EMAIL } from "@/lib/legal";
 import { cn, initials } from "@/lib/utils";
 
 export function UserMenu({
@@ -105,6 +106,15 @@ export function UserMenu({
                 Business settings
               </Link>
             ) : null}
+
+            <a
+              href={`mailto:${SUPPORT_EMAIL}?subject=Matlock%20One%20support`}
+              role="menuitem"
+              className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink"
+            >
+              <LifeBuoy className="h-4 w-4" strokeWidth={1.75} />
+              Help &amp; support
+            </a>
           </div>
 
           <form action={logoutAction} className="border-t border-line p-1">

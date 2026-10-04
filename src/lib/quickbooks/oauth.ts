@@ -2,7 +2,9 @@ import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { oauthEndpoints } from "./discovery";
 import { QUICKBOOKS_SCOPE, type QuickBooksSettings } from "./settings";
+import { intuitTid, logQuickBooksFailure } from "./trace";
 
 /**
  * Intuit's OAuth 2.0 handshake: asking the owner, trading the answer for
@@ -28,6 +30,8 @@ export class QuickBooksAuthError extends Error {
   constructor(
     message: string,
     readonly reconnect: boolean,
+    /** Intuit's reference for the refusal, when it answered at all. */
+    readonly tid: string | null = null,
   ) {
     super(message);
     this.name = "QuickBooksAuthError";
@@ -90,8 +94,8 @@ export function verifyState(
 }
 
 /** Intuit's consent screen, for the owner to choose a company and agree. */
-export function authorizeUrl(settings: QuickBooksSettings, state: string): string {
-  const url = new URL(settings.authorizeUrl);
+export async function authorizeUrl(settings: QuickBooksSettings, state: string): Promise<string> {
+  const url = new URL((await oauthEndpoints(settings)).authorizeUrl);
   url.searchParams.set("client_id", settings.clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", QUICKBOOKS_SCOPE);
@@ -113,7 +117,7 @@ async function tokenRequest(
 ): Promise<TokenSet> {
   let response: Response;
   try {
-    response = await fetch(settings.tokenUrl, {
+    response = await fetch((await oauthEndpoints(settings)).tokenUrl, {
       method: "POST",
       headers: {
         Authorization: basicAuth(settings),
@@ -131,21 +135,23 @@ async function tokenRequest(
 
   if (!response.ok || !json || typeof json.access_token !== "string") {
     const code = typeof json?.error === "string" ? json.error : "";
+    const tid = intuitTid(response);
+    const refuse = (message: string, reconnect: boolean) => {
+      logQuickBooksFailure({ operation: `token:${body.grant_type}`, status: response.status, code, message, tid });
+      return new QuickBooksAuthError(message, reconnect, tid);
+    };
     // invalid_grant: the refresh token is spent, revoked or past its hundred
     // days — nothing but the owner connecting again will fix it.
     if (code === "invalid_grant") {
-      throw new QuickBooksAuthError("QuickBooks needs connecting again.", true);
+      throw refuse("QuickBooks needs connecting again.", true);
     }
     if (code === "invalid_client") {
-      throw new QuickBooksAuthError(
+      throw refuse(
         "QuickBooks did not accept this deployment's app keys. Check QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET.",
         false,
       );
     }
-    throw new QuickBooksAuthError(
-      `QuickBooks refused the sign-in (${response.status}${code ? `, ${code}` : ""}).`,
-      false,
-    );
+    throw refuse(`QuickBooks refused the sign-in (${response.status}${code ? `, ${code}` : ""}).`, false);
   }
 
   const seconds = (value: unknown, fallback: number) =>
@@ -191,7 +197,7 @@ export async function refreshTokens(
  */
 export async function revokeTokens(settings: QuickBooksSettings, tokens: TokenSet): Promise<boolean> {
   try {
-    const response = await fetch(settings.revokeUrl, {
+    const response = await fetch((await oauthEndpoints(settings)).revokeUrl, {
       method: "POST",
       headers: {
         Authorization: basicAuth(settings),
@@ -201,6 +207,14 @@ export async function revokeTokens(settings: QuickBooksSettings, tokens: TokenSe
       body: JSON.stringify({ token: tokens.refreshToken }),
       signal: AbortSignal.timeout(10_000),
     });
+    if (!response.ok) {
+      logQuickBooksFailure({
+        operation: "revoke",
+        status: response.status,
+        message: "Intuit did not accept the token handed back.",
+        tid: intuitTid(response),
+      });
+    }
     return response.ok;
   } catch {
     return false;

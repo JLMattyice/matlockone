@@ -228,6 +228,8 @@ export async function startFakeQuickBooks(
     }
   }
 
+  // Intuit tags every response with a reference for its support desk.
+  let tids = 0;
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
@@ -236,7 +238,7 @@ export async function startFakeQuickBooks(
       const method = req.method ?? "GET";
       const auth = req.headers.authorization;
       const send = (status: number, body: unknown) => {
-        res.writeHead(status, { "Content-Type": "application/json" });
+        res.writeHead(status, { "Content-Type": "application/json", intuit_tid: `fake-tid-${++tids}` });
         res.end(JSON.stringify(body));
       };
 

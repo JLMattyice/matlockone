@@ -53,6 +53,7 @@ import { IDLE } from "@/lib/action-state";
 import { prisma } from "@/lib/db";
 import { loadConnection, quickbooksStatus, setSendFrom } from "@/lib/quickbooks/connection";
 import { customerFields, quickbooksName } from "@/lib/quickbooks/customers";
+import { forgetDiscovery, oauthEndpoints } from "@/lib/quickbooks/discovery";
 import { signState, verifyState } from "@/lib/quickbooks/oauth";
 import { quickbooksSettings } from "@/lib/quickbooks/settings";
 import {
@@ -239,6 +240,60 @@ describe("this deployment's Intuit app", () => {
         QUICKBOOKS_ENVIRONMENT: "Production",
       })?.apiBase,
     ).toBe("https://quickbooks.api.intuit.com");
+  });
+});
+
+describe("Intuit's discovery document", () => {
+  const settings = quickbooksSettings({
+    QUICKBOOKS_CLIENT_ID: "id",
+    QUICKBOOKS_CLIENT_SECRET: "secret",
+    APP_URL: "https://www.matlockone.com",
+  })!;
+
+  afterEach(() => {
+    forgetDiscovery();
+    vi.restoreAllMocks();
+  });
+
+  it("is where the OAuth endpoints come from, read once and kept", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        authorization_endpoint: "https://appcenter.intuit.com/connect/oauth2/v2",
+        token_endpoint: "https://oauth.platform.intuit.com/oauth2/v2/tokens/bearer",
+        revocation_endpoint: "https://developer.api.intuit.com/v3/oauth2/tokens/revoke",
+      }),
+    );
+
+    expect(settings.discoveryUrl).toBe(
+      "https://developer.api.intuit.com/.well-known/openid_sandbox_configuration",
+    );
+    const endpoints = await oauthEndpoints(settings);
+    expect(endpoints).toEqual({
+      authorizeUrl: "https://appcenter.intuit.com/connect/oauth2/v2",
+      tokenUrl: "https://oauth.platform.intuit.com/oauth2/v2/tokens/bearer",
+      revokeUrl: "https://developer.api.intuit.com/v3/oauth2/tokens/revoke",
+    });
+    await oauthEndpoints(settings);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the known endpoints when unreachable or not Intuit's", async () => {
+    const known = {
+      authorizeUrl: settings.authorizeUrl,
+      tokenUrl: settings.tokenUrl,
+      revokeUrl: settings.revokeUrl,
+    };
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("offline"));
+    expect(await oauthEndpoints(settings)).toEqual(known);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        authorization_endpoint: "https://evil.example/connect",
+        token_endpoint: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+        revocation_endpoint: "https://developer.api.intuit.com/v2/oauth2/tokens/revoke",
+      }),
+    );
+    expect(await oauthEndpoints(settings)).toEqual(known);
   });
 });
 
@@ -516,6 +571,8 @@ describe("sending customers", () => {
         error: expect.stringContaining("already has a supplier or employee called “Acme Supply”"),
       }),
     ]);
+    // Intuit's reference for the refusal is kept with it, for Intuit's support.
+    expect(summary.failing[0].error).toMatch(/\(Intuit reference fake-tid-\d+\)$/);
 
     await touch(acme.id, { displayName: "Acme Supply (customer)" });
     expect(await syncCustomers(organizationId)).toMatchObject({ sent: 1, failed: 0 });

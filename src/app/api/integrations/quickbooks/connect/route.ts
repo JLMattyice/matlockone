@@ -24,5 +24,5 @@ export async function GET(request: Request) {
   if (!settings) return back("unavailable");
   if (!encryptionAvailable()) return back("encryption");
 
-  return NextResponse.redirect(authorizeUrl(settings, signState(org.id, user.id)));
+  return NextResponse.redirect(await authorizeUrl(settings, signState(org.id, user.id)));
 }

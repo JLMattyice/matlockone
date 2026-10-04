@@ -15,6 +15,9 @@ export const LEGAL_NAME = "Matlock Software Development";
 /** Where requests about privacy, refunds and these terms go. */
 export const LEGAL_EMAIL = "lane.matlock@matlocksoftware.com";
 
+/** Where customers write for help, linked from inside the app. */
+export const SUPPORT_EMAIL = LEGAL_EMAIL;
+
 export const LEGAL_CITY = "Lenoir City, Tennessee";
 
 /** Whose courts and laws govern the Terms. Lenoir City is in Loudon County. */

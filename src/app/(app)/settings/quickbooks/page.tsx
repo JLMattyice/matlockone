@@ -12,6 +12,7 @@ import { FormError, FormSuccess } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit";
 import { requirePermission } from "@/lib/auth";
 import { dataStaysOnThisMachine } from "@/lib/config";
+import { SUPPORT_EMAIL } from "@/lib/legal";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS } from "@/lib/constants";
 import { can } from "@/lib/permissions";
 import { loadConnection, quickbooksStatus } from "@/lib/quickbooks/connection";
@@ -37,6 +38,19 @@ const PROBLEMS: Record<string, string> = {
   refused:
     "QuickBooks did not accept the connection. Try again; if it keeps happening, this deployment's Intuit keys need checking.",
 };
+
+/** Where to turn when QuickBooks will not cooperate. */
+function SupportNote() {
+  return (
+    <p className="px-1 text-xs text-ink-subtle">
+      Trouble with QuickBooks? Email{" "}
+      <a href={`mailto:${SUPPORT_EMAIL}?subject=QuickBooks`} className="text-brand hover:underline">
+        {SUPPORT_EMAIL}
+      </a>
+      , and include any Intuit reference shown with an error.
+    </p>
+  );
+}
 
 function count(n: number, one: string, many: string) {
   return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
@@ -114,6 +128,7 @@ export default async function QuickBooksSettingsPage({
             </CardFooter>
           ) : null}
         </Card>
+        <SupportNote />
       </div>
     );
   }
@@ -323,6 +338,7 @@ export default async function QuickBooksSettingsPage({
           </form>
         </Card>
       ) : null}
+      <SupportNote />
     </div>
   );
 }

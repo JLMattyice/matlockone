@@ -7,6 +7,7 @@ import { TriangleAlert } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/page-header";
+import { SUPPORT_EMAIL } from "@/lib/legal";
 
 /**
  * Safety net for unexpected server errors. Permission failures do not reach
@@ -33,8 +34,8 @@ export default function AppError({
           title="Something went wrong"
           description={
             error.digest
-              ? `The page could not be loaded. Reference: ${error.digest}`
-              : "The page could not be loaded."
+              ? `The page could not be loaded. If it keeps happening, email ${SUPPORT_EMAIL} and quote reference ${error.digest}.`
+              : `The page could not be loaded. If it keeps happening, email ${SUPPORT_EMAIL}.`
           }
           action={
             <div className="flex gap-2">
