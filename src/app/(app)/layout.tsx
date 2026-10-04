@@ -6,6 +6,7 @@ import { DemoBanner } from "@/components/app-shell/demo-banner";
 import { TimeZoneProvider } from "@/components/app-shell/time-zone";
 import { unreadMessageCount } from "@/lib/conversations";
 import { NAVIGATION, orgLabels, resolveNavigation } from "@/lib/navigation";
+import { isOperator } from "@/lib/operator";
 import { can } from "@/lib/permissions";
 import { hexToRgbChannels } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
@@ -27,6 +28,15 @@ export default async function AppLayout({
     })).filter((group) => group.items.length > 0),
     orgLabels(org),
   );
+
+  // Whoever runs Matlock One itself also sees every business on it. Not a
+  // role in any business, so it is not in NAVIGATION; the page checks again.
+  if (isOperator(user.email)) {
+    groups.push({
+      title: "Matlock One",
+      items: [{ href: "/accounts", label: "Accounts", icon: "building" }],
+    });
+  }
 
   // A badge is not worth a page. If the count cannot be read — a database
   // that has not had the messages tables added yet, say — every screen still

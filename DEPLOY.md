@@ -77,6 +77,11 @@ APP_URL="https://app.example.com"
 # redeploy; everyone else is added under Team.
 ALLOW_SIGNUP="false"
 
+# Who runs Matlock One itself: these sign-in emails (comma-separated) get an
+# "Accounts" page listing every business that has signed up, who pays, and
+# the monthly total. Nobody else can open it, whatever their role.
+OPERATOR_EMAILS="you@example.com"
+
 # Lets Vercel's morning call run the automations — see Automations below.
 # Generate the same way as SESSION_SECRET.
 CRON_SECRET="..."

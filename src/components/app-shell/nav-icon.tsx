@@ -2,6 +2,7 @@ import {
   Banknote,
   BarChart3,
   Briefcase,
+  Building2,
   Calendar,
   CheckSquare,
   CreditCard,
@@ -37,6 +38,7 @@ const ICONS = {
   folder: FolderClosed,
   tag: Tag,
   settings: Settings,
+  building: Building2,
   sun: Sun,
 } as const;
 

@@ -196,6 +196,12 @@ partly paid, a payment recorded twice.
   workspace is look-only and never billed. `billingExempt` marks a business
   that is never billed: the operator's own, and every business already on a
   local desktop install when 0.5.0 arrived.
+- **The operator sees every business at `/accounts`** — sign-ups, who pays
+  and on which plan, who cancelled or never paid, the monthly total, and the
+  newest people to get a sign-in. Only the emails in `OPERATOR_EMAILS` can
+  open it (anybody else gets a 404), and it is not in `NAVIGATION`: no role
+  in a business reaches it. Its counts read `entitlement()`, so "paying"
+  means exactly what the paywall means.
 - **The site leads with `/signup`.** Hosted sign-up is how a customer gets the
   account the desktop app signs in to, and it lands on choosing a plan.
   `ALLOW_SIGNUP=false` closes sign-up if that ever needs to stop.

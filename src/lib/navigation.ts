@@ -41,7 +41,8 @@ export type NavIcon =
   | "check-square"
   | "sun"
   | "message-square"
-  | "settings";
+  | "settings"
+  | "building";
 
 export const NAVIGATION: NavGroup[] = [
   {
