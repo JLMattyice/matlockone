@@ -6,6 +6,7 @@ import type { AppContext } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { categoryWhere } from "@/lib/job-categories";
 import { jobVisibilityWhere } from "@/lib/permissions";
+import { overlapsWhere } from "@/lib/schedule-span";
 import { like } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -274,7 +275,8 @@ export async function scheduleEvents(
         ? { assignments: { some: { userId: filters.assignedTo } } }
         : {}),
       ...(filters.groupId ? { groupId: filters.groupId } : {}),
-      scheduledStart: { gte: from, lte: to },
+      // Multi-day entries that began before the range still show on its days.
+      ...overlapsWhere(from, to),
     },
     orderBy: { scheduledStart: "asc" },
     include: {

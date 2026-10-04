@@ -28,6 +28,7 @@ import {
   parseHiddenKinds,
 } from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
+import { isMultiDay } from "@/lib/schedule-span";
 import { formatIn, inZone } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
@@ -261,9 +262,11 @@ export default async function JobsPage({
                               {relativeDay(job.scheduledStart, zone)}
                             </span>
                             <span className="block text-xs text-ink-subtle">
-                              {job.allDay
-                                ? "All day"
-                                : formatIn(job.scheduledStart, "h:mm a", zone)}
+                              {job.scheduledEnd && isMultiDay(job.scheduledStart, job.scheduledEnd, zone)
+                                ? `to ${formatIn(job.scheduledEnd.getTime() - 1, "EEE, MMM d", zone)}`
+                                : job.allDay
+                                  ? "All day"
+                                  : formatIn(job.scheduledStart, "h:mm a", zone)}
                             </span>
                           </>
                         ) : (

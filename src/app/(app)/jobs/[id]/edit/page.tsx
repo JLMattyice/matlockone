@@ -20,8 +20,8 @@ import {
   parseHiddenKinds,
 } from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
+import { scheduleShape } from "@/lib/schedule-span";
 import { toDateTimeLocal } from "@/lib/time-zone";
-import { durationMinutes } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Edit job" };
@@ -44,6 +44,8 @@ export default async function EditJobPage({
   ]);
 
   const category = categoryValue(job);
+  // Its length each day, and its last day when it runs over several.
+  const shape = scheduleShape(job.scheduledStart, job.scheduledEnd, job.estimatedMinutes, zone);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -88,12 +90,9 @@ export default async function EditJobPage({
             "NORMAL",
           ) as JobPriority,
           scheduledStart: toDateTimeLocal(job.scheduledStart, zone),
-          durationMinutes: durationMinutes(
-            job.scheduledStart,
-            job.scheduledEnd,
-            job.estimatedMinutes ?? 60,
-          ),
+          durationMinutes: shape.minutesPerDay,
           allDay: job.allDay,
+          lastDay: shape.lastDay ?? "",
           assigneeIds: job.assignments.map((a) => a.userId),
           groupId: job.groupId ?? "",
         }}

@@ -45,8 +45,9 @@ import {
   type CategoryOption,
 } from "@/lib/job-categories";
 import { isPhone } from "@/lib/device";
+import { holidaysBetween, showsUsHolidays } from "@/lib/holidays";
 import { can } from "@/lib/permissions";
-import { inZone, instant, nowIn, parseDateTimeLocal, todayIn } from "@/lib/time-zone";
+import { formatIn, inZone, instant, nowIn, parseDateTimeLocal, todayIn } from "@/lib/time-zone";
 import { durationMinutes } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
@@ -275,6 +276,11 @@ export default async function SchedulePage({
         anchorISO={instant(anchor).toISOString()}
         events={events}
         bills={bills}
+        holidays={
+          showsUsHolidays(org.country)
+            ? holidaysBetween(formatIn(from, "yyyy-MM-dd", zone), formatIn(to, "yyyy-MM-dd", zone))
+            : []
+        }
         unscheduled={unscheduled}
         canDrag={can(user, "schedule:write")}
         canCreate={can(user, "jobs:write")}

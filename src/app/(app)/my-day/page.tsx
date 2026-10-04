@@ -13,7 +13,8 @@ import { asStatus, JOB_STATUS_META, JOB_STATUSES, type JobStatus } from "@/lib/c
 import { dataStaysOnThisMachine } from "@/lib/config";
 import { can } from "@/lib/permissions";
 import { pushKeys } from "@/lib/push";
-import { formatIn, nowIn, toDateTimeLocal } from "@/lib/time-zone";
+import { daysCovered, entryDays } from "@/lib/schedule-span";
+import { formatIn, nowIn, toDateTimeLocal, todayIn } from "@/lib/time-zone";
 import { directionsUrl, formatMinutes } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
@@ -167,11 +168,22 @@ function VisitCard({
 }) {
   const status = asStatus(JOB_STATUSES, visit.status, "SCHEDULED") as JobStatus;
   const meta = JOB_STATUS_META[status];
+  const span = visit.scheduledStart
+    ? entryDays(visit.scheduledStart, visit.scheduledEnd, zone)
+    : null;
+  // "Day 2 of 3" on a job over several days, counted to today.
+  const dayOf =
+    span && span.last > span.first
+      ? `Day ${Math.min(
+          daysCovered(span.first, todayIn(zone)),
+          daysCovered(span.first, span.last),
+        )} of ${daysCovered(span.first, span.last)} · `
+      : "";
   const when = !visit.scheduledStart
     ? "Not scheduled"
     : visit.allDay
-      ? "All day"
-      : `${formatIn(visit.scheduledStart, "h:mm a", zone)}${
+      ? `${dayOf}All day`
+      : `${dayOf}${formatIn(visit.scheduledStart, "h:mm a", zone)}${
           visit.scheduledEnd ? ` – ${formatIn(visit.scheduledEnd, "h:mm a", zone)}` : ""
         }`;
   const address = visit.address

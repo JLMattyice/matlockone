@@ -91,7 +91,11 @@ partly paid, a payment recorded twice.
   portal; the business can switch it off.
 - Scheduling: day/week/month calendars, drag-and-drop rescheduling, an
   unscheduled queue you drag onto the grid, recurring appointments, crew
-  assignment. Repeating bills show on the days they come due — still to come,
+  assignment. Entries can run over several days (a start, hours each day and
+  a last day) and show as one bar across them; My Day shows the crew each day
+  of one. US holidays are marked on their dates — the eleven federal ones
+  (with the weekday they are observed on) plus days like Mother's Day and
+  Halloween. Repeating bills show on the days they come due — still to come,
   waiting for the amount, or paid — for the roles the owner picks (Settings →
   Calendar; owners, admins and managers to start). An employee given them sees
   names and dates, never amounts.

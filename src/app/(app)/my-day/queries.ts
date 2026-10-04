@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { overlapsWhere } from "@/lib/schedule-span";
 import { clockMinutes, openClock, runningTimer } from "@/lib/time-clock";
 import { formatIn, parseDateTimeLocal } from "@/lib/time-zone";
 
@@ -42,7 +43,8 @@ export async function myDay(organizationId: string, userId: string, zone: string
         organizationId,
         ...mine,
         status: { not: "CANCELLED" },
-        scheduledStart: { gte: start, lt: end },
+        // Today's visits, and today's part of one over several days.
+        ...overlapsWhere(start, new Date(end.getTime() - 1)),
       },
       orderBy: [{ allDay: "desc" }, { scheduledStart: "asc" }],
       select: VISIT_SELECT,
@@ -75,9 +77,12 @@ export async function myDay(organizationId: string, userId: string, zone: string
     },
   });
 
+  // A job over several days that is under way is today's, not carried over.
+  const onToday = new Set(today.map((job) => job.id));
+
   return {
     today: today.map(visit),
-    carriedOver: carriedOver.map(visit),
+    carriedOver: carriedOver.filter((job) => !onToday.has(job.id)).map(visit),
     clock,
     /** The open entry began on an earlier day: they forgot to clock out. */
     clockFromEarlier: Boolean(clock && clock.clockedInAt < start),

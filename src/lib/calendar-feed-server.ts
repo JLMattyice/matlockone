@@ -9,6 +9,7 @@ import { asStatus, ROLES, type Role } from "./constants";
 import { prisma } from "./db";
 import { entryCategory } from "./job-categories";
 import { can } from "./permissions";
+import { overlapsWhere } from "./schedule-span";
 
 /**
  * Turning a feed address into a calendar file, and making the addresses.
@@ -91,10 +92,12 @@ export async function loadFeed(
     where: {
       organizationId: org.id,
       status: { not: "CANCELLED" },
-      scheduledStart: {
-        gte: new Date(now.getTime() - DAYS_BACK * DAY_MS),
-        lte: new Date(now.getTime() + DAYS_AHEAD * DAY_MS),
-      },
+      // Overlapping the window, so a job over several days that began before
+      // it is still there.
+      ...overlapsWhere(
+        new Date(now.getTime() - DAYS_BACK * DAY_MS),
+        new Date(now.getTime() + DAYS_AHEAD * DAY_MS),
+      ),
       ...(everything ? {} : { assignments: { some: { userId: user.id } } }),
     },
     orderBy: { scheduledStart: "asc" },

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { addDays } from "date-fns";
 import { z } from "zod";
 
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
@@ -26,7 +27,8 @@ import { notify } from "@/lib/notifications";
 import { allocateNumber } from "@/lib/numbering";
 import { can } from "@/lib/permissions";
 import { expandRecurrence, MAX_OCCURRENCES } from "@/lib/recurrence";
-import { formatIn, parseDateTimeLocal } from "@/lib/time-zone";
+import { daysCovered, entryDays, isMultiDay, scheduledEndFor } from "@/lib/schedule-span";
+import { formatIn, inZone, parseDateTimeLocal } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -43,6 +45,12 @@ const jobSchema = z.object({
   scheduledStart: z.string().trim().nullish(),
   durationMinutes: z.coerce.number().int().min(15).max(24 * 60),
   allDay: z.boolean().default(false),
+  // "YYYY-MM-DD", for an entry over several days.
+  lastDay: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the last day.")
+    .nullish(),
   assigneeIds: z.array(z.string()),
   groupId: z.string().trim().nullish(),
   repeat: z.boolean().default(false),
@@ -66,6 +74,7 @@ function parseJobForm(formData: FormData) {
     scheduledStart: text(formData, "scheduledStart"),
     durationMinutes: formData.get("durationMinutes") ?? 60,
     allDay: formData.get("allDay") === "on",
+    lastDay: text(formData, "lastDay"),
     assigneeIds: formData.getAll("assigneeIds").map(String).filter(Boolean),
     repeat: formData.get("repeat") === "on",
     frequency: formData.get("frequency") || "WEEKLY",
@@ -78,9 +87,38 @@ function parseJobForm(formData: FormData) {
   });
 }
 
-/** "Tue, Sep 29 at 9:00 PM" — a start time as a notification says it. */
-function when(date: Date, zone: string) {
-  return formatIn(date, "EEE, MMM d 'at' h:mm a", zone);
+/**
+ * "Tue, Sep 29 at 9:00 PM" — a start time as a notification says it — and
+ * "… to Thu, Oct 1" after it for an entry over several days.
+ */
+function when(date: Date, zone: string, end?: Date | null) {
+  const start = formatIn(date, "EEE, MMM d 'at' h:mm a", zone);
+  if (!end || !isMultiDay(date, end, zone)) return start;
+  return `${start} to ${formatIn(end.getTime() - 1, "EEE, MMM d", zone)}`;
+}
+
+/** How long an entry is a day, longest allowed: a year. */
+const MAX_DAYS = 366;
+
+/**
+ * The last day as the form gave it, checked against the start — or the field
+ * error to show. Null for an entry all on one day.
+ */
+function readLastDay(
+  input: { lastDay?: string | null },
+  start: Date | null,
+  zone: string,
+): { lastDay: string | null } | { error: ActionState } {
+  if (!input.lastDay) return { lastDay: null };
+  const refuse = (message: string) => ({
+    error: { ok: false, fieldErrors: { lastDay: message } } satisfies ActionState,
+  });
+  if (!start) return refuse("Pick when it starts first.");
+
+  const first = formatIn(start, "yyyy-MM-dd", zone);
+  if (input.lastDay <= first) return refuse("The last day has to be after the day it starts.");
+  if (daysCovered(first, input.lastDay) > MAX_DAYS) return refuse("That is more than a year.");
+  return { lastDay: input.lastDay };
 }
 
 /** Only accept a client and address that belong to the caller's organization. */
@@ -182,6 +220,21 @@ export async function createJob(
     return { ok: false, fieldErrors: { scheduledStart: "A repeating job needs a start date." } };
   }
 
+  const span = readLastDay(input, start, zone);
+  if ("error" in span) return span.error;
+  // Days after the first it runs on, the same for every visit when it repeats.
+  const extraDays =
+    start && span.lastDay ? daysCovered(formatIn(start, "yyyy-MM-dd", zone), span.lastDay) - 1 : 0;
+  const endOf = (occurrenceStart: Date) =>
+    scheduledEndFor(
+      occurrenceStart,
+      input.durationMinutes,
+      extraDays > 0
+        ? formatIn(addDays(inZone(occurrenceStart, zone), extraDays), "yyyy-MM-dd", zone)
+        : null,
+      zone,
+    );
+
   const category = await resolveCategory(input.category, org.id);
   if (!category) return CATEGORY_GONE;
 
@@ -249,11 +302,7 @@ export async function createJob(
             status: input.status,
             priority: input.priority,
             scheduledStart: occurrenceStart,
-            scheduledEnd: occurrenceStart
-              ? new Date(
-                  occurrenceStart.getTime() + input.durationMinutes * 60_000,
-                )
-              : null,
+            scheduledEnd: occurrenceStart ? endOf(occurrenceStart) : null,
             allDay: input.allDay,
             estimatedMinutes: input.durationMinutes,
             recurrenceRuleId,
@@ -291,7 +340,7 @@ export async function createJob(
     exceptUserId: user.id,
     type: "JOB_ASSIGNED",
     title: `Assigned: ${input.title}`,
-    body: start ? `Scheduled for ${when(start, zone)}` : "Not scheduled yet",
+    body: start ? `Scheduled for ${when(start, zone, endOf(start))}` : "Not scheduled yet",
     entityType: "job",
     entityId: firstJobId,
     actionUrl: `/jobs/${firstJobId}`,
@@ -328,6 +377,7 @@ export async function updateJob(
       kind: true,
       categoryId: true,
       scheduledStart: true,
+      scheduledEnd: true,
       assignments: { select: { userId: true } },
       _count: { select: { checklistItems: true } },
     },
@@ -340,6 +390,10 @@ export async function updateJob(
   const input = parsed.data;
   const zone = await viewerTimeZone();
   const start = parseDateTimeLocal(input.scheduledStart, zone);
+
+  const span = readLastDay(input, start, zone);
+  if ("error" in span) return span.error;
+  const end = start ? scheduledEndFor(start, input.durationMinutes, span.lastDay, zone) : null;
 
   const category = await resolveCategory(input.category, org.id);
   if (!category) return CATEGORY_GONE;
@@ -365,9 +419,7 @@ export async function updateJob(
         groupId,
         priority: input.priority,
         scheduledStart: start,
-        scheduledEnd: start
-          ? new Date(start.getTime() + input.durationMinutes * 60_000)
-          : null,
+        scheduledEnd: end,
         allDay: input.allDay,
         estimatedMinutes: input.durationMinutes,
       },
@@ -405,6 +457,12 @@ export async function updateJob(
   const added = assigneeIds.filter((userId) => !previous.has(userId));
   const movedTo = start?.getTime() ?? null;
   const movedFrom = existing.scheduledStart?.getTime() ?? null;
+  // A last day moved is a change of schedule too; a different length on the
+  // same days is not, as before.
+  const lastDayOf = (from: Date | null, to: Date | null) =>
+    from ? entryDays(from, to, zone).last : null;
+  const lastDayMoved =
+    lastDayOf(start, end) !== lastDayOf(existing.scheduledStart, existing.scheduledEnd);
 
   await notify({
     organizationId: org.id,
@@ -412,7 +470,7 @@ export async function updateJob(
     exceptUserId: user.id,
     type: "JOB_ASSIGNED",
     title: `Assigned: ${input.title}`,
-    body: start ? `Scheduled for ${when(start, zone)}` : "Not scheduled yet",
+    body: start ? `Scheduled for ${when(start, zone, end)}` : "Not scheduled yet",
     entityType: "job",
     entityId: id,
     actionUrl: `/jobs/${id}`,
@@ -422,14 +480,14 @@ export async function updateJob(
   // the history there to read but not counted against them as unread.
   await joinJobThread({ organizationId: org.id, jobId: id, userIds: added });
 
-  if (movedTo !== movedFrom) {
+  if (movedTo !== movedFrom || lastDayMoved) {
     await notify({
       organizationId: org.id,
       userIds: assigneeIds.filter((userId) => previous.has(userId)),
       exceptUserId: user.id,
       type: "SCHEDULE_CHANGE",
       title: `Rescheduled: ${input.title}`,
-      body: start ? `Now ${when(start, zone)}` : "Moved to unscheduled",
+      body: start ? `Now ${when(start, zone, end)}` : "Moved to unscheduled",
       entityType: "job",
       entityId: id,
       actionUrl: `/jobs/${id}`,
@@ -517,7 +575,7 @@ export async function rescheduleJob(input: {
     exceptUserId: user.id,
     type: "SCHEDULE_CHANGE",
     title: `Rescheduled: ${job.title}`,
-    body: `Now ${when(start, await viewerTimeZone())}`,
+    body: `Now ${when(start, await viewerTimeZone(), new Date(start.getTime() + duration * 60_000))}`,
     entityType: "job",
     entityId: input.id,
     actionUrl: `/jobs/${input.id}`,

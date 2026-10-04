@@ -88,6 +88,7 @@ export default async function NewJobPage({
           scheduledStart,
           durationMinutes: 60,
           allDay: false,
+          lastDay: "",
           assigneeIds: [],
           groupId: "",
         }}

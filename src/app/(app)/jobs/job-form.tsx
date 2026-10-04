@@ -73,8 +73,11 @@ export type JobFormValues = {
   priority: JobPriority;
   /** "YYYY-MM-DDTHH:mm" for a datetime-local input, or "". */
   scheduledStart: string;
+  /** Minutes each day it runs. */
   durationMinutes: number;
   allDay: boolean;
+  /** "YYYY-MM-DD" for an entry over several days, or "" for one on one day. */
+  lastDay: string;
   assigneeIds: string[];
   groupId: string;
 };
@@ -120,6 +123,9 @@ export function JobForm({
   const [clientId, setClientId] = useState(values.clientId);
   const [addressId, setAddressId] = useState(values.addressId);
   const [allDay, setAllDay] = useState(values.allDay);
+  const [multiDay, setMultiDay] = useState(Boolean(values.lastDay));
+  // The day it starts, so the last day cannot be picked before it.
+  const [startDay, setStartDay] = useState(values.scheduledStart.slice(0, 10));
   const [assignees, setAssignees] = useState<string[]>(values.assigneeIds);
   const [groupId, setGroupId] = useState(values.groupId);
 
@@ -331,10 +337,14 @@ export function JobForm({
                 name="scheduledStart"
                 type="datetime-local"
                 defaultValue={values.scheduledStart}
+                onChange={(e) => setStartDay(e.target.value.slice(0, 10))}
               />
             </Field>
 
-            <Field label="Duration" htmlFor="durationMinutes">
+            <Field
+              label={multiDay && !allDay ? "Hours each day" : "Duration"}
+              htmlFor="durationMinutes"
+            >
               <Select
                 id="durationMinutes"
                 name="durationMinutes"
@@ -350,14 +360,45 @@ export function JobForm({
             </Field>
           </div>
 
-          <label className="flex items-center gap-2.5 text-sm text-ink-muted">
-            <Checkbox
-              name="allDay"
-              checked={allDay}
-              onChange={(e) => setAllDay(e.target.checked)}
-            />
-            All-day — no specific arrival time
-          </label>
+          <div className="flex flex-wrap gap-x-6 gap-y-2.5">
+            <label className="flex items-center gap-2.5 text-sm text-ink-muted">
+              <Checkbox
+                name="allDay"
+                checked={allDay}
+                onChange={(e) => setAllDay(e.target.checked)}
+              />
+              All-day — no specific arrival time
+            </label>
+
+            <label className="flex items-center gap-2.5 text-sm text-ink-muted">
+              <Checkbox
+                checked={multiDay}
+                onChange={(e) => setMultiDay(e.target.checked)}
+              />
+              Runs over several days
+            </label>
+          </div>
+
+          {multiDay ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field
+                label="Last day"
+                htmlFor="lastDay"
+                required
+                error={err("lastDay")}
+                hint="It shows on the calendar on every day from the start to this one."
+              >
+                <Input
+                  id="lastDay"
+                  name="lastDay"
+                  type="date"
+                  required
+                  defaultValue={values.lastDay}
+                  min={startDay || undefined}
+                />
+              </Field>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Priority" htmlFor="priority">

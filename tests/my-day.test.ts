@@ -220,6 +220,26 @@ describe("the day screen", () => {
     expect(day.minutesToday).toBeLessThanOrEqual(91);
   });
 
+  it("shows each day of a job over several days on that day, not as carried over", async () => {
+    const roof = await visit("Three-day roof", {
+      start: new Date(Date.now() - 30 * HOUR),
+      status: "IN_PROGRESS",
+    });
+    await prisma.job.update({
+      where: { id: roof.id },
+      data: { scheduledEnd: new Date(Date.now() + 30 * HOUR) },
+    });
+    const done = await visit("Ended yesterday", { start: new Date(Date.now() - 50 * HOUR) });
+    await prisma.job.update({
+      where: { id: done.id },
+      data: { scheduledEnd: new Date(Date.now() - 26 * HOUR) },
+    });
+
+    const day = await myDay(organizationId, crewId, "UTC");
+    expect(day.today.map((v) => v.title)).toEqual(["Three-day roof"]);
+    expect(day.carriedOver).toEqual([]);
+  });
+
   it("is the crew's home: they get My Day and not the business dashboard", () => {
     const items = NAVIGATION.flatMap((group) => group.items);
     const visible = (role: string) =>

@@ -65,6 +65,7 @@ import { currencySymbol, formatMoney } from "@/lib/money";
 import { entryCategory } from "@/lib/job-categories";
 import { can } from "@/lib/permissions";
 import { describeRecurrence } from "@/lib/recurrence";
+import { daysCovered, entryDays, scheduleShape, spanLabel } from "@/lib/schedule-span";
 import { formatIn, toDateTimeLocal } from "@/lib/time-zone";
 import { directionsUrl, formatMinutes, formatPhone } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
@@ -117,6 +118,15 @@ export default async function JobDetailPage({
   const priority = asStatus(JOB_PRIORITIES, job.priority, "NORMAL");
   const mark = entryCategory(job, org.labelJobSingular);
   const costs = jobCostTotals(job, expenses?.totalCents ?? 0);
+
+  // Over several days: how many, and whether it keeps the same hours each day
+  // or runs as one stretch through the night.
+  const span = job.scheduledStart ? entryDays(job.scheduledStart, job.scheduledEnd, zone) : null;
+  const multiDay = span !== null && span.last > span.first;
+  const days = span ? daysCovered(span.first, span.last) : 1;
+  const daily =
+    multiDay &&
+    scheduleShape(job.scheduledStart, job.scheduledEnd, job.estimatedMinutes, zone).lastDay !== null;
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
 
   // The saved lists, offered only to whoever may change what is on the job.
@@ -684,16 +694,24 @@ export default async function JobDetailPage({
                   />
                   <div>
                     <p className="text-sm font-medium text-ink">
-                      {formatIn(job.scheduledStart, "EEEE, MMMM d, yyyy", zone)}
+                      {multiDay
+                        ? spanLabel(job.scheduledStart, job.scheduledEnd, zone)
+                        : formatIn(job.scheduledStart, "EEEE, MMMM d, yyyy", zone)}
                     </p>
                     <p className="tabular text-sm text-ink-muted">
+                      {multiDay ? `${days} days · ` : ""}
                       {job.allDay
                         ? "All day"
                         : `${formatIn(job.scheduledStart, "h:mm a", zone)}${
                             job.scheduledEnd
-                              ? ` – ${formatIn(job.scheduledEnd, "h:mm a", zone)}`
+                              ? ` – ${formatIn(
+                                  job.scheduledEnd,
+                                  // One stretch through the night says which day it ends.
+                                  multiDay && !daily ? "EEE h:mm a" : "h:mm a",
+                                  zone,
+                                )}`
                               : ""
-                          }`}
+                          }${daily ? " each day" : ""}`}
                     </p>
                   </div>
                 </div>

@@ -5,6 +5,7 @@ import { CalendarDays, CheckCircle2, FileText, MessageSquarePlus, Receipt } from
 import { ShareRefused } from "@/app/share/refused";
 import { formatMoney } from "@/lib/money";
 import { portalView } from "@/lib/portal";
+import { isMultiDay } from "@/lib/schedule-span";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
 import { formatIn } from "@/lib/time-zone";
 import { DEFAULT_BRAND_COLOR, formatPhone, hexToRgbChannels } from "@/lib/utils";
@@ -97,7 +98,13 @@ export default async function PortalPage({ params }: { params: Promise<{ token: 
                     <>
                       {day(job.scheduledStart)}
                       <br />
-                      <span className="text-xs">{job.allDay ? "All day" : time(job.scheduledStart)}</span>
+                      <span className="text-xs">
+                        {job.scheduledEnd && isMultiDay(job.scheduledStart, job.scheduledEnd, org.timeZone)
+                          ? `to ${day(new Date(job.scheduledEnd.getTime() - 1))}`
+                          : job.allDay
+                            ? "All day"
+                            : time(job.scheduledStart)}
+                      </span>
                     </>
                   ) : (
                     "Date to be set"

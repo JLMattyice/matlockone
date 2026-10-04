@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
-import { Banknote, Check, PenLine } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Banknote, Check, ChevronLeft, ChevronRight, PenLine } from "lucide-react";
 import {
   addDays,
   eachDayOfInterval,
@@ -19,7 +19,7 @@ import {
   startOfWeek,
 } from "date-fns";
 
-import { layoutDay } from "./layout-events";
+import { layoutDay, layoutDayItems, type DayItem, type PlacedItem } from "./layout-events";
 import {
   GRID_END_HOUR,
   GRID_START_HOUR,
@@ -34,6 +34,8 @@ import { rescheduleJob } from "../jobs/actions";
 import { CategoryMark } from "../jobs/category-mark";
 import { useTimeZone } from "@/components/app-shell/time-zone";
 import { JOB_STATUS_META } from "@/lib/constants";
+import type { Holiday } from "@/lib/holidays";
+import { daysCovered, entryDays, isMultiDay, spanLabel } from "@/lib/schedule-span";
 import { formatIn, inZone, instant } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
@@ -51,13 +53,23 @@ type DragPayload = {
   durationMinutes: number;
   /** Minutes between the event's start and where the pointer grabbed it. */
   grabOffsetMinutes: number;
+  /**
+   * Days between the entry's first day and the day it was grabbed by — for a
+   * bar across several days, so the day under the pointer is the one that
+   * lands where it is dropped.
+   */
+  grabOffsetDays?: number;
 };
+
+/** "2026-10-05": a day on the viewer's clock, the key everything is matched on. */
+const dayKey = (day: Date) => format(day, "yyyy-MM-dd");
 
 export function ScheduleCalendar({
   view,
   anchorISO,
   events: initialEvents,
   bills = [],
+  holidays = [],
   unscheduled,
   canDrag,
   canCreate,
@@ -67,6 +79,8 @@ export function ScheduleCalendar({
   events: CalendarEvent[];
   /** Repeating bills on their due dates, for the roles the owner chose. */
   bills?: CalendarBill[];
+  /** Holidays in the range on screen, marked on their days. */
+  holidays?: Holiday[];
   unscheduled: UnscheduledJob[];
   canDrag: boolean;
   canCreate: boolean;
@@ -122,7 +136,24 @@ export function ScheduleCalendar({
     });
   }
 
-  const shared = { events, bills, canDrag, canCreate, dragging, setDragging, move };
+  const holidaysByDay = useMemo(() => {
+    const byDay = new Map<string, Holiday[]>();
+    for (const holiday of holidays) {
+      byDay.set(holiday.date, [...(byDay.get(holiday.date) ?? []), holiday]);
+    }
+    return byDay;
+  }, [holidays]);
+
+  const shared = {
+    events,
+    bills,
+    holidaysByDay,
+    canDrag,
+    canCreate,
+    dragging,
+    setDragging,
+    move,
+  };
 
   return (
     <div className="space-y-3">
@@ -246,6 +277,7 @@ function UnscheduledPanel({
 type GridProps = {
   events: CalendarEvent[];
   bills: CalendarBill[];
+  holidaysByDay: Map<string, Holiday[]>;
   canDrag: boolean;
   canCreate: boolean;
   dragging: string | null;
@@ -253,20 +285,87 @@ type GridProps = {
   move: (id: string, start: Date, durationMinutes: number) => void;
 };
 
+/** A bill or an entry, laid on whole days rather than on the hours. */
+type BandEntry = DayItem &
+  ({ type: "bill"; bill: CalendarBill } | { type: "event"; event: CalendarEvent });
+
+/**
+ * The bills and entries that sit on whole days, bills first. `everything`
+ * takes timed entries too, as the month does; the week and day take only the
+ * all-day and multi-day ones, the rest having a place on the hours.
+ */
+function bandEntries(
+  events: CalendarEvent[],
+  bills: CalendarBill[],
+  zone: string,
+  everything: boolean,
+): BandEntry[] {
+  const billEntries = bills
+    .slice()
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+    .map((bill): BandEntry => {
+      const day = formatIn(bill.dateISO, "yyyy-MM-dd", zone);
+      return { type: "bill", bill, key: `bill:${bill.key}`, first: day, last: day };
+    });
+
+  const eventEntries = events
+    .filter(
+      (event) => everything || event.allDay || isMultiDay(event.startISO, event.endISO, zone),
+    )
+    .sort((a, b) => a.startISO.localeCompare(b.startISO))
+    .map((event): BandEntry => ({
+      type: "event",
+      event,
+      key: event.id,
+      ...entryDays(event.startISO, event.endISO, zone),
+    }));
+
+  return [...billEntries, ...eventEntries];
+}
+
+/** One line of the band: a chip's height and the gap under it. */
+const CHIP_PX = 20;
+const LANE_PX = 22;
+
+/**
+ * Where a bar sits: its lane, and across its columns. A bar that carries on
+ * past an edge runs right up to it, so it reads as one bar across the rows.
+ */
+function barStyle(placed: PlacedItem<BandEntry>, columns: number, topPx: number) {
+  const inset = (open: boolean) => (open ? 0 : 3);
+  const left = inset(placed.fromBefore);
+  const right = inset(placed.toAfter);
+  return {
+    position: "absolute",
+    top: topPx + placed.lane * LANE_PX,
+    height: CHIP_PX,
+    left: `calc(${(placed.col / columns) * 100}% + ${left}px)`,
+    width: `calc(${(placed.span / columns) * 100}% - ${left + right}px)`,
+  } satisfies React.CSSProperties;
+}
+
+/** The days into an entry that the pointer grabbed a bar of `placed` at. */
+function grabbedDay(
+  e: React.DragEvent,
+  placed: PlacedItem<BandEntry>,
+  rowFirstDay: string,
+): number {
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const perDay = rect.width / placed.span;
+  const within = perDay > 0 ? Math.floor((e.clientX - rect.left) / perDay) : 0;
+  const before = placed.fromBefore ? daysCovered(placed.item.first, rowFirstDay) - 1 : 0;
+  return Math.max(0, Math.min(placed.span - 1, within)) + before;
+}
+
 function TimeGrid({ days, ...props }: GridProps & { days: Date[] }) {
   const zone = useTimeZone();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // All-day entries and bills sit above the hours, not at the top of the
-  // scrolling grid: it opens at 8am, which would scroll them out of sight.
-  const allDay = days.map((day) => ({
-    day,
-    bills: props.bills.filter((bill) => isSameDay(inZone(bill.dateISO, zone), day)),
-    events: props.events.filter(
-      (event) => event.allDay && isSameDay(inZone(event.startISO, zone), day),
-    ),
-  }));
-  const anyAllDay = allDay.some((entry) => entry.bills.length + entry.events.length > 0);
+  // All-day and multi-day entries and bills sit above the hours, not at the
+  // top of the scrolling grid: it opens at 8am, which would scroll them out of
+  // sight. Multi-day ones run across the days they cover as one bar.
+  const keys = days.map(dayKey);
+  const band = layoutDayItems(bandEntries(props.events, props.bills, zone, false), keys);
   const hours = Array.from(
     { length: GRID_END_HOUR - GRID_START_HOUR },
     (_, i) => GRID_START_HOUR + i,
@@ -283,47 +382,85 @@ function TimeGrid({ days, ...props }: GridProps & { days: Date[] }) {
     <div className="overflow-hidden rounded-card border border-line bg-surface">
       <div className="flex border-b border-line">
         <div className="w-14 shrink-0" aria-hidden />
-        {days.map((day) => (
-          <div
-            key={day.toISOString()}
-            className={cn(
-              "flex-1 border-l border-line px-2 py-2 text-center",
-              isToday(day) && "bg-brand/5",
-            )}
-          >
-            <p className="text-xs font-medium tracking-wide text-ink-subtle uppercase">
-              {format(day, "EEE")}
-            </p>
-            <p
+        {days.map((day) => {
+          const holidays = props.holidaysByDay.get(dayKey(day)) ?? [];
+          return (
+            <div
+              key={day.toISOString()}
               className={cn(
-                "tabular text-lg font-semibold",
-                isToday(day) ? "text-brand" : "text-ink",
+                "@container min-w-0 flex-1 border-l border-line px-1 py-2 text-center",
+                isToday(day) && "bg-brand/5",
               )}
             >
-              {format(day, "d")}
-            </p>
-          </div>
-        ))}
+              <p className="text-xs font-medium tracking-wide text-ink-subtle uppercase">
+                {format(day, "EEE")}
+              </p>
+              <p
+                className={cn(
+                  "tabular text-lg font-semibold",
+                  isToday(day) ? "text-brand" : "text-ink",
+                )}
+              >
+                {format(day, "d")}
+              </p>
+              {holidays.length > 0 ? (
+                <HolidayLabel holidays={holidays} className="mx-auto mt-0.5 max-w-full" />
+              ) : null}
+            </div>
+          );
+        })}
       </div>
 
-      {anyAllDay ? (
+      {band.lanes > 0 ? (
         <div className="flex border-b border-line bg-surface-2">
           <div className="w-14 shrink-0 px-1 py-1.5 text-right text-[0.625rem] leading-tight text-ink-subtle">
             All day
           </div>
-          {allDay.map((entry) => (
-            <div
-              key={entry.day.toISOString()}
-              className="min-w-0 flex-1 space-y-1 border-l border-line p-1"
-            >
-              {entry.bills.map((bill) => (
-                <BillChip key={bill.key} bill={bill} />
-              ))}
-              {entry.events.map((event) => (
-                <EventChip key={event.id} event={event} />
+          <div
+            className="relative min-w-0 flex-1"
+            style={{ height: band.lanes * LANE_PX + 6 }}
+          >
+            {/* The day lines, under the bars. */}
+            <div className="absolute inset-0 flex" aria-hidden>
+              {days.map((day) => (
+                <div key={day.toISOString()} className="flex-1 border-l border-line" />
               ))}
             </div>
-          ))}
+            {band.placed.map((placed) =>
+              placed.item.type === "bill" ? (
+                <BillChip
+                  key={placed.item.key}
+                  bill={placed.item.bill}
+                  style={barStyle(placed, days.length, 4)}
+                />
+              ) : (
+                <EventChip
+                  key={placed.item.key}
+                  event={placed.item.event}
+                  style={barStyle(placed, days.length, 4)}
+                  fromBefore={placed.fromBefore}
+                  toAfter={placed.toAfter}
+                  canDrag={props.canDrag}
+                  isDragging={props.dragging === placed.item.key}
+                  onDragStart={(e) => {
+                    const event = (placed.item as Extract<BandEntry, { type: "event" }>).event;
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData(
+                      DRAG_TYPE,
+                      JSON.stringify({
+                        id: event.id,
+                        durationMinutes: event.durationMinutes,
+                        grabOffsetMinutes: 0,
+                        grabOffsetDays: grabbedDay(e, placed, keys[0]),
+                      } satisfies DragPayload),
+                    );
+                    props.setDragging(event.id);
+                  }}
+                  onDragEnd={() => props.setDragging(null)}
+                />
+              ),
+            )}
+          </div>
         </div>
       ) : null}
 
@@ -369,6 +506,7 @@ function DayColumn({
   const columnRef = useRef<HTMLDivElement>(null);
   const [hoverTop, setHoverTop] = useState<number | null>(null);
 
+  // Only timed entries on this one day: the rest are in the band above.
   const dayEvents = events.filter((event) =>
     isSameDay(inZone(event.startISO, zone), day),
   );
@@ -403,8 +541,9 @@ function DayColumn({
     );
 
     // Wall-clock hours and minutes, so a slot means the same time on the day
-    // the clocks change as on any other.
-    const start = set(day, {
+    // the clocks change as on any other. A bar grabbed by its third day puts
+    // that day here, and starts two days before.
+    const start = set(addDays(day, -(payload.grabOffsetDays ?? 0)), {
       hours: GRID_START_HOUR + Math.floor(clamped / 60),
       minutes: clamped % 60,
       seconds: 0,
@@ -498,10 +637,18 @@ function DayColumn({
 
 // ----------------------------------------------------------- month grid ---
 
+/** Lines of entries a month cell shows before "+N more". */
+const MONTH_LANES = 3;
+/** The cell's padding, the day number and the gap under it. */
+const MONTH_HEADER_PX = 34;
+const MONTH_MORE_PX = 18;
+const MONTH_MIN_PX = 112;
+
 function MonthGrid({
   anchor,
   events,
   bills,
+  holidaysByDay,
   canDrag,
   dragging,
   setDragging,
@@ -512,7 +659,48 @@ function MonthGrid({
     start: startOfWeek(startOfMonth(anchor)),
     end: endOfWeek(endOfMonth(anchor)),
   });
+  const weeks = Array.from({ length: Math.ceil(days.length / 7) }, (_, i) =>
+    days.slice(i * 7, i * 7 + 7),
+  );
+  const entries = bandEntries(events, bills, zone, true);
   const [hoverDay, setHoverDay] = useState<string | null>(null);
+
+  /** The day of `week` under the pointer: the row, not the cell, takes the drop. */
+  function dayUnder(e: React.DragEvent, week: Date[]) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const col = Math.floor(((e.clientX - rect.left) / rect.width) * 7);
+    return week[Math.max(0, Math.min(6, col))];
+  }
+
+  function onDrop(e: React.DragEvent, week: Date[]) {
+    e.preventDefault();
+    setHoverDay(null);
+
+    const raw = e.dataTransfer.getData(DRAG_TYPE);
+    if (!raw) return;
+
+    let payload: DragPayload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    // Month cells have no time axis, so the time of day is kept and only the
+    // date changes. A bar grabbed by a later day keeps that day under the
+    // pointer.
+    const day = addDays(dayUnder(e, week), -(payload.grabOffsetDays ?? 0));
+    const source = events.find((ev) => ev.id === payload.id);
+    const original = inZone(source?.startISO ?? Date.now(), zone);
+    const start = set(day, {
+      hours: original.getHours(),
+      minutes: original.getMinutes(),
+      seconds: 0,
+      milliseconds: 0,
+    });
+
+    move(payload.id, start, payload.durationMinutes);
+  }
 
   return (
     <div className="overflow-hidden rounded-card border border-line bg-surface">
@@ -527,124 +715,176 @@ function MonthGrid({
         ))}
       </div>
 
-      <div className="grid grid-cols-7">
-        {days.map((day) => {
-          const key = day.toISOString();
-          const dayEvents = events
-            .filter((event) => isSameDay(inZone(event.startISO, zone), day))
-            .sort(
-              (a, b) =>
-                new Date(a.startISO).getTime() - new Date(b.startISO).getTime(),
-            );
+      {weeks.map((week) => {
+        const keys = week.map(dayKey);
+        const { placed, lanes } = layoutDayItems(entries, keys);
+        const shown = placed.filter((entry) => entry.lane < MONTH_LANES);
+        // Per day, what did not fit: everything on a lane below the third.
+        const hidden = keys.map(
+          (_, col) =>
+            placed.filter(
+              (entry) =>
+                entry.lane >= MONTH_LANES && entry.col <= col && col < entry.col + entry.span,
+            ).length,
+        );
+        const height = Math.max(
+          MONTH_MIN_PX,
+          MONTH_HEADER_PX +
+            Math.min(lanes, MONTH_LANES) * LANE_PX +
+            (hidden.some(Boolean) ? MONTH_MORE_PX : 0),
+        );
 
-          const dayBills = bills.filter((bill) => isSameDay(inZone(bill.dateISO, zone), day));
-          // Three lines a cell, bills first: they are the day's fixed points.
-          const shownBills = dayBills.slice(0, 3);
-          const shownEvents = dayEvents.slice(0, 3 - shownBills.length);
-          const hidden = dayBills.length + dayEvents.length - shownBills.length - shownEvents.length;
+        return (
+          <div
+            key={keys[0]}
+            className="relative grid grid-cols-7"
+            style={{ minHeight: height }}
+            onDragOver={(e) => {
+              if (!canDrag) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setHoverDay(dayKey(dayUnder(e, week)));
+            }}
+            onDragLeave={(e) => {
+              // Leaving for one of the row's own bars is not leaving the row.
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              setHoverDay((current) => (current && keys.includes(current) ? null : current));
+            }}
+            onDrop={(e) => onDrop(e, week)}
+          >
+            {week.map((day) => {
+              const key = dayKey(day);
+              const outside = !isSameMonth(day, anchor);
+              const holidays = holidaysByDay.get(key) ?? [];
 
-          const outside = !isSameMonth(day, anchor);
-
-          return (
-            <div
-              key={key}
-              className={cn(
-                "min-h-28 border-r border-b border-line p-1.5 transition-colors",
-                outside && "bg-surface-2/60",
-                isToday(day) && "bg-brand/5",
-                hoverDay === key && "bg-brand/10",
-              )}
-              onDragOver={(e) => {
-                if (!canDrag) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setHoverDay(key);
-              }}
-              onDragLeave={() => setHoverDay((c) => (c === key ? null : c))}
-              onDrop={(e) => {
-                e.preventDefault();
-                setHoverDay(null);
-
-                const raw = e.dataTransfer.getData(DRAG_TYPE);
-                if (!raw) return;
-
-                let payload: DragPayload;
-                try {
-                  payload = JSON.parse(raw);
-                } catch {
-                  return;
-                }
-
-                // Month cells have no time axis, so the time of day is kept
-                // and only the date changes.
-                const source = events.find((ev) => ev.id === payload.id);
-                const original = inZone(source?.startISO ?? Date.now(), zone);
-                const start = set(day, {
-                  hours: original.getHours(),
-                  minutes: original.getMinutes(),
-                  seconds: 0,
-                  milliseconds: 0,
-                });
-
-                move(payload.id, start, payload.durationMinutes);
-              }}
-            >
-              <div className="mb-1 flex items-center justify-between">
-                <Link
-                  href={`/schedule?view=day&date=${format(day, "yyyy-MM-dd")}`}
+              return (
+                <div
+                  key={key}
                   className={cn(
-                    "tabular flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors",
-                    isToday(day)
-                      ? "bg-brand text-brand-ink"
-                      : outside
-                        ? "text-ink-subtle hover:bg-surface-3"
-                        : "text-ink hover:bg-surface-3",
+                    "@container min-w-0 border-r border-b border-line p-1.5 transition-colors",
+                    outside && "bg-surface-2/60",
+                    isToday(day) && "bg-brand/5",
+                    hoverDay === key && "bg-brand/10",
                   )}
                 >
-                  {format(day, "d")}
+                  <div className="flex items-center gap-1">
+                    <Link
+                      href={`/schedule?view=day&date=${key}`}
+                      className={cn(
+                        "tabular flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-medium transition-colors",
+                        isToday(day)
+                          ? "bg-brand text-brand-ink"
+                          : outside
+                            ? "text-ink-subtle hover:bg-surface-3"
+                            : "text-ink hover:bg-surface-3",
+                      )}
+                    >
+                      {format(day, "d")}
+                    </Link>
+                    {holidays.length > 0 ? (
+                      <HolidayLabel holidays={holidays} className="ml-auto" />
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+
+            {shown.map((entry) =>
+              entry.item.type === "bill" ? (
+                <BillChip
+                  key={entry.item.key}
+                  bill={entry.item.bill}
+                  style={barStyle(entry, 7, MONTH_HEADER_PX)}
+                />
+              ) : (
+                <EventChip
+                  key={entry.item.key}
+                  event={entry.item.event}
+                  style={barStyle(entry, 7, MONTH_HEADER_PX)}
+                  fromBefore={entry.fromBefore}
+                  toAfter={entry.toAfter}
+                  canDrag={canDrag}
+                  isDragging={dragging === entry.item.key}
+                  onDragStart={(e) => {
+                    const event = (entry.item as Extract<BandEntry, { type: "event" }>).event;
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData(
+                      DRAG_TYPE,
+                      JSON.stringify({
+                        id: event.id,
+                        durationMinutes: event.durationMinutes,
+                        grabOffsetMinutes: 0,
+                        grabOffsetDays: grabbedDay(e, entry, keys[0]),
+                      } satisfies DragPayload),
+                    );
+                    setDragging(event.id);
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                />
+              ),
+            )}
+
+            {hidden.map((count, col) =>
+              count > 0 ? (
+                <Link
+                  key={keys[col]}
+                  href={`/schedule?view=day&date=${keys[col]}`}
+                  className="absolute truncate px-1.5 text-[0.6875rem] leading-[18px] text-ink-subtle hover:text-brand"
+                  style={{
+                    top: MONTH_HEADER_PX + MONTH_LANES * LANE_PX,
+                    left: `${(col / 7) * 100}%`,
+                    width: `${100 / 7}%`,
+                  }}
+                >
+                  +{count} more
                 </Link>
-              </div>
-
-              <div className="space-y-1">
-                {shownBills.map((bill) => (
-                  <BillChip key={bill.key} bill={bill} />
-                ))}
-                {shownEvents.map((event) => (
-                  <EventChip
-                    key={event.id}
-                    event={event}
-                    canDrag={canDrag}
-                    isDragging={dragging === event.id}
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData(
-                        DRAG_TYPE,
-                        JSON.stringify({
-                          id: event.id,
-                          durationMinutes: event.durationMinutes,
-                          grabOffsetMinutes: 0,
-                        } satisfies DragPayload),
-                      );
-                      setDragging(event.id);
-                    }}
-                    onDragEnd={() => setDragging(null)}
-                  />
-                ))}
-
-                {hidden > 0 ? (
-                  <Link
-                    href={`/schedule?view=day&date=${format(day, "yyyy-MM-dd")}`}
-                    className="block px-1 text-[0.6875rem] text-ink-subtle hover:text-brand"
-                  >
-                    +{hidden} more
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              ) : null,
+            )}
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+/**
+ * The holiday on a day, beside its date: green for a federal holiday, when
+ * banks and post offices close, grey for a day that closes nothing.
+ *
+ * A day too narrow for the name — a week or a month on a phone — gets a dot
+ * in its colour instead, with the name on hover and to a screen reader. The
+ * width is the day's own (the nearest @container), not the screen's.
+ */
+function HolidayLabel({ holidays, className }: { holidays: Holiday[]; className?: string }) {
+  const federal = holidays.some((holiday) => holiday.kind === "federal");
+  const names = holidays.map((holiday) => holiday.name).join(" · ");
+  const title = holidays
+    .map((holiday) =>
+      holiday.kind === "federal"
+        ? `${holiday.name} — federal holiday: banks and post offices are closed`
+        : holiday.name,
+    )
+    .join("\n");
+
+  return (
+    <span title={title} className={cn("block min-w-0", className)}>
+      <span
+        className={cn(
+          "mx-auto block h-1.5 w-1.5 rounded-full @min-[5.5rem]:hidden",
+          federal ? "bg-brand" : "bg-ink-subtle",
+        )}
+        aria-hidden
+      />
+      <span className="sr-only @min-[5.5rem]:hidden">{names}</span>
+      <span
+        className={cn(
+          "hidden truncate rounded px-1 text-[0.625rem] leading-4 font-medium @min-[5.5rem]:block",
+          federal ? "bg-brand/10 text-brand" : "bg-surface-3 text-ink-muted",
+        )}
+      >
+        {names}
+      </span>
+    </span>
   );
 }
 
@@ -695,14 +935,25 @@ function EventBlock({
   );
 }
 
+/**
+ * An entry on whole days: a line in a month cell, or a bar across the days a
+ * multi-day entry covers. A bar cut off at the edge of a week shows an arrow
+ * there, for the days it carries on into.
+ */
 function EventChip({
   event,
+  style,
+  fromBefore = false,
+  toAfter = false,
   canDrag = false,
   isDragging = false,
   onDragStart,
   onDragEnd,
 }: {
   event: CalendarEvent;
+  style?: React.CSSProperties;
+  fromBefore?: boolean;
+  toAfter?: boolean;
   canDrag?: boolean;
   isDragging?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
@@ -710,6 +961,7 @@ function EventChip({
 }) {
   const zone = useTimeZone();
   const tone = JOB_STATUS_META[event.status].tone;
+  const multiDay = isMultiDay(event.startISO, event.endISO, zone);
 
   return (
     <Link
@@ -717,21 +969,35 @@ function EventChip({
       draggable={canDrag}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      style={style}
       className={cn(
-        "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[0.6875rem] leading-tight",
+        "flex items-center gap-1 overflow-hidden rounded border px-1.5 py-0.5 text-[0.6875rem] leading-tight",
         TONE_CLASSES[tone],
+        fromBefore && "rounded-l-none border-l-0",
+        toAfter && "rounded-r-none border-r-0",
         canDrag && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
       )}
-      title={[event.number, event.mark?.label, event.title].filter(Boolean).join(" · ")}
+      title={[
+        event.number,
+        event.mark?.label,
+        event.title,
+        multiDay ? spanLabel(event.startISO, event.endISO, zone) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
     >
+      {fromBefore ? <ChevronLeft className="-ml-1 h-3 w-3 shrink-0" strokeWidth={2} aria-hidden /> : null}
       {event.mark ? <CategoryMark icon={event.mark.icon} /> : null}
-      {!event.allDay ? (
+      {!event.allDay && !fromBefore ? (
         <span className="tabular shrink-0 font-semibold">
           {formatIn(event.startISO, "h:mm", zone)}
         </span>
       ) : null}
-      <span className="truncate">{event.title}</span>
+      <span className="min-w-0 truncate">{event.title}</span>
+      {toAfter ? (
+        <ChevronRight className="-mr-1 ml-auto h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+      ) : null}
     </Link>
   );
 }
@@ -743,10 +1009,10 @@ const BILL_LOOK: Record<CalendarBill["state"], { className: string; label: strin
 };
 
 /** A bill on its day: dashed while it is coming, amber to enter, green once paid. */
-function BillChip({ bill }: { bill: CalendarBill }) {
+function BillChip({ bill, style }: { bill: CalendarBill; style?: React.CSSProperties }) {
   const look = BILL_LOOK[bill.state];
   const className = cn(
-    "@container block rounded border px-1.5 py-0.5 text-[0.6875rem] leading-tight",
+    "@container block overflow-hidden rounded border px-1.5 py-0.5 text-[0.6875rem] leading-tight",
     look.className,
     bill.href && "transition-colors hover:border-line-strong",
   );
@@ -764,11 +1030,11 @@ function BillChip({ bill }: { bill: CalendarBill }) {
   );
 
   return bill.href ? (
-    <Link href={bill.href} className={className} title={title} aria-label={title}>
+    <Link href={bill.href} className={className} style={style} title={title} aria-label={title}>
       {content}
     </Link>
   ) : (
-    <span className={className} title={title} aria-label={title}>
+    <span className={className} style={style} title={title} aria-label={title}>
       {content}
     </span>
   );
