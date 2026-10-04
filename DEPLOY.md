@@ -225,6 +225,13 @@ deterministic apart from dates, which are generated relative to today — so the
 schedule looks live every time, and the dashboard figures do not move between
 walkthroughs.
 
+Reseed it after a release whose features the demo should show — after that
+release's `db:deploy`, since the seed writes the new tables. What the seed
+adds for newer features (signed estimates with deposits and progress billing,
+checklists, repeating bills, portals and service requests, customer-email
+automations, the day clock) is written after everything else, so the older
+figures, which the marketing screens were taken from, come out unchanged.
+
 Without this, the deployment has no users at all, and `isFirstRun()` sends
 every route to `/signup` — including the `/login` the landing page points at.
 

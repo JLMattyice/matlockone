@@ -19,10 +19,15 @@
 // reads DATABASE_URL at import time.
 import "../scripts/load-env";
 
+import { randomBytes } from "node:crypto";
+
+import { addMonths, format, subMonths } from "date-fns";
+
 import { vocabularyColumns } from "../src/lib/business-types";
 import { createPrismaClient } from "../src/lib/db";
 import { providerFor } from "../src/lib/db-provider";
-import { computeTotals } from "../src/lib/money";
+import { signedSnapshot, snapshotHash } from "../src/lib/estimate-signature";
+import { computeTotals, depositCentsFor, formatMoney } from "../src/lib/money";
 import { hashPassword } from "../src/lib/password";
 import { DEFAULT_BRAND_COLOR } from "../src/lib/utils";
 
@@ -1101,6 +1106,817 @@ async function main() {
   }
 
   console.log(`  ${threads.length} team conversations`);
+
+  // ===================================================== the newer features ---
+  //
+  // Everything below came with the release that added signatures, deposits,
+  // checklists, repeating bills on the calendar, the customer portal, the
+  // request form, customer emails and the day clock. It runs after the rest
+  // so the workspace above — and the figures the marketing screens were taken
+  // from — come out exactly as before.
+
+  const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
+  const noon = (date: Date) => {
+    const at = new Date(date);
+    at.setHours(12, 0, 0, 0);
+    return at;
+  };
+  const sinceNow = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+  const office = [owner, staff[1], manager];
+
+  // ------------------------------------- signatures, deposits, progress ---
+
+  const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  const estimateLabel = (number: string) => `${org.labelEstimateSingular} ${number}`;
+
+  type BillingLine = {
+    kind: string;
+    name: string;
+    description: string | null;
+    quantity: number;
+    unit: string;
+    unitPriceCents: number;
+    taxable: boolean;
+  };
+
+  /** A quote with a deposit asked for, signed online or still out for an answer. */
+  async function quoteWithDeposit(input: {
+    client: (typeof clients)[number];
+    title: string;
+    lines: BillingLine[];
+    deposit: { type: "PERCENT" | "FIXED"; value: number };
+    issued: Date;
+    signedAt: Date | null;
+  }) {
+    const totals = computeTotals({
+      lineItems: input.lines.map((line) => ({
+        quantity: line.quantity,
+        unitPriceCents: line.unitPriceCents,
+        taxable: line.taxable,
+      })),
+      discountType: "NONE",
+      discountValue: 0,
+      taxRateBp: org.defaultTaxRateBp,
+    });
+    const number = `${org.estimatePrefix}${estimateNumber++}`;
+    const depositCents = depositCentsFor(totals.totalCents, input.deposit.type, input.deposit.value);
+    const signer = input.client.isBusiness ? input.client.contactName : input.client.displayName;
+
+    const lineRows = input.lines.map((line, i) => ({ ...line, totalCents: totals.lineTotalsCents[i], sortOrder: i }));
+    const signed = input.signedAt
+      ? signedSnapshot({
+          number,
+          title: input.title,
+          issueDate: input.issued,
+          expiresAt: addDays(input.issued, org.defaultEstimateValidDays),
+          subtotalCents: totals.subtotalCents,
+          discountCents: 0,
+          taxRateBp: org.defaultTaxRateBp,
+          taxCents: totals.taxCents,
+          totalCents: totals.totalCents,
+          depositCents,
+          notes: null,
+          terms: org.estimateFooter,
+          lineItems: lineRows,
+        })
+      : null;
+
+    const estimate = await prisma.estimate.create({
+      data: {
+        organizationId: org.id,
+        number,
+        title: input.title,
+        status: input.signedAt ? "ACCEPTED" : "VIEWED",
+        clientId: input.client.id,
+        addressId: input.client.addressId,
+        issueDate: input.issued,
+        expiresAt: addDays(input.issued, org.defaultEstimateValidDays),
+        sentAt: addMinutes(input.issued, 30),
+        viewedAt: addDays(input.issued, 1),
+        acceptedAt: input.signedAt,
+        subtotalCents: totals.subtotalCents,
+        discountType: "NONE",
+        discountValue: 0,
+        discountCents: 0,
+        taxRateBp: org.defaultTaxRateBp,
+        taxCents: totals.taxCents,
+        totalCents: totals.totalCents,
+        depositType: input.deposit.type,
+        depositValue: input.deposit.value,
+        depositCents,
+        terms: org.estimateFooter,
+        createdById: manager.id,
+        createdAt: input.issued,
+        ...(signed && input.signedAt
+          ? {
+              signedName: signer,
+              signedAt: input.signedAt,
+              signedIp: "203.0.113.24",
+              signedUserAgent: IPHONE,
+              signedSnapshot: signed,
+              signedHash: snapshotHash(signed),
+            }
+          : {}),
+        lineItems: { create: lineRows },
+      },
+    });
+
+    return { estimate, totals, depositCents, signer };
+  }
+
+  /** One stage's invoice, as the Billing card on an estimate makes it. */
+  async function stageInvoice(input: {
+    estimate: { id: string; number: string; clientId: string; addressId: string | null; totalCents: number };
+    jobId: string | null;
+    stage: "DEPOSIT" | "PROGRESS";
+    amountCents: number;
+    priorCents: number;
+    issued: Date;
+    paidAt: Date | null;
+  }) {
+    const label = estimateLabel(input.estimate.number);
+    const share = Math.round((input.amountCents / input.estimate.totalCents) * 1000) / 10;
+    const name = input.stage === "DEPOSIT" ? `Deposit — ${share}% of ${label}` : `Progress billing — ${share}% of ${label}`;
+    const dueDate = new Date(input.issued);
+    if (input.stage === "DEPOSIT") dueDate.setHours(23, 59, 0, 0);
+    else dueDate.setTime(addDays(input.issued, org.defaultPaymentTermsDays).getTime());
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        organizationId: org.id,
+        number: `${org.invoicePrefix}${invoiceNumber++}`,
+        title: name,
+        status: input.paidAt ? "PAID" : "SENT",
+        clientId: input.estimate.clientId,
+        addressId: input.estimate.addressId,
+        jobId: input.jobId,
+        estimateId: input.estimate.id,
+        billingStage: input.stage,
+        issueDate: input.issued,
+        dueDate,
+        paymentTermsDays: input.stage === "DEPOSIT" ? 0 : org.defaultPaymentTermsDays,
+        sentAt: input.issued,
+        viewedAt: input.paidAt ? addMinutes(input.issued, 20) : null,
+        paidAt: input.paidAt,
+        subtotalCents: input.amountCents,
+        taxRateBp: 0,
+        taxCents: 0,
+        totalCents: input.amountCents,
+        amountPaidCents: input.paidAt ? input.amountCents : 0,
+        balanceCents: input.paidAt ? 0 : input.amountCents,
+        terms: org.invoiceFooter,
+        createdById: input.stage === "DEPOSIT" ? null : manager.id,
+        createdAt: input.issued,
+        lineItems: {
+          create: [
+            {
+              kind: "OTHER",
+              name,
+              description: `${money(input.estimate.totalCents)} in all; ${money(input.priorCents)} billed before this.`,
+              quantity: 1,
+              unit: "ea",
+              unitPriceCents: input.amountCents,
+              taxable: false,
+              totalCents: input.amountCents,
+              sortOrder: 0,
+            },
+          ],
+        },
+      },
+    });
+
+    if (input.paidAt) {
+      await prisma.payment.create({
+        data: {
+          organizationId: org.id,
+          invoiceId: invoice.id,
+          clientId: input.estimate.clientId,
+          amountCents: input.amountCents,
+          method: "ONLINE",
+          receivedAt: input.paidAt,
+          reference: "Paid online",
+          recordedById: null,
+        },
+      });
+      paymentCount++;
+    }
+    return invoice;
+  }
+
+  // A repipe: signed three weeks ago, deposit paid, under way, 40% billed.
+  const repipeClient = clients[3 % clients.length];
+  const repipe = await quoteWithDeposit({
+    client: repipeClient,
+    title: "Whole-house repipe",
+    lines: [
+      { kind: "SERVICE", name: "Whole-house repipe, PEX supply lines", description: "Kitchen, two baths, laundry and both hose bibs. Old galvanized lines capped and left in the walls.", quantity: 1, unit: "job", unitPriceCents: 620_000, taxable: false },
+      { kind: "MATERIAL", name: "PEX pipe, fittings and manifold", description: null, quantity: 1, unit: "lot", unitPriceCents: 148_000, taxable: true },
+      { kind: "LABOR", name: "Drywall patch and paint at access points", description: null, quantity: 6, unit: "ea", unitPriceCents: 9_500, taxable: false },
+    ],
+    deposit: { type: "PERCENT", value: 3_000 },
+    issued: dayAt(-24, 10),
+    signedAt: dayAt(-21, 19, 42),
+  });
+  const repipeJob = await prisma.job.create({
+    data: {
+      organizationId: org.id,
+      number: `${org.jobPrefix}${jobNumber++}`,
+      kind: "JOB",
+      title: "Whole-house repipe",
+      description: "Booked from the signed estimate. Three days on site; water off 9–3 each day.",
+      clientId: repipeClient.id,
+      addressId: repipeClient.addressId,
+      status: "IN_PROGRESS",
+      priority: "NORMAL",
+      scheduledStart: dayAt(-1, 8),
+      scheduledEnd: dayAt(-1, 16),
+      estimatedMinutes: 480,
+      startedAt: dayAt(-1, 8, 10),
+      createdById: manager.id,
+      createdAt: dayAt(-20, 9),
+      assignments: {
+        create: [
+          { userId: technicians[0].id, isLead: true },
+          { userId: technicians[2 % technicians.length].id, isLead: false },
+        ],
+      },
+    },
+  });
+  await prisma.estimate.update({ where: { id: repipe.estimate.id }, data: { convertedJobId: repipeJob.id } });
+  await stageInvoice({
+    estimate: { ...repipe.estimate, addressId: repipe.estimate.addressId },
+    jobId: repipeJob.id,
+    stage: "DEPOSIT",
+    amountCents: repipe.depositCents,
+    priorCents: 0,
+    issued: dayAt(-21, 19, 42),
+    paidAt: dayAt(-21, 20, 5),
+  });
+  await stageInvoice({
+    estimate: { ...repipe.estimate, addressId: repipe.estimate.addressId },
+    jobId: repipeJob.id,
+    stage: "PROGRESS",
+    amountCents: Math.round(repipe.totals.totalCents * 0.4),
+    priorCents: repipe.depositCents,
+    issued: noLaterThanNow(dayAt(0, 8, 15)),
+    paidAt: null,
+  });
+
+  // A water heater: signed this morning, the deposit invoice waiting on them.
+  const heaterClient = clients[7 % clients.length];
+  const heaterSigned = noLaterThanNow(dayAt(0, 7, 48));
+  const heater = await quoteWithDeposit({
+    client: heaterClient,
+    title: "Tankless water heater install",
+    lines: [
+      { kind: "MATERIAL", name: "Navien NPE-240A2 tankless water heater", description: "Condensing, 199,000 BTU. 15-year heat exchanger warranty.", quantity: 1, unit: "ea", unitPriceCents: 189_500, taxable: true },
+      { kind: "SERVICE", name: "Remove tank, install tankless, gas and venting", description: null, quantity: 1, unit: "job", unitPriceCents: 165_000, taxable: false },
+      { kind: "MATERIAL", name: "Venting kit and isolation valves", description: null, quantity: 1, unit: "kit", unitPriceCents: 38_500, taxable: true },
+    ],
+    deposit: { type: "FIXED", value: 100_000 },
+    issued: dayAt(-4, 15),
+    signedAt: heaterSigned,
+  });
+  await stageInvoice({
+    estimate: { ...heater.estimate, addressId: heater.estimate.addressId },
+    jobId: null,
+    stage: "DEPOSIT",
+    amountCents: heater.depositCents,
+    priorCents: 0,
+    issued: heaterSigned,
+    paidAt: null,
+  });
+
+  // A sewer line: out for an answer, half down on accepting.
+  await quoteWithDeposit({
+    client: clients[11 % clients.length],
+    title: "Sewer line camera inspection and spot repair",
+    lines: [
+      { kind: "SERVICE", name: "Camera inspection of the main sewer line", description: "Recorded video and a marked-up locate.", quantity: 1, unit: "ea", unitPriceCents: 32_500, taxable: false },
+      { kind: "SERVICE", name: "Excavate and replace damaged section", description: "Up to 6 feet of 4\" PVC, including backfill.", quantity: 1, unit: "job", unitPriceCents: 285_000, taxable: false },
+      { kind: "MATERIAL", name: "4\" PVC, couplings and bedding stone", description: null, quantity: 1, unit: "lot", unitPriceCents: 22_000, taxable: true },
+    ],
+    deposit: { type: "PERCENT", value: 5_000 },
+    issued: dayAt(-2, 11),
+    signedAt: null,
+  });
+
+  await prisma.notification.create({
+    data: {
+      organizationId: org.id,
+      userId: manager.id,
+      type: "ESTIMATE_RESPONSE",
+      title: `${heaterClient.displayName} accepted estimate ${heater.estimate.number}`,
+      body: `Signed by ${heater.signer}. Their deposit invoice is ready for them to pay.`,
+      entityType: "ESTIMATE",
+      entityId: heater.estimate.id,
+      actionUrl: `/estimates/${heater.estimate.id}`,
+      createdAt: heaterSigned,
+    },
+  });
+
+  console.log("  3 estimates with deposits (2 signed online, 1 in progress billing)");
+
+  // ---------------------------------------------------------- checklists ---
+
+  // Saved lists, and copies of them on the work either side of today: all
+  // ticked on finished work, part-way on work under way, waiting on what is
+  // booked. One finished job closed with a step still open — the app tracks
+  // checklists, it never holds a job up over one.
+  const WRAP_UP = [
+    "Before photos taken",
+    "Work done as quoted",
+    "After photos taken",
+    "Site cleaned up, debris hauled off",
+    "Walked the customer through the work",
+  ];
+  const ESTIMATE_VISIT = [
+    "Measure and photograph the work area",
+    "Note access, parking and shut-offs",
+    "Talk through options and budget",
+    "Say when the estimate will arrive",
+  ];
+  await prisma.checklistTemplate.createMany({
+    data: [
+      { organizationId: org.id, name: "Job wrap-up", items: JSON.stringify(WRAP_UP), kind: "JOB" },
+      { organizationId: org.id, name: "Estimate visit", items: JSON.stringify(ESTIMATE_VISIT), kind: "APPOINTMENT" },
+      {
+        organizationId: org.id,
+        name: "HVAC service visit",
+        items: JSON.stringify([
+          "Replace or clean the filter",
+          "Check refrigerant pressures",
+          "Clean the condenser coil",
+          "Test the thermostat",
+          "Flush the condensate drain",
+        ]),
+      },
+    ],
+  });
+
+  const nearbyWork = await prisma.job.findMany({
+    where: {
+      organizationId: org.id,
+      status: { not: "CANCELLED" },
+      scheduledStart: { gte: dayAt(-10, 0), lte: dayAt(14, 23, 59) },
+    },
+    orderBy: { scheduledStart: "asc" },
+    select: {
+      id: true,
+      kind: true,
+      status: true,
+      startedAt: true,
+      completedAt: true,
+      assignments: { orderBy: { isLead: "desc" }, take: 1, select: { userId: true } },
+    },
+  });
+
+  let checklistItems = 0;
+  let leftOneOpen = false;
+  for (const job of nearbyWork) {
+    const labels = job.kind === "APPOINTMENT" ? ESTIMATE_VISIT : WRAP_UP;
+    const keepOneOpen = job.status === "COMPLETED" && job.kind !== "APPOINTMENT" && !leftOneOpen;
+    if (keepOneOpen) leftOneOpen = true;
+    const ticked =
+      job.status === "COMPLETED" ? labels.length - (keepOneOpen ? 1 : 0) : job.status === "IN_PROGRESS" ? 2 : 0;
+    const by = job.assignments[0]?.userId ?? null;
+
+    await prisma.jobChecklistItem.createMany({
+      data: labels.map((label, i) => {
+        const at =
+          i >= ticked
+            ? null
+            : job.completedAt
+              ? addMinutes(job.completedAt, -(labels.length - i) * 12)
+              : job.startedAt
+                ? noLaterThanNow(addMinutes(job.startedAt, (i + 1) * 20))
+                : null;
+        return {
+          organizationId: org.id,
+          jobId: job.id,
+          label,
+          sortOrder: i,
+          doneAt: at,
+          doneById: at ? by : null,
+        };
+      }),
+    });
+    checklistItems += labels.length;
+  }
+
+  console.log(`  3 saved checklists, ${checklistItems} checklist items on ${nearbyWork.length} jobs`);
+
+  // ----------------------------------------------------- repeating bills ---
+
+  // The bills that come round again, each with its history, so they show on
+  // the calendar on their dates — paid, coming, and one waiting for the
+  // amount. The electric bill changes every month, so its latest period is a
+  // reminder to enter it rather than a guess.
+  const today = noon(new Date());
+  const firstOfNextMonth = noon(new Date(today.getFullYear(), today.getMonth() + 1, 1));
+
+  const BILLS = [
+    { description: "Shop rent", category: "OTHER", vendor: "Beaumont Properties", method: "BANK_TRANSFER", frequency: "MONTHLY", next: firstOfNextMonth, history: [240_000, 240_000, 240_000, 240_000, 240_000, 240_000] },
+    { description: "Van lease", category: "VEHICLE", vendor: "Enterprise Fleet", method: "CARD", frequency: "MONTHLY", next: addDays(today, 9), history: [68_900, 68_900, 68_900, 68_900, 68_900, 68_900] },
+    { description: "Business phone and internet", category: "UTILITIES", vendor: "Spectrum Business", method: "CARD", frequency: "MONTHLY", next: addDays(today, 16), history: [18_999, 18_999, 18_999, 18_999, 17_999, 17_999] },
+    { description: "Uniform service", category: "OTHER", vendor: "Cintas", method: "CARD", frequency: "WEEKLY", next: addDays(today, 3), history: [3_850, 3_850, 3_850, 3_850, 3_850, 3_850, 3_850, 3_850] },
+  ] as const;
+
+  const stepBack = (date: Date, frequency: string, periods: number) =>
+    frequency === "WEEKLY" ? addDays(date, -7 * periods) : noon(subMonths(date, periods));
+
+  let billExpenses = 0;
+  for (const bill of BILLS) {
+    const schedule = await prisma.expenseSchedule.create({
+      data: {
+        organizationId: org.id,
+        frequency: bill.frequency,
+        interval: 1,
+        anchorDate: bill.next,
+        nextDate: bill.next,
+        amountVaries: false,
+        lastRunAt: stepBack(bill.next, bill.frequency, 1),
+        createdById: owner.id,
+      },
+    });
+    // Oldest first, so the latest in the series is the one the next copies.
+    for (let i = bill.history.length; i >= 1; i--) {
+      await prisma.expense.create({
+        data: {
+          organizationId: org.id,
+          scheduleId: schedule.id,
+          description: bill.description,
+          category: bill.category,
+          vendor: bill.vendor,
+          amountCents: bill.history[bill.history.length - i],
+          method: bill.method,
+          spentAt: stepBack(bill.next, bill.frequency, i),
+          paidById: owner.id,
+          createdById: owner.id,
+        },
+      });
+      billExpenses++;
+    }
+  }
+
+  // The electric bill: its date was two days ago and the amount varies, so it
+  // is waiting for somebody to enter it.
+  const electricDue = addDays(today, -2);
+  const electric = await prisma.expenseSchedule.create({
+    data: {
+      organizationId: org.id,
+      frequency: "MONTHLY",
+      interval: 1,
+      anchorDate: electricDue,
+      nextDate: noon(addMonths(electricDue, 1)),
+      amountVaries: true,
+      lastRunAt: electricDue,
+      createdById: owner.id,
+    },
+  });
+  const ELECTRIC = [21_840, 24_310, 27_960, 26_120, 22_450];
+  for (let i = ELECTRIC.length; i >= 1; i--) {
+    await prisma.expense.create({
+      data: {
+        organizationId: org.id,
+        scheduleId: electric.id,
+        description: "Shop electric",
+        category: "UTILITIES",
+        vendor: "Duke Energy",
+        amountCents: ELECTRIC[ELECTRIC.length - i],
+        method: "BANK_TRANSFER",
+        spentAt: noon(subMonths(electricDue, i)),
+        paidById: owner.id,
+        createdById: owner.id,
+      },
+    });
+    billExpenses++;
+  }
+  const electricDueBy = new Date(electricDue);
+  electricDueBy.setHours(23, 59, 59, 0);
+  await prisma.task.create({
+    data: {
+      organizationId: org.id,
+      title: `Enter Shop electric for ${format(electricDue, "MMM d")}`,
+      notes: `Last time: ${money(ELECTRIC[ELECTRIC.length - 1])} to Duke Energy.`,
+      status: "OPEN",
+      dueAt: electricDueBy,
+      assignedToId: owner.id,
+      expenseScheduleId: electric.id,
+      createdAt: electricDue,
+    },
+  });
+  await prisma.notification.create({
+    data: {
+      organizationId: org.id,
+      userId: owner.id,
+      type: "EXPENSE_DUE",
+      title: "Time to enter Shop electric",
+      body: `Due ${format(electricDue, "MMM d")}. Last time it was ${money(ELECTRIC[ELECTRIC.length - 1])}.`,
+      entityType: "expense",
+      actionUrl: `/expenses/new?repeat=${electric.id}&date=${format(electricDue, "yyyy-MM-dd")}`,
+      createdAt: addMinutes(electricDue, -5 * 60),
+    },
+  });
+
+  console.log(`  ${BILLS.length + 1} repeating bills (${billExpenses} past payments, 1 waiting to be entered)`);
+
+  // ----------------------------------------- customer portal and requests ---
+
+  // Every customer has their private page, as they would once any estimate or
+  // invoice email had gone to them.
+  for (const client of clients) {
+    await prisma.client.update({
+      where: { id: client.id },
+      data: { portalToken: randomBytes(24).toString("base64url") },
+    });
+  }
+
+  const portalClient = clients[5 % clients.length];
+  const REQUESTS = [
+    {
+      name: "Rosa Delgado",
+      email: "rosa.delgado@example.test",
+      phone: "9195557712",
+      client: null,
+      minutesAgo: 95,
+      lines: [
+        "Requested on the website form.",
+        "Service: Water heater repair",
+        "Where: 88 Larkspur Ln, Millbrook, NC 27502",
+        `Preferred: ${format(addDays(today, 1), "yyyy-MM-dd")}, morning`,
+        "",
+        "No hot water since this morning. 50-gallon gas heater, about 12 years old, and there's water pooling around the base.",
+      ],
+    },
+    {
+      name: portalClient.isBusiness ? portalClient.contactName : portalClient.displayName,
+      email: portalClient.email,
+      phone: portalClient.phone,
+      client: portalClient,
+      minutesAgo: 5 * 60,
+      lines: [
+        `Requested from ${portalClient.displayName}'s portal.`,
+        "Service: Furnace tune-up",
+        "Preferred: afternoon",
+        "",
+        "Time for the yearly tune-up before it gets cold. Any weekday after 3pm works.",
+      ],
+    },
+    {
+      name: "Ken Whitaker",
+      email: "ken.whitaker@example.test",
+      phone: null,
+      client: null,
+      minutesAgo: 27 * 60,
+      lines: [
+        "Requested on the website form.",
+        "Service: Drain cleaning",
+        "",
+        "Kitchen sink drains slowly and gurgles whenever the dishwasher runs.",
+      ],
+    },
+  ];
+
+  for (const [i, request] of REQUESTS.entries()) {
+    const createdAt = sinceNow(request.minutesAgo);
+    const lead = await prisma.lead.create({
+      data: {
+        organizationId: org.id,
+        name: request.name,
+        email: request.email,
+        phone: request.phone,
+        source: request.client ? "REPEAT" : "WEBSITE",
+        status: "NEW",
+        clientId: request.client?.id ?? null,
+        createdAt,
+        notes: {
+          create: { organizationId: org.id, body: request.lines.join("\n"), visibility: "INTERNAL", createdAt },
+        },
+      },
+    });
+    for (const person of office) {
+      await prisma.notification.create({
+        data: {
+          organizationId: org.id,
+          userId: person.id,
+          type: "SERVICE_REQUEST",
+          title: `New request from ${request.name}`,
+          body: request.lines[request.lines.length - 1].slice(0, 160),
+          entityType: "LEAD",
+          entityId: lead.id,
+          actionUrl: `/leads/${lead.id}`,
+          // The newest is still unread.
+          readAt: i === 0 ? null : addMinutes(createdAt, 40),
+          createdAt,
+        },
+      });
+    }
+  }
+
+  console.log(`  ${clients.length} customer portals, ${REQUESTS.length} service requests`);
+
+  // --------------------------------------------------------- automations ---
+
+  // A few switched on, with what they have done: chasing late invoices with a
+  // task, and three that write to customers — reminders the day before a
+  // visit, a nudge on overdue invoices, and the review request.
+  await prisma.organization.update({
+    where: { id: org.id },
+    data: { reviewUrl: "https://northsidehome.test/review" },
+  });
+
+  const automation = async (templateId: string, days: number) =>
+    prisma.workflow.create({
+      data: {
+        organizationId: org.id,
+        templateId,
+        isActive: true,
+        config: JSON.stringify({ days }),
+        lastRunAt: noLaterThanNow(dayAt(0, 6, 0)),
+        createdById: owner.id,
+      },
+    });
+  await automation("overdue.chase", 7);
+  const reminders = await automation("appointment.reminder.email", 1);
+  const overdue = await automation("invoice.overdue.email", 7);
+  const reviews = await automation("review.request.email", 2);
+
+  const signOff = (lines: string[], name: string) =>
+    [
+      `Hi ${name},`,
+      "",
+      ...lines,
+      "",
+      `Any questions, just reply or reach us on (919) 555-0142 or ${org.email}.`,
+      "",
+      "Thank you,",
+      org.name,
+    ].join("\n");
+
+  async function emailed(input: {
+    workflowId: string;
+    entity: { type: string; id: string };
+    to: { email: string | null; name: string };
+    subject: string;
+    lines: string[];
+    related: { type: string; id: string };
+    at: Date;
+  }) {
+    if (!input.to.email) return 0;
+    await prisma.workflowRun.create({
+      data: {
+        workflowId: input.workflowId,
+        organizationId: org.id,
+        entityType: input.entity.type,
+        entityId: input.entity.id,
+        summary: `Emailed ${input.to.name}: ${input.subject}`.slice(0, 200),
+        createdAt: input.at,
+      },
+    });
+    await prisma.outboxMessage.create({
+      data: {
+        organizationId: org.id,
+        channel: "EMAIL",
+        toAddress: input.to.email,
+        toName: input.to.name,
+        subject: input.subject,
+        body: signOff(input.lines, input.to.name),
+        status: "SENT",
+        sentAt: input.at,
+        provider: "stub",
+        relatedType: input.related.type,
+        relatedId: input.related.id,
+        createdAt: input.at,
+      },
+    });
+    return 1;
+  }
+
+  let customerEmails = 0;
+  const thisMorning = noLaterThanNow(dayAt(0, 6, 0));
+
+  const tomorrowsVisits = await prisma.job.findMany({
+    where: {
+      organizationId: org.id,
+      status: { in: ["SCHEDULED", "CONFIRMED"] },
+      scheduledStart: { gte: dayAt(1, 0), lt: dayAt(2, 0) },
+      clientId: { not: null },
+    },
+    include: { client: true, address: true },
+  });
+  for (const job of tomorrowsVisits) {
+    const when = format(job.scheduledStart!, "EEEE, MMMM d");
+    customerEmails += await emailed({
+      workflowId: reminders.id,
+      entity: { type: "JOB", id: `${job.id}@${format(job.scheduledStart!, "yyyy-MM-dd")}` },
+      to: { email: job.client!.email, name: job.client!.displayName },
+      subject: `Reminder: ${org.name} is booked for ${when}`,
+      lines: [
+        `A reminder that we're booked for ${job.title} on ${when} at ${format(job.scheduledStart!, "h:mm a")}${
+          job.address ? `, at ${[job.address.line1, job.address.city].filter(Boolean).join(", ")}` : ""
+        }.`,
+        "Need to change it? Just let us know.",
+      ],
+      related: { type: "job", id: job.id },
+      at: thisMorning,
+    });
+  }
+
+  const lateInvoices = await prisma.invoice.findMany({
+    where: {
+      organizationId: org.id,
+      status: { in: ["SENT", "VIEWED"] },
+      balanceCents: { gt: 0 },
+      dueDate: { gte: dayAt(-21, 0), lt: dayAt(-7, 0) },
+    },
+    include: { client: true },
+    orderBy: { dueDate: "asc" },
+    take: 3,
+  });
+  for (const invoice of lateInvoices) {
+    const due = invoice.dueDate!;
+    customerEmails += await emailed({
+      workflowId: overdue.id,
+      entity: { type: "INVOICE", id: invoice.id },
+      to: { email: invoice.client.email, name: invoice.client.displayName },
+      subject: `Invoice ${invoice.number} is past due`,
+      lines: [
+        `Invoice ${invoice.number} for ${money(invoice.balanceCents)} was due on ${format(due, "EEEE, MMMM d")} and is still open.`,
+        "You can view and pay it from the link in the original email.",
+        "If you've already paid, thank you — please ignore this.",
+      ],
+      related: { type: "invoice", id: invoice.id },
+      at: noLaterThanNow(addDays(due, 7)),
+    });
+  }
+
+  const recentlyFinished = await prisma.job.findMany({
+    where: {
+      organizationId: org.id,
+      status: "COMPLETED",
+      completedAt: { gte: dayAt(-14, 0), lte: dayAt(-2, 23, 59) },
+      clientId: { not: null },
+    },
+    include: { client: true },
+    orderBy: { completedAt: "desc" },
+  });
+  const asked = new Set<string>();
+  for (const job of recentlyFinished) {
+    if (asked.has(job.clientId!) || asked.size >= 4) continue;
+    asked.add(job.clientId!);
+    customerEmails += await emailed({
+      workflowId: reviews.id,
+      entity: { type: "CLIENT", id: job.clientId! },
+      to: { email: job.client!.email, name: job.client!.displayName },
+      subject: `Thank you from ${org.name}`,
+      lines: [
+        `Thank you for choosing ${org.name}.`,
+        "If you have a minute, a review would mean a lot to a small business like ours: https://northsidehome.test/review",
+      ],
+      related: { type: "job", id: job.id },
+      at: noLaterThanNow(addDays(job.completedAt!, 2)),
+    });
+  }
+
+  console.log(`  4 automations on, ${customerEmails} customer emails sent by them`);
+
+  // ---------------------------------------------------------- time clock ---
+
+  // Two weeks of the crew's day clock, through yesterday. Today is left to
+  // whoever opens My Day: a seeded "still clocked in" would read as somebody
+  // who forgot, on every day after the one the seed ran.
+  let clockEntries = 0;
+  for (const tech of technicians) {
+    for (let offset = -14; offset <= -1; offset++) {
+      const weekday = dayAt(offset, 12).getDay();
+      if (weekday === 0 || weekday === 6 || chance(0.08)) continue;
+      await prisma.clockEntry.create({
+        data: {
+          organizationId: org.id,
+          userId: tech.id,
+          clockedInAt: dayAt(offset, 7, int(18, 52)),
+          clockedOutAt: dayAt(offset, int(15, 16), int(0, 59)),
+        },
+      });
+      clockEntries++;
+    }
+  }
+  // One forgotten clock-out, closed by the office the next morning.
+  const forgotten = await prisma.clockEntry.findFirst({
+    where: { organizationId: org.id, userId: technicians[1 % technicians.length].id },
+    orderBy: { clockedInAt: "desc" },
+  });
+  if (forgotten) {
+    const fixedOut = new Date(forgotten.clockedInAt);
+    fixedOut.setHours(16, 30, 0, 0);
+    await prisma.clockEntry.update({
+      where: { id: forgotten.id },
+      data: { clockedOutAt: fixedOut, editedById: manager.id },
+    });
+  }
+
+  console.log(`  ${clockEntries} days on the clock`);
 
   await prisma.organization.update({
     where: { id: org.id },
