@@ -91,7 +91,10 @@ partly paid, a payment recorded twice.
   portal; the business can switch it off.
 - Scheduling: day/week/month calendars, drag-and-drop rescheduling, an
   unscheduled queue you drag onto the grid, recurring appointments, crew
-  assignment.
+  assignment. Repeating bills show on the days they come due — still to come,
+  waiting for the amount, or paid — for the roles the owner picks (Settings →
+  Calendar; owners, admins and managers to start). An employee given them sees
+  names and dates, never amounts.
 - Jobs: full status workflow, materials, labor time tracking, before/after
   photo pairing, notes, one-click invoicing of completed work. Checklists:
   saved lists (Settings → Checklists) put on a job by hand or on every new

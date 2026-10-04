@@ -36,6 +36,27 @@ export type UnscheduledJob = {
   crew: string[];
 };
 
+/**
+ * A repeating bill on the day it comes due. Not a job: it cannot be dragged,
+ * and it opens the expense rather than a job.
+ *
+ *   - upcoming: still to come, at last time's amount.
+ *   - waiting: its date has come and the amount changes every time, so
+ *     somebody has to enter the real bill.
+ *   - paid: recorded for that date.
+ */
+export type CalendarBill = {
+  key: string;
+  title: string;
+  /** "$1,500.00" — null for somebody who cannot see what the business spends. */
+  amount: string | null;
+  /** The bill's date, at noon, as the expense dates are kept. */
+  dateISO: string;
+  state: "upcoming" | "waiting" | "paid";
+  /** Null for somebody who cannot open expenses. */
+  href: string | null;
+};
+
 export type CalendarView = "day" | "week" | "month";
 
 export const CALENDAR_VIEWS: CalendarView[] = ["day", "week", "month"];

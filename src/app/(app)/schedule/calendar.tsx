@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { Banknote, Check, PenLine } from "lucide-react";
 import {
   addDays,
   eachDayOfInterval,
@@ -24,6 +25,7 @@ import {
   GRID_START_HOUR,
   HOUR_HEIGHT,
   SNAP_MINUTES,
+  type CalendarBill,
   type CalendarEvent,
   type CalendarView,
   type UnscheduledJob,
@@ -55,6 +57,7 @@ export function ScheduleCalendar({
   view,
   anchorISO,
   events: initialEvents,
+  bills = [],
   unscheduled,
   canDrag,
   canCreate,
@@ -62,6 +65,8 @@ export function ScheduleCalendar({
   view: CalendarView;
   anchorISO: string;
   events: CalendarEvent[];
+  /** Repeating bills on their due dates, for the roles the owner chose. */
+  bills?: CalendarBill[];
   unscheduled: UnscheduledJob[];
   canDrag: boolean;
   canCreate: boolean;
@@ -117,7 +122,7 @@ export function ScheduleCalendar({
     });
   }
 
-  const shared = { events, canDrag, canCreate, dragging, setDragging, move };
+  const shared = { events, bills, canDrag, canCreate, dragging, setDragging, move };
 
   return (
     <div className="space-y-3">
@@ -240,6 +245,7 @@ function UnscheduledPanel({
 
 type GridProps = {
   events: CalendarEvent[];
+  bills: CalendarBill[];
   canDrag: boolean;
   canCreate: boolean;
   dragging: string | null;
@@ -248,7 +254,19 @@ type GridProps = {
 };
 
 function TimeGrid({ days, ...props }: GridProps & { days: Date[] }) {
+  const zone = useTimeZone();
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // All-day entries and bills sit above the hours, not at the top of the
+  // scrolling grid: it opens at 8am, which would scroll them out of sight.
+  const allDay = days.map((day) => ({
+    day,
+    bills: props.bills.filter((bill) => isSameDay(inZone(bill.dateISO, zone), day)),
+    events: props.events.filter(
+      (event) => event.allDay && isSameDay(inZone(event.startISO, zone), day),
+    ),
+  }));
+  const anyAllDay = allDay.some((entry) => entry.bills.length + entry.events.length > 0);
   const hours = Array.from(
     { length: GRID_END_HOUR - GRID_START_HOUR },
     (_, i) => GRID_START_HOUR + i,
@@ -287,6 +305,27 @@ function TimeGrid({ days, ...props }: GridProps & { days: Date[] }) {
           </div>
         ))}
       </div>
+
+      {anyAllDay ? (
+        <div className="flex border-b border-line bg-surface-2">
+          <div className="w-14 shrink-0 px-1 py-1.5 text-right text-[0.625rem] leading-tight text-ink-subtle">
+            All day
+          </div>
+          {allDay.map((entry) => (
+            <div
+              key={entry.day.toISOString()}
+              className="min-w-0 flex-1 space-y-1 border-l border-line p-1"
+            >
+              {entry.bills.map((bill) => (
+                <BillChip key={bill.key} bill={bill} />
+              ))}
+              {entry.events.map((event) => (
+                <EventChip key={event.id} event={event} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div
         ref={scrollRef}
@@ -334,7 +373,6 @@ function DayColumn({
     isSameDay(inZone(event.startISO, zone), day),
   );
   const positioned = layoutDay(dayEvents, zone);
-  const allDayEvents = dayEvents.filter((event) => event.allDay);
 
   function pointerMinutes(clientY: number) {
     const rect = columnRef.current!.getBoundingClientRect();
@@ -378,14 +416,6 @@ function DayColumn({
 
   return (
     <div className="relative flex-1 border-l border-line">
-      {allDayEvents.length ? (
-        <div className="space-y-1 border-b border-line bg-surface-2 p-1">
-          {allDayEvents.map((event) => (
-            <EventChip key={event.id} event={event} />
-          ))}
-        </div>
-      ) : null}
-
       <div
         ref={columnRef}
         className={cn("relative", isToday(day) && "bg-brand/[0.03]")}
@@ -471,6 +501,7 @@ function DayColumn({
 function MonthGrid({
   anchor,
   events,
+  bills,
   canDrag,
   dragging,
   setDragging,
@@ -505,6 +536,12 @@ function MonthGrid({
               (a, b) =>
                 new Date(a.startISO).getTime() - new Date(b.startISO).getTime(),
             );
+
+          const dayBills = bills.filter((bill) => isSameDay(inZone(bill.dateISO, zone), day));
+          // Three lines a cell, bills first: they are the day's fixed points.
+          const shownBills = dayBills.slice(0, 3);
+          const shownEvents = dayEvents.slice(0, 3 - shownBills.length);
+          const hidden = dayBills.length + dayEvents.length - shownBills.length - shownEvents.length;
 
           const outside = !isSameMonth(day, anchor);
 
@@ -569,7 +606,10 @@ function MonthGrid({
               </div>
 
               <div className="space-y-1">
-                {dayEvents.slice(0, 3).map((event) => (
+                {shownBills.map((bill) => (
+                  <BillChip key={bill.key} bill={bill} />
+                ))}
+                {shownEvents.map((event) => (
                   <EventChip
                     key={event.id}
                     event={event}
@@ -591,12 +631,12 @@ function MonthGrid({
                   />
                 ))}
 
-                {dayEvents.length > 3 ? (
+                {hidden > 0 ? (
                   <Link
                     href={`/schedule?view=day&date=${format(day, "yyyy-MM-dd")}`}
                     className="block px-1 text-[0.6875rem] text-ink-subtle hover:text-brand"
                   >
-                    +{dayEvents.length - 3} more
+                    +{hidden} more
                   </Link>
                 ) : null}
               </div>
@@ -693,6 +733,44 @@ function EventChip({
       ) : null}
       <span className="truncate">{event.title}</span>
     </Link>
+  );
+}
+
+const BILL_LOOK: Record<CalendarBill["state"], { className: string; label: string; Icon: typeof Banknote }> = {
+  upcoming: { className: "border-dashed border-line-strong bg-surface text-ink", label: "Bill due", Icon: Banknote },
+  waiting: { className: "border-warning/35 bg-warning/15 text-warning", label: "Enter this bill", Icon: PenLine },
+  paid: { className: "border-success/30 bg-success/10 text-success", label: "Bill paid", Icon: Check },
+};
+
+/** A bill on its day: dashed while it is coming, amber to enter, green once paid. */
+function BillChip({ bill }: { bill: CalendarBill }) {
+  const look = BILL_LOOK[bill.state];
+  const className = cn(
+    "@container block rounded border px-1.5 py-0.5 text-[0.6875rem] leading-tight",
+    look.className,
+    bill.href && "transition-colors hover:border-line-strong",
+  );
+  const title = `${look.label}: ${bill.title}${bill.amount ? `, ${bill.amount}` : ""}`;
+  // The amount only where the chip has room for it beside the name: in a
+  // narrow month cell the name matters more, and the hover text has both.
+  const content = (
+    <span className="flex items-center gap-1">
+      <look.Icon className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+      <span className="truncate">{bill.title}</span>
+      {bill.amount ? (
+        <span className="tabular ml-auto hidden shrink-0 pl-1 opacity-80 @min-[10rem]:inline">{bill.amount}</span>
+      ) : null}
+    </span>
+  );
+
+  return bill.href ? (
+    <Link href={bill.href} className={className} title={title} aria-label={title}>
+      {content}
+    </Link>
+  ) : (
+    <span className={className} title={title} aria-label={title}>
+      {content}
+    </span>
   );
 }
 

@@ -75,6 +75,11 @@ model Organization {
   // rather than a list because SQLite has no lists.
   hiddenJobKinds String @default("")
 
+  // Which roles see repeating bills on the calendar on their due dates,
+  // comma-separated (ROLES in src/lib/constants.ts). Those without access to
+  // expenses see a bill's name and date, never its amount. Empty: nobody.
+  billsOnCalendarRoles String @default("OWNER,ADMIN,MANAGER")
+
   // documents & numbering
   defaultTaxRateBp         Int     @default(0)
   invoicePrefix            String  @default("INV-")

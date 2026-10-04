@@ -20,6 +20,7 @@ import {
   type JobKind,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { serializeBillRoles } from "@/lib/bills-calendar";
 import { parseHiddenKinds, serializeHiddenKinds } from "@/lib/job-categories";
 
 /**
@@ -185,4 +186,18 @@ export async function setBuiltInShown(formData: FormData) {
   });
 
   refresh();
+}
+
+/** Which roles see repeating bills on the calendar, on their due dates. */
+export async function setBillsOnCalendar(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { org } = await requirePermission("settings:write");
+  const roles = serializeBillRoles(formData.getAll("roles").map(String));
+
+  await prisma.organization.update({
+    where: { id: org.id },
+    data: { billsOnCalendarRoles: roles },
+  });
+
+  refresh();
+  return saved(roles ? "Saved." : "Saved. Bills are off the calendar for everyone.");
 }

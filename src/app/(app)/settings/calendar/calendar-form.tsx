@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { Pencil, Plus } from "lucide-react";
 
-import { deleteJobCategory, saveJobCategory, setBuiltInShown } from "./actions";
+import { deleteJobCategory, saveJobCategory, setBillsOnCalendar, setBuiltInShown } from "./actions";
 import { CategoryMark } from "../../jobs/category-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,9 @@ import { IDLE, type ActionState } from "@/lib/action-state";
 import {
   CATEGORY_ICONS,
   JOB_CATEGORY_NAME_MAX,
+  ROLE_META,
+  ROLES,
+  type Role,
   JOB_KIND_ICONS,
   JOB_KIND_META,
   JOB_KINDS,
@@ -42,6 +45,7 @@ export function CalendarSettingsForm({
   categories,
   builtInCounts,
   hiddenKinds,
+  billRoles,
   jobLabel,
   jobPlural,
   readOnly,
@@ -49,6 +53,8 @@ export function CalendarSettingsForm({
   categories: OwnCategory[];
   builtInCounts: Record<string, number>;
   hiddenKinds: JobKind[];
+  /** The roles that see repeating bills on the calendar. */
+  billRoles: Role[];
   jobLabel: string;
   jobPlural: string;
   readOnly: boolean;
@@ -121,7 +127,60 @@ export function CalendarSettingsForm({
           ))}
         </CardBody>
       </Card>
+
+      <BillsOnCalendar roles={billRoles} readOnly={readOnly} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- bills ---
+
+const BILL_ROLE_HINTS: Record<Role, string> = {
+  OWNER: "Sees the bill and its amount.",
+  ADMIN: "Sees the bill and its amount.",
+  MANAGER: "Sees the bill and its amount.",
+  EMPLOYEE: "Sees the bill’s name and date only — never what it costs.",
+};
+
+/**
+ * Who sees repeating bills — rent, insurance, software — on the calendar on
+ * the days they come due. Ticked roles; the owner's call.
+ */
+function BillsOnCalendar({ roles, readOnly }: { roles: Role[]; readOnly: boolean }) {
+  const [state, save] = useActionState<ActionState, FormData>(setBillsOnCalendar, IDLE);
+
+  return (
+    <Card>
+      <CardHeader
+        title="Bills on the calendar"
+        description="Repeating expenses show on the schedule on the days they come due — still to come, waiting for the amount, or paid. Choose who sees them."
+      />
+      <form action={save}>
+        <CardBody className="space-y-3">
+          {ROLES.map((role) => (
+            <label key={role} className="flex items-start gap-3">
+              <Checkbox
+                name="roles"
+                value={role}
+                defaultChecked={roles.includes(role)}
+                disabled={readOnly}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-sm font-medium text-ink">{ROLE_META[role].label}s</span>
+                <span className="block text-xs text-ink-subtle">{BILL_ROLE_HINTS[role]}</span>
+              </span>
+            </label>
+          ))}
+        </CardBody>
+        {readOnly ? null : (
+          <CardFooter>
+            <ActionStatus state={state} className="mr-auto" />
+            <SubmitButton size="sm">Save</SubmitButton>
+          </CardFooter>
+        )}
+      </form>
+    </Card>
   );
 }
 

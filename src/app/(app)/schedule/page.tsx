@@ -15,6 +15,7 @@ import {
 } from "date-fns";
 import { CalendarPlus, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
+import { billsOnCalendar } from "./bills";
 import { ScheduleCalendar } from "./calendar";
 import {
   CALENDAR_VIEWS,
@@ -30,6 +31,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
+import { BILLS_FILTER, seesBillsOnCalendar } from "@/lib/bills-calendar";
 import {
   asStatus,
   JOB_STATUS_META,
@@ -80,13 +82,23 @@ export default async function SchedulePage({
   const anchor = parseAnchor(params.date, zone);
   const { from, to } = rangeFor(view, anchor);
 
-  const [jobs, waiting, crew, groups, categories] = await Promise.all([
-    scheduleEvents(ctx, from, to, {
-      assignedTo: params.assignedTo,
-      groupId: params.group,
-      status: params.status,
-      kind: params.kind,
-    }),
+  // Bills belong to nobody on the crew and have no job status, so a filter
+  // by person, group or status leaves them out; "Bills due" shows only them.
+  const seesBills = seesBillsOnCalendar(user.role, org.billsOnCalendarRoles);
+  const onlyBills = seesBills && params.kind === BILLS_FILTER;
+  const showBills =
+    seesBills && !params.assignedTo && !params.group && !params.status && (!params.kind || onlyBills);
+
+  const [jobs, bills, waiting, crew, groups, categories] = await Promise.all([
+    onlyBills
+      ? Promise.resolve([])
+      : scheduleEvents(ctx, from, to, {
+          assignedTo: params.assignedTo,
+          groupId: params.group,
+          status: params.status,
+          kind: params.kind,
+        }),
+    showBills ? billsOnCalendar(ctx, from, to) : Promise.resolve([]),
     unscheduledJobs(ctx),
     can(user, "jobs:assign") ? activeCrew(org.id) : Promise.resolve([]),
     assignableGroups(org.id),
@@ -253,6 +265,7 @@ export default async function SchedulePage({
           assignedTo={params.assignedTo}
           status={params.status}
           kind={params.kind}
+          showBills={seesBills}
           hrefFor={href}
         />
       </div>
@@ -261,6 +274,7 @@ export default async function SchedulePage({
         view={view}
         anchorISO={instant(anchor).toISOString()}
         events={events}
+        bills={bills}
         unscheduled={unscheduled}
         canDrag={can(user, "schedule:write")}
         canCreate={can(user, "jobs:write")}
@@ -270,6 +284,9 @@ export default async function SchedulePage({
         {can(user, "schedule:write")
           ? "Drag a block to move it. Click an empty slot to book something new."
           : "Read-only — ask a manager to change the schedule."}
+        {bills.length > 0
+          ? " Bills show on their due dates: dashed while still to come, amber when the amount needs entering, green once paid."
+          : ""}
       </p>
     </div>
   );
@@ -290,6 +307,7 @@ function ScheduleFilters({
   assignedTo,
   status,
   kind,
+  showBills,
   hrefFor,
 }: {
   crew: { id: string; name: string }[];
@@ -301,6 +319,7 @@ function ScheduleFilters({
   assignedTo?: string;
   status?: string;
   kind?: string;
+  showBills: boolean;
   hrefFor: (next: Partial<Record<string, string>>) => string;
 }) {
   return (
@@ -318,6 +337,7 @@ function ScheduleFilters({
               {option.plural}
             </option>
           ))}
+          {showBills ? <option value={BILLS_FILTER}>Bills due</option> : null}
         </Select>
 
         {groups.length > 0 ? (
