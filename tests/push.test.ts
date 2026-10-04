@@ -259,4 +259,31 @@ describe("which notifications reach a phone", () => {
       tag: `chat:${thread.id}`,
     });
   });
+
+  it("leaves out somebody taken off the job, who can no longer read its thread", async () => {
+    const formerId = await person("Former Crew");
+    await signUp(crewId);
+    await signUp(formerId);
+    const job = await prisma.job.create({
+      data: { organizationId, number: "J-1", title: "Gutters", assignments: { create: [{ userId: crewId }] } },
+    });
+    const thread = await prisma.conversation.create({
+      data: {
+        organizationId,
+        kind: "JOB",
+        jobId: job.id,
+        // The former crew member joined while on the job; membership stays.
+        members: { create: [{ userId: crewId }, { userId: formerId }, { userId: ownerId }] },
+      },
+    });
+
+    await pushTeamMessage({ conversationId: thread.id, authorId: ownerId, authorName: "Olive Owner", body: "Gate code is 4471", photoCount: 0 });
+    await vi.waitFor(() => expect(sent.calls).toHaveLength(1));
+    // Let anything else that was going to go, go.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sent.calls).toHaveLength(1);
+    expect(JSON.parse(sent.calls[0].payload)).toMatchObject({ title: "Olive Owner on J-1", body: "Gate code is 4471" });
+    const crewEndpoint = (await prisma.pushSubscription.findFirstOrThrow({ where: { userId: crewId } })).endpoint;
+    expect(sent.calls[0].endpoint).toBe(crewEndpoint);
+  });
 });

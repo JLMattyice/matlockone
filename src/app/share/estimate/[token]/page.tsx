@@ -9,6 +9,7 @@ import { getEstimateByToken } from "@/app/(app)/estimates/queries";
 import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
 import { effectiveEstimateStatus, isEstimateOpen } from "@/lib/documents";
+import { estimateVersion } from "@/lib/estimate-signature";
 import { formatMoney } from "@/lib/money";
 import { estimateBilling } from "@/lib/progress-billing";
 import { shareAllowed, shareMissed } from "@/lib/share-guard";
@@ -133,6 +134,9 @@ export default async function PublicEstimatePage({
           <div className="no-print">
             <RespondPanel
               token={token}
+              // What this page shows, so a signature can only be for this
+              // version and not one the office saved since it was opened.
+              version={estimateVersion(estimate, org.estimateFooter)}
               brandColor={brand}
               businessName={org.name}
               depositText={estimate.depositCents > 0 ? money(estimate.depositCents) : null}

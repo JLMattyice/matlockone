@@ -69,6 +69,15 @@ export function snapshotHash(snapshot: string): string {
   return createHash("sha256").update(snapshot).digest("hex");
 }
 
+/**
+ * The fingerprint of an estimate as its page shows it, terms included (its
+ * own, else the business's footer). The page hands it to the customer's
+ * browser, and a signature is accepted only while it still matches.
+ */
+export function estimateVersion(estimate: SignableEstimate, footer: string | null): string {
+  return snapshotHash(signedSnapshot({ ...estimate, terms: estimate.terms ?? footer }));
+}
+
 /** A typed name worth calling a signature: a real name's length, no control characters. */
 export function cleanSignatureName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;

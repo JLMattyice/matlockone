@@ -41,14 +41,22 @@ vi.mock("next/headers", () => ({
 }));
 
 import { billEstimate } from "@/app/(app)/estimates/actions";
+import {
+  deleteInvoice,
+  deleteInvoices,
+  setInvoiceCancelled,
+  updateInvoice,
+} from "@/app/(app)/invoices/actions";
 import { respondToEstimate } from "@/app/share/estimate/[token]/actions";
 import { IDLE } from "@/lib/action-state";
 import { prisma } from "@/lib/db";
 import { effectiveInvoiceStatus } from "@/lib/documents";
+import { estimateVersion } from "@/lib/estimate-signature";
 import { computeTotals, depositCentsFor } from "@/lib/money";
 import { estimateBilling, priorBilling } from "@/lib/progress-billing";
 
 // ------------------------------------------------------------ arithmetic ---
+
 
 describe("the arithmetic", () => {
   it("works a deposit out as a percent or an amount, never past the total", () => {
@@ -209,12 +217,46 @@ describe("billing an accepted estimate in parts", () => {
     const final = (await bill({ stage: "FINAL" })).invoice!;
     expect(final).toMatchObject({ creditCents: 0, totalCents: 108_000 });
   });
+  it("keeps the stages the final invoice counts as they are, until the final invoice is cancelled", async () => {
+    const deposit = (await bill({ stage: "DEPOSIT" })).invoice!;
+    const final = (await bill({ stage: "FINAL" })).invoice!;
+    const form = (fields: Record<string, string>) => {
+      const data = new FormData();
+      for (const [key, value] of Object.entries(fields)) data.set(key, value);
+      return data;
+    };
+
+    await setInvoiceCancelled(form({ id: deposit.id }));
+    await deleteInvoices(form({ ids: deposit.id }));
+    await deleteInvoice(form({ id: deposit.id })).catch(() => {});
+    expect(await prisma.invoice.findUniqueOrThrow({ where: { id: deposit.id } })).toMatchObject({ status: "DRAFT" });
+    expect(await updateInvoice(IDLE, form({ id: deposit.id }))).toEqual({
+      ok: false,
+      error: `Final invoice ${final.number} already takes this one off. Cancel the final invoice first, then change this.`,
+    });
+
+    await setInvoiceCancelled(form({ id: final.id }));
+    await setInvoiceCancelled(form({ id: deposit.id }));
+    expect(await prisma.invoice.findUniqueOrThrow({ where: { id: deposit.id } })).toMatchObject({ status: "CANCELLED" });
+  });
 });
+
+/** What the customer's page hands back with a signature: the version it showed. */
+async function versionOf(publicToken: string) {
+  const shown = await prisma.estimate.findUniqueOrThrow({
+    where: { publicToken },
+    include: { lineItems: { orderBy: { sortOrder: "asc" } }, organization: { select: { estimateFooter: true } } },
+  });
+  return estimateVersion(shown, shown.organization.estimateFooter);
+}
 
 describe("a deposit asked for on the estimate", () => {
   it("is billed the moment the customer signs, ready for them to pay", async () => {
     await setUp("SENT");
-    expect(await respondToEstimate(token, "ACCEPTED", { signature: { name: "Jane Doe", agreed: true } })).toEqual({
+    expect(await respondToEstimate(token, "ACCEPTED", {
+      signature: { name: "Jane Doe", agreed: true },
+      version: await versionOf(token),
+    })).toEqual({
       ok: true,
     });
 
@@ -239,7 +281,10 @@ describe("a deposit asked for on the estimate", () => {
       where: { id: estimateId },
       data: { depositType: "NONE", depositValue: 0, depositCents: 0 },
     });
-    await respondToEstimate(token, "ACCEPTED", { signature: { name: "Jane Doe", agreed: true } });
+    await respondToEstimate(token, "ACCEPTED", {
+      signature: { name: "Jane Doe", agreed: true },
+      version: await versionOf(token),
+    });
     expect(await prisma.invoice.count({ where: { estimateId } })).toBe(0);
   });
 });

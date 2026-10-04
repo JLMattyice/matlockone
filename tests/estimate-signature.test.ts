@@ -30,6 +30,7 @@ import { respondToEstimate } from "@/app/share/estimate/[token]/actions";
 import { prisma } from "@/lib/db";
 import {
   cleanSignatureName,
+  estimateVersion,
   requestAddress,
   signedSnapshot,
   snapshotHash,
@@ -126,8 +127,18 @@ afterAll(async () => {
   await prisma.organization.deleteMany({ where: { id: { in: orgs } } });
 });
 
-const sign = (name: string, agreed = true) =>
-  respondToEstimate(token, "ACCEPTED", { signature: { name, agreed } });
+
+/** What the customer's page hands back with a signature: the version it showed. */
+async function versionOf(publicToken: string) {
+  const shown = await prisma.estimate.findUniqueOrThrow({
+    where: { publicToken },
+    include: { lineItems: { orderBy: { sortOrder: "asc" } }, organization: { select: { estimateFooter: true } } },
+  });
+  return estimateVersion(shown, shown.organization.estimateFooter);
+}
+
+const sign = async (name: string, agreed = true) =>
+  respondToEstimate(token, "ACCEPTED", { signature: { name, agreed }, version: await versionOf(token) });
 
 describe("accepting online", () => {
   it("will not accept without a name and the tick", async () => {
@@ -154,6 +165,22 @@ describe("accepting online", () => {
     expect(snapshot).toMatchObject({ number: "EST-1001", totalCents: 13_000, terms: "Half on acceptance." });
     expect(snapshot.lines).toEqual([["Lawn mowing", null, 2, "visit", 6_500, 13_000]]);
     expect(signed.signedHash).toBe(snapshotHash(signed.signedSnapshot!));
+  });
+
+  it("is only for the version the customer saw: an edit saved after the page opened must be read first", async () => {
+    const seen = await versionOf(token);
+    await prisma.estimateLineItem.updateMany({ where: { estimateId }, data: { unitPriceCents: 9_500, totalCents: 19_000 } });
+    await prisma.estimate.update({ where: { id: estimateId }, data: { subtotalCents: 19_000, totalCents: 19_000 } });
+
+    expect(await respondToEstimate(token, "ACCEPTED", { signature: { name: "Jane Doe", agreed: true }, version: seen })).toEqual({
+      ok: false,
+      error: "This estimate was updated after you opened it. Reload the page to see the latest, then sign.",
+    });
+    expect((await prisma.estimate.findUniqueOrThrow({ where: { id: estimateId } })).status).toBe("SENT");
+
+    // Reloaded, they see the new price and can sign it.
+    expect(await sign("Jane Doe")).toEqual({ ok: true });
+    expect(JSON.parse((await prisma.estimate.findUniqueOrThrow({ where: { id: estimateId } })).signedSnapshot!).totalCents).toBe(19_000);
   });
 
   it("cannot be signed twice", async () => {

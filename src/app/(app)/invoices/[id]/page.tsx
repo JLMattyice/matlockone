@@ -40,6 +40,7 @@ import {
   type PaymentMethod,
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { finalCounting } from "@/lib/progress-billing";
 import {
   invoiceDeletion,
   effectiveInvoiceStatus } from "@/lib/documents";
@@ -105,7 +106,10 @@ export default async function InvoiceDetailPage({
     paymentCount: invoice.payments.length,
     amountPaidCents: invoice.amountPaidCents,
   });
-  const editable = writable && !cancelled && invoice.amountPaidCents === 0;
+  // A deposit or progress invoice that the final invoice already takes off is
+  // fixed while that final invoice stands.
+  const countedBy = await finalCounting(prisma, invoice);
+  const editable = writable && !cancelled && invoice.amountPaidCents === 0 && !countedBy;
   const shareUrl = publicUrl(`/share/invoice/${invoice.publicToken}`);
 
   // Which processor is connected decides what the pay-link panel can offer.
@@ -215,7 +219,7 @@ export default async function InvoiceDetailPage({
               </form>
             ) : null}
 
-            {writable && !cancelled ? (
+            {writable && !cancelled && !countedBy ? (
               <form action={setInvoiceCancelled}>
                 <input type="hidden" name="id" value={invoice.id} />
                 <ConfirmButton
@@ -229,7 +233,7 @@ export default async function InvoiceDetailPage({
               </form>
             ) : null}
 
-            {writable && cancelled ? (
+            {writable && cancelled && !countedBy ? (
               <form action={setInvoiceCancelled}>
                 <input type="hidden" name="id" value={invoice.id} />
                 <input type="hidden" name="cancel" value="false" />
@@ -240,7 +244,7 @@ export default async function InvoiceDetailPage({
               </form>
             ) : null}
 
-            {can(user, "invoices:delete") ? (
+            {can(user, "invoices:delete") && !countedBy ? (
               <form action={deleteInvoice}>
                 <input type="hidden" name="id" value={invoice.id} />
                 <ConfirmButton
@@ -257,6 +261,17 @@ export default async function InvoiceDetailPage({
             ) : null}
           </div>
         </div>
+
+        {countedBy ? (
+          <p className="border-t border-line bg-surface-2 px-5 py-2.5 text-xs text-ink-muted no-print">
+            Final invoice{" "}
+            <Link href={`/invoices/${countedBy.id}`} className="font-medium text-brand hover:underline">
+              {countedBy.number}
+            </Link>{" "}
+            already takes this one off, so it can’t be changed, cancelled or deleted while that one
+            stands. Cancel the final invoice first if this needs to change.
+          </p>
+        ) : null}
 
         {/* --------------------------------------------------- money strip --- */}
         <div className="grid grid-cols-2 divide-line border-t border-line sm:grid-cols-4 sm:divide-x">

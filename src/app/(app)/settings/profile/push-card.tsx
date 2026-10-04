@@ -24,8 +24,12 @@ function keyBytes(base64url: string) {
 }
 
 async function registration() {
-  // Registered for every page by the app shell; this waits for it to be live.
-  return navigator.serviceWorker.ready;
+  // Registered for every page by the app shell; this waits for it to be live,
+  // but not forever — a worker that never starts means no notifications here.
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("no service worker")), 8000)),
+  ]);
 }
 
 /**
@@ -90,12 +94,16 @@ export function PushCard({ publicKey }: { publicKey: string }) {
   const turnOff = () =>
     startTransition(async () => {
       setNote(null);
-      const subscription = await (await registration()).pushManager.getSubscription();
-      if (subscription) {
-        await removePushSubscription(subscription.endpoint);
-        await subscription.unsubscribe().catch(() => false);
+      try {
+        const subscription = await (await registration()).pushManager.getSubscription();
+        if (subscription) {
+          await removePushSubscription(subscription.endpoint);
+          await subscription.unsubscribe().catch(() => false);
+        }
+        setStatus("off");
+      } catch {
+        setNote("This browser would not turn notifications off. Try again in a moment.");
       }
-      setStatus("off");
     });
 
   const test = () =>

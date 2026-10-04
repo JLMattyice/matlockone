@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { effectiveEstimateStatus } from "@/lib/documents";
 import {
   cleanSignatureName,
+  estimateVersion,
   requestAddress,
   signedSnapshot,
   snapshotHash,
@@ -133,7 +134,12 @@ async function whoHears(organizationId: string, createdById: string | null) {
 export async function respondToEstimate(
   token: string,
   decision: "ACCEPTED" | "DECLINED",
-  answer: { reason?: string; signature?: { name: string; agreed: boolean } } = {},
+  answer: {
+    reason?: string;
+    signature?: { name: string; agreed: boolean };
+    /** The fingerprint of the version the customer's page showed. */
+    version?: string;
+  } = {},
 ): Promise<RespondResult> {
   if (!token) return { ok: false, error: "This link is no longer valid." };
 
@@ -153,6 +159,7 @@ export async function respondToEstimate(
       number: true,
       title: true,
       status: true,
+      updatedAt: true,
       issueDate: true,
       expiresAt: true,
       subtotalCents: true,
@@ -232,10 +239,19 @@ export async function respondToEstimate(
       terms: estimate.terms ?? estimate.organization.estimateFooter,
     });
 
-    // Only an estimate still out for a decision changes: two taps of Accept,
-    // or an answer racing the office, cannot sign it twice.
+    // A signature is for what the customer read. If the office saved a change
+    // after their page opened, they sign nothing until they have seen it.
+    const changed = {
+      ok: false,
+      error: "This estimate was updated after you opened it. Reload the page to see the latest, then sign.",
+    };
+    if (answer.version !== estimateVersion(estimate, estimate.organization.estimateFooter)) return changed;
+
+    // Only the estimate as just read, still out for a decision, changes: two
+    // taps of Accept, an answer racing the office, or an edit saved this
+    // instant cannot sign it twice or sign the wrong version.
     const { count } = await prisma.estimate.updateMany({
-      where: { id: estimate.id, status: { in: ["SENT", "VIEWED"] } },
+      where: { id: estimate.id, status: { in: ["SENT", "VIEWED"] }, updatedAt: estimate.updatedAt },
       data: {
         status: "ACCEPTED",
         acceptedAt: now,
@@ -248,7 +264,12 @@ export async function respondToEstimate(
         signedSnapshot: snapshot,
       },
     });
-    if (count === 0) return { ok: false, error: "This estimate was already answered." };
+    if (count === 0) {
+      const current = await prisma.estimate.findUnique({ where: { id: estimate.id }, select: { status: true } });
+      return current && (current.status === "SENT" || current.status === "VIEWED")
+        ? changed
+        : { ok: false, error: "This estimate was already answered." };
+    }
   } else {
     const { count } = await prisma.estimate.updateMany({
       where: { id: estimate.id, status: { in: ["SENT", "VIEWED"] } },

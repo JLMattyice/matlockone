@@ -68,8 +68,13 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
       const open = windows.find((client) => client.url.startsWith(self.location.origin));
+      // Navigating only works on a window this worker controls; failing that,
+      // a new window on the page is still what the tap asked for.
       if (open) {
-        return open.focus().then((client) => (client && "navigate" in client ? client.navigate(url) : client));
+        return open
+          .focus()
+          .then((client) => client.navigate(url))
+          .catch(() => self.clients.openWindow(url));
       }
       return self.clients.openWindow(url);
     }),

@@ -52,6 +52,26 @@ export async function priorBilling(
   };
 }
 
+/**
+ * The final invoice that already counts this deposit or progress invoice, if
+ * any. The final takes the earlier stages off as they stood when it was made,
+ * so one of them cancelled, reinstated, edited or deleted afterwards would
+ * leave the final billing the wrong amount. Such a change waits until the
+ * final invoice is cancelled.
+ */
+export async function finalCounting(
+  tx: Tx,
+  invoice: { billingStage: string | null; estimateId: string | null },
+): Promise<{ id: string; number: string } | null> {
+  if (!invoice.estimateId || !invoice.billingStage || !PRIOR_STAGES.includes(invoice.billingStage)) {
+    return null;
+  }
+  return tx.invoice.findFirst({
+    where: { estimateId: invoice.estimateId, billingStage: "FINAL", status: { not: "CANCELLED" } },
+    select: { id: true, number: true },
+  });
+}
+
 export type EstimateBilling = {
   totalCents: number;
   depositCents: number;
@@ -199,6 +219,11 @@ export async function createStageInvoice(
   const now = input.now ?? new Date();
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
   const label = `${org.labelEstimateSingular} ${estimate.number}`;
+
+  // Holds the estimate's row for the rest of the transaction, so two stages
+  // made at once — a double-clicked button, the customer's deposit racing the
+  // office — are made one after the other, and the second sees the first.
+  await tx.estimate.update({ where: { id: estimate.id }, data: { updatedAt: now } });
 
   const existing = await tx.invoice.findMany({
     where: { estimateId: estimate.id, billingStage: { not: null }, status: { not: "CANCELLED" } },

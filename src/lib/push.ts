@@ -3,8 +3,9 @@ import "server-only";
 import { after } from "next/server";
 import webpush from "web-push";
 
-import type { NotificationType } from "./constants";
+import { isRole, type NotificationType } from "./constants";
 import { prisma } from "./db";
+import { can } from "./permissions";
 
 /**
  * Push notifications to phones and browsers.
@@ -126,8 +127,14 @@ export function pushSoon(userIds: string[], message: PushMessage) {
 }
 
 /**
- * A team message, to the other people in its thread. Tagged by thread, so a
- * busy conversation shows as its latest message rather than a stack of them.
+ * A team message, to the other people in its thread who may still read it.
+ * Tagged by thread, so a busy conversation shows as its latest message rather
+ * than a stack of them.
+ *
+ * A job thread is open to whoever can see the job, and a technician's
+ * membership outlives their place on it (src/lib/conversations.ts) — so
+ * membership alone is not enough here: somebody taken off the job must not
+ * keep getting its messages on their phone.
  */
 export async function pushTeamMessage(input: {
   conversationId: string;
@@ -143,11 +150,25 @@ export async function pushTeamMessage(input: {
     select: {
       kind: true,
       title: true,
-      job: { select: { number: true } },
-      members: { where: { userId: { not: input.authorId } }, select: { userId: true } },
+      job: { select: { number: true, assignments: { select: { userId: true } } } },
+      members: {
+        where: { userId: { not: input.authorId } },
+        select: { userId: true, user: { select: { role: true, isActive: true } } },
+      },
     },
   });
-  if (!thread || thread.members.length === 0) return;
+  if (!thread) return;
+
+  const onJob = new Set(thread.job?.assignments.map((assignment) => assignment.userId) ?? []);
+  const readers = thread.members
+    .filter(({ userId, user }) => {
+      if (!user.isActive || !isRole(user.role)) return false;
+      const actor = { role: user.role, id: userId };
+      if (!can(actor, "messages:use")) return false;
+      return thread.kind !== "JOB" || can(actor, "jobs:read:all") || onJob.has(userId);
+    })
+    .map((member) => member.userId);
+  if (readers.length === 0) return;
 
   const where =
     thread.kind === "JOB" && thread.job
@@ -158,7 +179,7 @@ export async function pushTeamMessage(input: {
   const photos = input.photoCount === 1 ? "Sent a photo" : `Sent ${input.photoCount} photos`;
 
   pushSoon(
-    thread.members.map((member) => member.userId),
+    readers,
     {
       title: `${input.authorName}${where}`,
       body: input.body || (input.photoCount > 0 ? photos : ""),

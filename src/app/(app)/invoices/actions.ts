@@ -15,7 +15,7 @@ import { record } from "@/lib/activity";
 import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
 import { portalLine } from "@/lib/portal";
-import { priorBilling } from "@/lib/progress-billing";
+import { finalCounting, priorBilling } from "@/lib/progress-billing";
 import { sendToQuickBooksSoon } from "@/lib/quickbooks/sync";
 import { recalculateInvoice } from "@/lib/invoice-balance";
 import { publicUrl, sendMessage } from "@/lib/messaging";
@@ -235,6 +235,13 @@ export async function updateInvoice(
 
   if (existing.status === "CANCELLED") {
     return failed("This invoice has been cancelled and can no longer be edited.");
+  }
+
+  const final = await finalCounting(prisma, existing);
+  if (final) {
+    return failed(
+      `Final invoice ${final.number} already takes this one off. Cancel the final invoice first, then change this.`,
+    );
   }
 
   // Changing the amount of an invoice that has already been part-paid would
@@ -806,9 +813,11 @@ export async function setInvoiceCancelled(formData: FormData) {
 
   const invoice = await prisma.invoice.findFirst({
     where: { id, organizationId: org.id },
-    select: { id: true, viewedAt: true, sentAt: true },
+    select: { id: true, viewedAt: true, sentAt: true, billingStage: true, estimateId: true },
   });
   if (!invoice) return;
+  // The page offers neither button while a final invoice counts this one.
+  if (await finalCounting(prisma, invoice)) return;
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.invoice.update({
@@ -910,9 +919,10 @@ export async function deleteInvoice(formData: FormData) {
 
   const invoice = await prisma.invoice.findFirst({
     where: { id, organizationId: org.id },
-    select: { status: true, _count: { select: { payments: true } } },
+    select: { status: true, billingStage: true, estimateId: true, _count: { select: { payments: true } } },
   });
   if (!invoice) return;
+  if (await finalCounting(prisma, invoice)) return;
 
   // Deleting used to be refused outright for anything sent or paid, on the
   // reasoning that it is part of the books. That is the right *default* and it
@@ -947,9 +957,23 @@ export async function deleteInvoices(formData: FormData) {
 
   if (submitted.length === 0) return;
 
+  // A deposit or progress invoice that a final invoice counts stays, unless
+  // that final invoice is going too.
+  const chosen = await prisma.invoice.findMany({
+    where: { id: { in: submitted }, organizationId: org.id },
+    select: { id: true, billingStage: true, estimateId: true },
+  });
+  const going = new Set(chosen.map((invoice) => invoice.id));
+  const ids: string[] = [];
+  for (const invoice of chosen) {
+    const final = await finalCounting(prisma, invoice);
+    if (!final || going.has(final.id)) ids.push(invoice.id);
+  }
+  if (ids.length === 0) return;
+
   // Scoped to this business, so an edited form cannot reach another one's books.
   const { count } = await prisma.invoice.deleteMany({
-    where: { id: { in: submitted }, organizationId: org.id },
+    where: { id: { in: ids }, organizationId: org.id },
   });
 
   if (count === 0) return;

@@ -36,11 +36,14 @@ export function MarkViewed({ token }: { token: string }) {
  */
 export function RespondPanel({
   token,
+  version,
   brandColor,
   businessName,
   depositText,
 }: {
   token: string;
+  /** The fingerprint of the estimate this page is showing. */
+  version: string;
   brandColor: string;
   businessName: string;
   /** The deposit due on accepting, formatted, when the estimate asks for one. */
@@ -60,7 +63,7 @@ export function RespondPanel({
       const result = await respondToEstimate(
         token,
         decision,
-        decision === "ACCEPTED" ? { signature: { name, agreed } } : { reason },
+        decision === "ACCEPTED" ? { signature: { name, agreed }, version } : { reason },
       );
       if (!result.ok) {
         setError(result.error ?? "Something went wrong.");

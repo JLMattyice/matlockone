@@ -30,7 +30,7 @@ CREATE TABLE "AccountingLink" (
 CREATE INDEX "AccountingLink_organizationId_provider_entityType_idx" ON "AccountingLink"("organizationId", "provider", "entityType");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "AccountingLink_organizationId_provider_realmId_entityType_entityId_key" ON "AccountingLink"("organizationId", "provider", "realmId", "entityType", "entityId");
+CREATE UNIQUE INDEX "AccountingLink_organizationId_provider_realmId_entityType_e_key" ON "AccountingLink"("organizationId", "provider", "realmId", "entityType", "entityId");
 
 -- AddForeignKey
 ALTER TABLE "AccountingLink" ADD CONSTRAINT "AccountingLink_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
