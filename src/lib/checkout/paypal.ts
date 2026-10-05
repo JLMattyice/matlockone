@@ -20,6 +20,14 @@ import type { LicensePlan } from "@/lib/license/token";
 
 export type PayPalInterval = "monthly" | "annual";
 
+/**
+ * Which billing plan in PayPal: one per plan and interval, plus the launch
+ * offer's monthly plans — a discounted first month, then the full price.
+ */
+export type PayPalPlanKey =
+  | `${LicensePlan}_${PayPalInterval}`
+  | `${LicensePlan}_monthly_launch`;
+
 export type PayPalConfig = {
   clientId: string;
   clientSecret: string;
@@ -27,7 +35,7 @@ export type PayPalConfig = {
   live: boolean;
   webhookId: string;
   /** Our plan + interval → PayPal's billing plan id. */
-  planIds: Partial<Record<`${LicensePlan}_${PayPalInterval}`, string>>;
+  planIds: Partial<Record<PayPalPlanKey, string>>;
 };
 
 const LIVE = "https://api-m.paypal.com";
@@ -63,6 +71,11 @@ export function paypalConfig(): PayPalConfig | null {
       business_annual: process.env.PAYPAL_PLAN_BUSINESS_ANNUAL?.trim(),
       pro_monthly: process.env.PAYPAL_PLAN_PRO_MONTHLY?.trim(),
       pro_annual: process.env.PAYPAL_PLAN_PRO_ANNUAL?.trim(),
+      // Kept for as long as anybody is on one, long after the offer closes:
+      // without them a launch-week subscription is a plan we do not sell.
+      starter_monthly_launch: process.env.PAYPAL_PLAN_STARTER_MONTHLY_LAUNCH?.trim(),
+      business_monthly_launch: process.env.PAYPAL_PLAN_BUSINESS_MONTHLY_LAUNCH?.trim(),
+      pro_monthly_launch: process.env.PAYPAL_PLAN_PRO_MONTHLY_LAUNCH?.trim(),
     },
   };
 }
@@ -71,17 +84,32 @@ export function isPayPalConfigured(): boolean {
   return paypalConfig() !== null;
 }
 
-/** PayPal's billing plan id for one of ours, or null when it is not for sale. */
+/**
+ * PayPal's billing plan id for one of ours, or null when it is not for sale.
+ *
+ * With launch, the launch offer's plan or nothing — never the full-price plan
+ * in its place, which would charge twice what the billing screen showed.
+ */
 export function planIdFor(
   config: PayPalConfig,
   plan: LicensePlan,
   interval: PayPalInterval,
+  launch = false,
 ): string | null {
+  if (launch) {
+    return interval === "monthly" ? (config.planIds[`${plan}_monthly_launch`] ?? null) : null;
+  }
   return config.planIds[`${plan}_${interval}`] ?? null;
 }
 
+/** Whether this deployment can sell a plan at the launch offer's price. */
+export function launchPlanReady(config: PayPalConfig | null, plan: LicensePlan): boolean {
+  return Boolean(config?.planIds[`${plan}_monthly_launch`]);
+}
+
 /**
- * The reverse: which of our plans a PayPal billing plan id refers to.
+ * The reverse: which of our plans a PayPal billing plan id refers to. A launch
+ * offer plan is the monthly plan it discounts.
  *
  * Done by lookup rather than by trusting anything in the webhook body. A
  * payload naming its own plan would let whoever can reach the endpoint choose
@@ -187,13 +215,15 @@ export async function startSubscription(
      * already paid for runs out, not on top of it.
      */
     startTime?: Date | null;
+    /** On the launch offer's plan: the first month at its discount. */
+    launch?: boolean;
   },
 ): Promise<StartResult> {
-  const planId = planIdFor(config, input.plan, input.interval);
+  const planId = planIdFor(config, input.plan, input.interval, input.launch);
   if (!planId) {
     return {
       ok: false,
-      error: `No PayPal billing plan is configured for ${input.plan} ${input.interval}.`,
+      error: `No PayPal billing plan is configured for ${input.plan} ${input.interval}${input.launch ? " on the launch offer" : ""}.`,
     };
   }
 

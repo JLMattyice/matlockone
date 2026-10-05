@@ -8,12 +8,15 @@ import {
 } from "@/components/marketing/product-ui";
 import { buttonClasses } from "@/components/ui/button";
 import { GRACE_DAYS } from "@/lib/billing/entitlement";
+import { LAUNCH_OFFER, launchMonthCents, launchWeekOpen } from "@/lib/billing/launch-offer";
 import { BUSINESS_TYPES } from "@/lib/business-types";
 import {
   ANNUAL_DISCOUNT_BP,
   formatPrice,
   planList,
+  type Plan,
 } from "@/lib/checkout/plans";
+import { launchPlanReady, paypalConfig } from "@/lib/checkout/paypal";
 import { demoAvailable } from "@/lib/demo";
 import { latestInstaller, type InstallerLookup } from "@/lib/releases";
 import { cn } from "@/lib/utils";
@@ -394,7 +397,7 @@ const INCLUDED = [
   "Your own mailbox and payment accounts",
 ];
 
-function Pricing() {
+function Pricing({ firstMonth }: { firstMonth: Partial<Record<Plan["id"], number>> }) {
   return (
     <Section id="pricing" className="scroll-mt-24 pt-28 lg:pt-36">
       <h2 className="display max-w-2xl text-3xl text-ink sm:text-4xl lg:text-5xl">
@@ -405,6 +408,13 @@ function Pricing() {
         are in it with you, and how much room there is for their files and
         photos.
       </p>
+
+      {Object.keys(firstMonth).length > 0 ? (
+        <p className="mt-6 max-w-xl rounded-lg border border-gold/45 bg-surface-2 px-4 py-3 text-sm text-ink">
+          <span className="font-medium text-gold">Launch week, {LAUNCH_OFFER.dates}:</span>{" "}
+          sign up this week and your first month is half price on any monthly plan.
+        </p>
+      ) : null}
 
       <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {PLANS.map((plan) => (
@@ -430,6 +440,14 @@ function Pricing() {
               </span>
               <span className="text-sm text-ink-subtle">/month</span>
             </p>
+            {firstMonth[plan.id] !== undefined ? (
+              <p className="mt-1 text-sm text-ink-muted">
+                <span className="tabular font-medium text-gold">
+                  {formatPrice(firstMonth[plan.id]!)}
+                </span>{" "}
+                for your first month
+              </p>
+            ) : null}
 
             <p
               className={cn(
@@ -755,6 +773,20 @@ export default async function MatlockOnePage() {
   // agrees with the others and with the sign-in screen.
   const demo = await demoAvailable();
 
+  // The launch offer, only while its week is on and only on a plan PayPal
+  // has a launch price for — never advertised at a price checkout cannot
+  // charge. The page is rebuilt every few minutes (see LOOKUP_SECONDS), so
+  // this comes and goes within minutes of the week's start and end.
+  const config = paypalConfig();
+  const firstMonth = launchWeekOpen()
+    ? (Object.fromEntries(
+        PLANS.filter((plan) => launchPlanReady(config, plan.id)).map((plan) => [
+          plan.id,
+          launchMonthCents(plan),
+        ]),
+      ) as Partial<Record<Plan["id"], number>>)
+    : {};
+
   return (
     <>
       <Hero />
@@ -762,7 +794,7 @@ export default async function MatlockOnePage() {
       <Platform />
       <Real demo={demo} />
       <Industries />
-      <Pricing />
+      <Pricing firstMonth={firstMonth} />
       <DownloadSection />
       <FinalCta demo={demo} />
     </>

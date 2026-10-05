@@ -11,7 +11,8 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { SubmitButton } from "@/components/ui/submit";
 import { requireContext } from "@/lib/auth";
 import { entitlement, GRACE_DAYS } from "@/lib/billing/entitlement";
-import { CANCELLABLE, restartDate } from "@/lib/billing/subscription";
+import { launchMonthCents } from "@/lib/billing/launch-offer";
+import { CANCELLABLE, launchPriceFor, restartDate } from "@/lib/billing/subscription";
 import { storageUsage, type StorageUsage } from "@/lib/quotas";
 import { formatBytes } from "@/lib/storage-limits";
 import {
@@ -100,6 +101,15 @@ export default async function BillingPage({
   // cancelling it first, not by approving a second beside it.
   const restartsOn = access.ok ? restartDate(org) : null;
   const waitingToStart = org.subscriptionStatus === "APPROVED";
+
+  // The first month at the launch offer's price, for each plan this business
+  // would get it on — asked the same way the checkout asks.
+  const firstMonth = Object.fromEntries(
+    planList()
+      .filter((plan) => launchPriceFor(org, config, plan.id, "monthly"))
+      .map((plan) => [plan.id, launchMonthCents(plan)]),
+  ) as Partial<Record<Plan["id"], number>>;
+  const launchOffer = Object.keys(firstMonth).length > 0;
 
   return (
     <div className="space-y-6 py-4">
@@ -211,7 +221,14 @@ export default async function BillingPage({
                 ) : null}
               </div>
             ) : null}
+            {launchOffer ? (
+              <p className="rounded-lg border border-brand/40 bg-surface px-4 py-3 text-sm text-ink">
+                <span className="font-medium">Launch week:</span> your first month is half price
+                on any monthly plan.
+              </p>
+            ) : null}
             <PlanCards
+              firstMonth={firstMonth}
               // Only a plan that is renewing is the one to stay on. After a
               // cancellation every button is a way back, the same one included.
               current={
@@ -224,6 +241,9 @@ export default async function BillingPage({
             {/* What a plan commits them to, beside the buttons that commit
                 them to it. */}
             <p className="text-xs leading-relaxed text-ink-muted">
+              {launchOffer
+                ? "The launch-week price is for the first month only; after that a monthly plan renews at its regular price. "
+                : null}
               Plans renew automatically until you cancel. Cancel any time here and keep
               everything until the end of what you’ve paid for; unused time isn’t refunded.
               Choosing a plan means you agree to the{" "}
@@ -396,9 +416,12 @@ function StorageMeter({ used, allowance }: { used: number; allowance: number }) 
 function PlanCards({
   current,
   currentInterval,
+  firstMonth,
 }: {
   current: Plan["id"] | null;
   currentInterval: string | null;
+  /** The launch offer's first month, for each plan this business gets it on. */
+  firstMonth: Partial<Record<Plan["id"], number>>;
 }) {
   const saving = Math.round(ANNUAL_DISCOUNT_BP / 100);
 
@@ -420,6 +443,11 @@ function PlanCards({
                 {formatPrice(plan.monthlyCents)}
                 <span className="text-sm font-normal text-ink-muted"> / month</span>
               </p>
+              {firstMonth[plan.id] !== undefined ? (
+                <p className="text-sm font-medium text-brand">
+                  {formatPrice(firstMonth[plan.id]!)} for your first month
+                </p>
+              ) : null}
               <p className="text-xs text-ink-subtle">
                 or {formatPrice(annualCents(plan))} a year — save {saving}%
               </p>

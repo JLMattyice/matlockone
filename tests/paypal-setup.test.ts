@@ -7,6 +7,7 @@ import {
   envLines,
   hasWrongPrice,
   needsChanges,
+  planBody,
   planName,
   survey,
   WEBHOOK_EVENTS,
@@ -25,7 +26,9 @@ import { SUBSCRIPTION_EVENTS } from "@/lib/checkout/paypal";
 
 const HOOK = "https://www.matlockone.com/api/checkout/paypal/webhook";
 
-type Plan = { id: string; product_id: string; name: string; status: string; price: string };
+/** price is what it renews at; trial, the discounted first cycle if it has one. */
+type Plan = { id: string; product_id: string; name: string; status: string; price: string; trial?: string };
+type Cycle = { tenure_type: string; sequence: number; pricing_scheme: { fixed_price: { value: string } } };
 type Hook = { id: string; url: string; event_types: { name: string }[] };
 
 function fakeAccount(start: { products?: { id: string; name: string }[]; plans?: Plan[]; hooks?: Hook[] } = {}) {
@@ -50,17 +53,16 @@ function fakeAccount(start: { products?: { id: string; name: string }[]; plans?:
 
     if (url.pathname === "/v1/billing/plans") {
       if (method === "POST") {
-        const b = body as {
-          product_id: string;
-          name: string;
-          billing_cycles: { pricing_scheme: { fixed_price: { value: string } } }[];
-        };
-        const made = {
+        const b = body as { product_id: string; name: string; billing_cycles: Cycle[] };
+        const cycle = (tenure: string) =>
+          b.billing_cycles.find((c) => c.tenure_type === tenure)?.pricing_scheme.fixed_price.value;
+        const made: Plan = {
           id: `P-${next++}`,
           product_id: b.product_id,
           name: b.name,
           status: "ACTIVE",
-          price: b.billing_cycles[0].pricing_scheme.fixed_price.value,
+          price: cycle("REGULAR")!,
+          ...(cycle("TRIAL") ? { trial: cycle("TRIAL") } : {}),
         };
         plans.push(made);
         return { id: made.id };
@@ -75,7 +77,18 @@ function fakeAccount(start: { products?: { id: string; name: string }[]; plans?:
     const one = url.pathname.match(/^\/v1\/billing\/plans\/(.+)$/);
     if (one) {
       const found = plans.find((p) => p.id === one[1])!;
-      return { ...found, billing_cycles: [{ pricing_scheme: { fixed_price: { value: found.price } } }] };
+      const price = (value: string) => ({ fixed_price: { value } });
+      // PayPal does not promise the cycles in order; the renewal comes first
+      // here so that reading them by sequence is what is tested.
+      return {
+        ...found,
+        billing_cycles: found.trial
+          ? [
+              { tenure_type: "REGULAR", sequence: 2, pricing_scheme: price(found.price) },
+              { tenure_type: "TRIAL", sequence: 1, pricing_scheme: price(found.trial) },
+            ]
+          : [{ tenure_type: "REGULAR", sequence: 1, pricing_scheme: price(found.price) }],
+      };
     }
 
     if (url.pathname === "/v1/notifications/webhooks") {
@@ -113,14 +126,50 @@ describe("the prices it creates", () => {
   });
 });
 
+describe("the launch offer's plans", () => {
+  it("charge half the first month, then the full monthly price until cancelled", () => {
+    const body = planBody("PROD-1", PLANS.starter, "monthly", true);
+
+    expect(body.name).toBe("Matlock One Starter (monthly, launch offer)");
+    expect(body.billing_cycles).toEqual([
+      expect.objectContaining({
+        tenure_type: "TRIAL",
+        sequence: 1,
+        total_cycles: 1,
+        frequency: { interval_unit: "MONTH", interval_count: 1 },
+        pricing_scheme: { fixed_price: { value: "14.50", currency_code: "USD" } },
+      }),
+      expect.objectContaining({
+        tenure_type: "REGULAR",
+        sequence: 2,
+        total_cycles: 0,
+        frequency: { interval_unit: "MONTH", interval_count: 1 },
+        pricing_scheme: { fixed_price: { value: "29.00", currency_code: "USD" } },
+      }),
+    ]);
+  });
+
+  it("leave the ordinary plans with one cycle, as before", () => {
+    const body = planBody("PROD-1", PLANS.pro, "monthly");
+
+    expect(body.name).toBe("Matlock One Pro (monthly)");
+    expect(body.billing_cycles).toHaveLength(1);
+    expect(body.billing_cycles[0]).toMatchObject({ tenure_type: "REGULAR", sequence: 1 });
+  });
+});
+
 describe("a fresh account", () => {
-  it("gets one product, six plans and a webhook for every event we handle", async () => {
+  it("gets one product, nine plans and a webhook for every event we handle", async () => {
     const account = fakeAccount();
 
     const result = await run(account);
 
     expect(account.products).toHaveLength(1);
-    expect(account.plans).toHaveLength(6);
+    expect(account.plans).toHaveLength(9);
+    expect(account.plans.find((p) => p.name === "Matlock One Business (monthly, launch offer)")).toMatchObject({
+      trial: "29.50",
+      price: "59.00",
+    });
     expect(account.plans.map((p) => p.name)).toContain("Matlock One Business (yearly)");
     expect(account.plans.find((p) => p.name === "Matlock One Pro (monthly)")?.price).toBe("99.00");
     expect(account.hooks).toHaveLength(1);
@@ -146,6 +195,9 @@ describe("a fresh account", () => {
       "PAYPAL_PLAN_BUSINESS_ANNUAL",
       "PAYPAL_PLAN_PRO_MONTHLY",
       "PAYPAL_PLAN_PRO_ANNUAL",
+      "PAYPAL_PLAN_STARTER_MONTHLY_LAUNCH",
+      "PAYPAL_PLAN_BUSINESS_MONTHLY_LAUNCH",
+      "PAYPAL_PLAN_PRO_MONTHLY_LAUNCH",
     ]);
     // The secret is never printed.
     expect(lines.join("\n")).not.toMatch(/SECRET/);
@@ -174,7 +226,7 @@ describe("running it again", () => {
 
     await run(account);
 
-    expect(account.plans).toHaveLength(6);
+    expect(account.plans).toHaveLength(9);
     expect(account.products).toHaveLength(1);
     expect(account.hooks).toHaveLength(1);
   });
@@ -209,6 +261,34 @@ describe("what it refuses", () => {
     expect(describeSurvey(found, HOOK).join("\n")).toContain("EXISTS AT $49.00 INSTEAD");
     await expect(applySetup(account.call, found, HOOK)).rejects.toThrow(/different price/);
     expect(account.writes).toEqual([]);
+  });
+
+  it("stops when a launch plan's first month is at another price", async () => {
+    const account = fakeAccount();
+    await run(account);
+    account.plans.find((p) => p.name === "Matlock One Starter (monthly, launch offer)")!.trial = "9.00";
+    const writes = account.writes.length;
+
+    const found = await survey(account.call, HOOK);
+
+    expect(found.plans.starter_monthly_launch).toMatchObject({ state: "wrong-price", price: "9.00 then $29.00" });
+    expect(describeSurvey(found, HOOK).join("\n")).toContain(
+      'Plan "Matlock One Starter (monthly, launch offer)" at $14.50 then $29.00: EXISTS AT $9.00 then $29.00 INSTEAD',
+    );
+    await expect(applySetup(account.call, found, HOOK)).rejects.toThrow(/different price/);
+    expect(account.writes).toHaveLength(writes);
+  });
+
+  it("does not take a launch plan without its discounted month for one", async () => {
+    // It would charge the full price to somebody who was shown half.
+    const account = fakeAccount();
+    await run(account);
+    delete account.plans.find((p) => p.name === "Matlock One Pro (monthly, launch offer)")!.trial;
+
+    const found = await survey(account.call, HOOK);
+
+    expect(found.plans.pro_monthly_launch.state).toBe("wrong-price");
+    expect(found.plans.pro_monthly.state).toBe("ready");
   });
 
   it("widens an existing webhook's events, and never narrows them", async () => {

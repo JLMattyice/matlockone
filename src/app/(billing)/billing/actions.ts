@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth";
 import { BILLING_PATH } from "@/lib/billing/entitlement";
-import { CANCELLABLE, restartDate, startCheckout } from "@/lib/billing/subscription";
+import { CANCELLABLE, launchPriceFor, restartDate, startCheckout } from "@/lib/billing/subscription";
 import { isPlan } from "@/lib/checkout/plans";
 import { cancelSubscription, paypalConfig, revisePlan } from "@/lib/checkout/paypal";
 import { resolveAppUrl } from "@/lib/config";
@@ -19,6 +19,9 @@ import { prisma } from "@/lib/db";
  *
  * A business already paying on an active subscription changes that one
  * rather than starting another beside it, which would bill it twice.
+ *
+ * A first plan chosen by the month during launch week starts on the launch
+ * offer's plan, at the price the billing screen showed.
  */
 export async function choosePlan(formData: FormData) {
   const { user, org } = await requirePermission("settings:write", { unpaid: "allow" });
@@ -47,6 +50,7 @@ export async function choosePlan(formData: FormData) {
           plan,
           interval,
           startAt: restartDate(org),
+          launch: launchPriceFor(org, config, plan, interval),
         });
 
   // A code, not PayPal's words. The screen shows fixed text for each, so a

@@ -1,6 +1,6 @@
+import { launchMonthCents } from "@/lib/billing/launch-offer";
 import { annualCents, planList, type Plan } from "@/lib/checkout/plans";
-import { SUBSCRIPTION_EVENTS, type PayPalInterval } from "@/lib/checkout/paypal";
-import type { LicensePlan } from "@/lib/license/token";
+import { SUBSCRIPTION_EVENTS, type PayPalInterval, type PayPalPlanKey } from "@/lib/checkout/paypal";
 
 /**
  * Setting up PayPal to sell Matlock One: the product, a billing plan for each
@@ -25,44 +25,83 @@ export const PRODUCT_NAME = "Matlock One";
 
 export const WEBHOOK_EVENTS: string[] = [...SUBSCRIPTION_EVENTS];
 
-export type PlanKey = `${LicensePlan}_${PayPalInterval}`;
+export type PlanKey = PayPalPlanKey;
 
 const INTERVALS: PayPalInterval[] = ["monthly", "annual"];
 
-/** Every plan we sell, in the order the env lines are printed. */
-export function planSlots(): { key: PlanKey; plan: Plan; interval: PayPalInterval }[] {
-  return planList().flatMap((plan) =>
-    INTERVALS.map((interval) => ({ key: `${plan.id}_${interval}` as PlanKey, plan, interval })),
-  );
+export type PlanSlot = { key: PlanKey; plan: Plan; interval: PayPalInterval; launch: boolean };
+
+/**
+ * Every plan we sell, in the order the env lines are printed: each plan by
+ * the month and by the year, then the launch offer's monthly plans.
+ */
+export function planSlots(): PlanSlot[] {
+  const plans = planList();
+  return [
+    ...plans.flatMap((plan) =>
+      INTERVALS.map((interval) => ({
+        key: `${plan.id}_${interval}` as PlanKey,
+        plan,
+        interval,
+        launch: false,
+      })),
+    ),
+    ...plans.map((plan) => ({
+      key: `${plan.id}_monthly_launch` as PlanKey,
+      plan,
+      interval: "monthly" as const,
+      launch: true,
+    })),
+  ];
 }
 
 /** The name the plan carries in PayPal, and on the buyer's PayPal receipt. */
-export function planName(plan: Plan, interval: PayPalInterval): string {
-  return `${PRODUCT_NAME} ${plan.name} (${interval === "monthly" ? "monthly" : "yearly"})`;
+export function planName(plan: Plan, interval: PayPalInterval, launch = false): string {
+  const every = interval === "monthly" ? "monthly" : "yearly";
+  return `${PRODUCT_NAME} ${plan.name} (${launch ? `${every}, launch offer` : every})`;
 }
+
+const money = (cents: number) => (cents / 100).toFixed(2);
 
 /** What one billing cycle costs, as PayPal writes money: "29.00". */
 export function cyclePrice(plan: Plan, interval: PayPalInterval): string {
-  const cents = interval === "monthly" ? plan.monthlyCents : annualCents(plan);
-  return (cents / 100).toFixed(2);
+  return money(interval === "monthly" ? plan.monthlyCents : annualCents(plan));
 }
 
-export function planBody(productId: string, plan: Plan, interval: PayPalInterval) {
+/**
+ * What each cycle costs, in the order PayPal runs them: the launch offer's
+ * discounted month first, then the price it renews at.
+ */
+export function cyclePrices(slot: Pick<PlanSlot, "plan" | "interval" | "launch">): string[] {
+  const regular = cyclePrice(slot.plan, slot.interval);
+  return slot.launch ? [money(launchMonthCents(slot.plan)), regular] : [regular];
+}
+
+export function planBody(productId: string, plan: Plan, interval: PayPalInterval, launch = false) {
+  const frequency = { interval_unit: interval === "monthly" ? "MONTH" : "YEAR", interval_count: 1 };
+  const price = (value: string) => ({ fixed_price: { value, currency_code: "USD" } });
+  const first = launch ? money(launchMonthCents(plan)) : null;
+
   return {
     product_id: productId,
-    name: planName(plan, interval),
-    description: `${plan.seatLabel}. Every part of ${PRODUCT_NAME}.`,
+    name: planName(plan, interval, launch),
+    description: first
+      ? `${plan.seatLabel}. Every part of ${PRODUCT_NAME}. Launch offer: the first month at $${first}.`
+      : `${plan.seatLabel}. Every part of ${PRODUCT_NAME}.`,
     status: "ACTIVE",
     billing_cycles: [
+      // PayPal's word for a discounted opening period is a trial. It is paid
+      // for, at its own price, the moment the buyer approves.
+      ...(first
+        ? [{ frequency, tenure_type: "TRIAL", sequence: 1, total_cycles: 1, pricing_scheme: price(first) }]
+        : []),
       {
-        frequency: { interval_unit: interval === "monthly" ? "MONTH" : "YEAR", interval_count: 1 },
+        frequency,
         tenure_type: "REGULAR",
-        sequence: 1,
+        sequence: first ? 2 : 1,
         // Until cancelled.
         total_cycles: 0,
-        pricing_scheme: {
-          fixed_price: { value: cyclePrice(plan, interval), currency_code: "USD" },
-        },
+        pricing_scheme: price(cyclePrice(plan, interval)),
       },
     ],
     payment_preferences: {
@@ -124,23 +163,28 @@ export async function survey(call: PayPalCall, webhookUrl: string): Promise<Surv
       )
     : [];
 
-  for (const { key, plan, interval } of planSlots()) {
-    const match = existing.find((p) => p.name === planName(plan, interval));
+  for (const slot of planSlots()) {
+    const { key, plan, interval, launch } = slot;
+    const match = existing.find((p) => p.name === planName(plan, interval, launch));
     if (!match) {
       plans[key] = { state: "missing" };
       continue;
     }
 
-    // The listing leaves the price out, so each match is read in full.
+    // The listing leaves the price out, so each match is read in full. Every
+    // cycle is compared, in the order PayPal runs them: a launch plan whose
+    // first month or renewal is off is as wrong as a plain one.
     const detail = (await call("GET", `/v1/billing/plans/${encodeURIComponent(match.id)}`)) as {
-      billing_cycles?: { pricing_scheme?: { fixed_price?: { value?: string } } }[];
+      billing_cycles?: { sequence?: number; pricing_scheme?: { fixed_price?: { value?: string } } }[];
     };
-    const price = detail.billing_cycles?.[0]?.pricing_scheme?.fixed_price?.value ?? "";
-    const expected = cyclePrice(plan, interval);
+    const prices = [...(detail.billing_cycles ?? [])]
+      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+      .map((cycle) => cycle.pricing_scheme?.fixed_price?.value ?? "");
+    const expected = cyclePrices(slot);
     plans[key] =
-      Number(price) === Number(expected)
+      prices.length === expected.length && prices.every((price, i) => Number(price) === Number(expected[i]))
         ? { state: "ready", id: match.id }
-        : { state: "wrong-price", id: match.id, price, expected };
+        : { state: "wrong-price", id: match.id, price: prices.join(" then $"), expected: expected.join(" then $") };
   }
 
   const hooks = (
@@ -170,9 +214,9 @@ export function describeSurvey(found: Survey, webhookUrl: string): string[] {
   const lines = [
     found.product ? `Product "${PRODUCT_NAME}": already there` : `Product "${PRODUCT_NAME}": will be created`,
   ];
-  for (const { key, plan, interval } of planSlots()) {
-    const finding = found.plans[key];
-    const label = `Plan "${planName(plan, interval)}" at $${cyclePrice(plan, interval)}`;
+  for (const slot of planSlots()) {
+    const finding = found.plans[slot.key];
+    const label = `Plan "${planName(slot.plan, slot.interval, slot.launch)}" at $${cyclePrices(slot).join(" then $")}`;
     lines.push(
       finding.state === "ready"
         ? `${label}: already there`
@@ -236,12 +280,13 @@ export async function applySetup(
     })) as { id: string }).id;
 
   const planIds = {} as Record<PlanKey, string>;
-  for (const { key, plan, interval } of planSlots()) {
+  for (const { key, plan, interval, launch } of planSlots()) {
     const finding = found.plans[key];
     planIds[key] =
       finding.state === "ready"
         ? finding.id
-        : ((await call("POST", "/v1/billing/plans", planBody(productId, plan, interval))) as { id: string }).id;
+        : ((await call("POST", "/v1/billing/plans", planBody(productId, plan, interval, launch))) as { id: string })
+            .id;
   }
 
   let webhookId: string;

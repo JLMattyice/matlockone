@@ -107,6 +107,9 @@ PAYPAL_PLAN_BUSINESS_MONTHLY="P-..."
 PAYPAL_PLAN_BUSINESS_ANNUAL="P-..."
 PAYPAL_PLAN_PRO_MONTHLY="P-..."
 PAYPAL_PLAN_PRO_ANNUAL="P-..."
+PAYPAL_PLAN_STARTER_MONTHLY_LAUNCH="P-..."
+PAYPAL_PLAN_BUSINESS_MONTHLY_LAUNCH="P-..."
+PAYPAL_PLAN_PRO_MONTHLY_LAUNCH="P-..."
 
 # Matlock One's own mailbox — see Forgot password below. A from address, and
 # either a Resend key or an SMTP login.
@@ -259,7 +262,8 @@ It asks for the PayPal app's Client ID and Secret (developer.paypal.com → Apps
 & Credentials, with the Live switch on) and whether to use live or sandbox.
 Then it shows what the account already has and what it would create — the
 "Matlock One" product, a monthly and a yearly billing plan for each of the
-three plans at the catalog's prices, and a webhook to
+three plans at the catalog's prices, the launch offer's monthly plans (see
+below), and a webhook to
 `https://www.matlockone.com/api/checkout/paypal/webhook` — and changes nothing
 until you type `yes`. It prints the settings above; put them and the client id
 and secret in Vercel and redeploy.
@@ -286,6 +290,18 @@ An owner or admin can cancel from the billing page itself (PayPal's cancel
 call; the account stays open to the end of what it paid for). Choosing a plan
 again while that paid-for time is left starts the new subscription on the day
 it runs out, so the same days are never charged twice.
+
+### The launch-week offer
+
+Businesses that sign up October 5–11, 2026 (Eastern), or choose their first
+plan in that week, get their first month half price on a monthly plan. The
+dates and the discount live in `src/lib/billing/launch-offer.ts`. PayPal does
+the discounting: `npm run paypal:setup` also makes a "launch offer" monthly
+plan for each tier — one month at half price (PayPal calls it a trial), then
+the full price until cancelled — and prints `PAYPAL_PLAN_*_MONTHLY_LAUNCH`.
+Until those are in Vercel, nothing advertises the offer and nobody is sent to
+it. Keep them there after the week ends: they are how a renewal on a
+launch-week subscription is recognised as the monthly plan it is.
 
 ### Businesses that are never billed
 
