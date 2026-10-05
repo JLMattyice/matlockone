@@ -51,10 +51,8 @@ built and tested on.
 
 **On CI.** The Windows job in `.github/workflows/release.yml`: a
 `windows-latest` runner, started by `npm run release` (see Publishing a
-release). It needs no secrets. The macOS build cannot finish unsigned, because
-`notarize: true` means Apple has to have seen it; Windows has no such gate, and
-an unsigned installer builds and runs with a SmartScreen warning on first
-launch.
+release). It signs the installer and the app through Azure Artifact Signing —
+see Signing the Windows build below — and refuses to release unsigned.
 
 Prefer CI. One tag then produces every platform the repository can sign for,
 which is the whole point: v0.2.1 through v0.3.0 each shipped a Mac build and no
@@ -64,7 +62,41 @@ releases.
 
 **By hand**, which is what `npm run desktop:pack` above does. Note that it
 stops at `dist-installer/` — the script carries no `--publish`, so a build made
-this way reaches nobody until it is uploaded. See Publishing a release.
+this way reaches nobody until it is uploaded. See Publishing a release. It is
+unsigned: only CI holds the signing credentials.
+
+### Signing the Windows build
+
+Release builds are signed through **Azure Artifact Signing**, so Windows shows
+"Verified publisher: Jason Matlock" instead of "Unknown publisher". A brand-new
+signature can still meet SmartScreen's "Windows protected your PC" for a while;
+that fades as signed downloads build a reputation.
+
+- **Azure:** Artifact Signing account `matlocksoftware` (East US, resource
+  group `matlock-one`), an individual Public identity validation for Jason
+  Matlock, certificate profile `matlockone`. The Entra app
+  `matlockone-signing` holds the "Artifact Signing Certificate Profile Signer"
+  role on the account and signs on CI's behalf.
+- **GitHub secrets:** `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+  `AZURE_CLIENT_SECRET` — the app's directory id, its application id, and a
+  client secret.
+- **`scripts/package-windows.mjs`** passes the signing settings to
+  electron-builder and then checks each .exe with Windows'
+  `Get-AuthenticodeSignature`: valid, timestamped, and signed by the name in
+  `publisherName`. On CI it refuses to finish unsigned.
+
+**Never release unsigned after this.** A signed install records the
+publisher's name and checks every update against it; an unsigned update, or
+one signed by another name, is refused and the install stays where it is. If
+the certificate ever goes to a different name (an organization identity,
+say), list both names in `publisherName` for as long as older installs exist.
+
+**The client secret expires** (24 months from October 2026). Before it does:
+in Azure, Microsoft Entra ID → App registrations → `matlockone-signing` →
+Certificates & secrets → New client secret; then
+`gh secret set AZURE_CLIENT_SECRET --repo JLMattyice/matlockone` and paste the
+new value; then run the **Windows signing check** workflow from the Actions tab
+to prove it signs, before the next release needs it.
 
 ### macOS
 

@@ -1,0 +1,53 @@
+# Builds and signs the Windows installer without releasing it.
+#
+# For checking that signing works before a release depends on it: the first
+# time, and after the Azure client secret is replaced (it expires — see
+# DESKTOP.md). Run it from the Actions tab, or push to the windows-signing
+# branch. The signed installer is kept for three days as an artifact, to try
+# on a real machine.
+
+name: Windows signing check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - windows-signing
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    name: Build and sign
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run desktop:build
+
+      - run: node scripts/make-icon.mjs
+
+      - name: Package and sign
+        env:
+          REQUIRE_SIGNING: "1"
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: node scripts/package-windows.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-installer
+          path: dist-installer/*.exe
+          if-no-files-found: error
+          retention-days: 3

@@ -82,8 +82,10 @@ win:
   # only checks a certificate's subject — it is not the display name.
   #
   # Neither makes Windows call the download trusted: the "Verified publisher"
-  # line on SmartScreen and UAC comes only from an Authenticode signature,
-  # which needs a purchased code-signing certificate. Unsigned still warns.
+  # line on SmartScreen and UAC comes only from an Authenticode signature.
+  # Release builds get one from Azure Artifact Signing, added by
+  # scripts/package-windows.mjs rather than here — here, every local build
+  # would try to sign and fail without the Azure credentials.
   target:
     - target: nsis
       arch: [x64]
