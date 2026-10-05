@@ -50,7 +50,12 @@ function fail(message) {
 }
 
 if (!signing && required) {
-  fail(`signing is required and ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set.`);
+  // An empty GitHub secret reaches the job as an empty variable, exactly like
+  // a missing one: the run log shows the name with nothing after it, not ***.
+  fail(
+    `signing is required and ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} empty or not set. ` +
+      "Check the repository secrets have values (the run log shows *** for a filled one).",
+  );
 }
 if (!signing) {
   console.warn(`\n  package-windows: ${missing.join(", ")} not set — building UNSIGNED.\n`);
