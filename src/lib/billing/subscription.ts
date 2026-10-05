@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   getSubscription,
+  launchPlanReady,
   paypalConfig,
   planForPayPalId,
   startSubscription,
@@ -11,6 +12,7 @@ import {
   type SubscriptionDetails,
 } from "@/lib/checkout/paypal";
 import { BILLING_PATH } from "./entitlement";
+import { launchOfferApplies } from "./launch-offer";
 import { resolveAppUrl } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import type { LicensePlan } from "@/lib/license/token";
@@ -153,6 +155,8 @@ export async function startCheckout(input: {
   interval: PayPalInterval;
   /** Take the first payment then rather than now. */
   startAt?: Date | null;
+  /** On the launch offer's plan — see launchPriceFor(). */
+  launch?: boolean;
 }): Promise<StartResult> {
   const config = paypalConfig();
   if (!config) {
@@ -169,7 +173,25 @@ export async function startCheckout(input: {
     email: input.email,
     customId: input.organizationId,
     startTime: input.startAt ?? null,
+    launch: input.launch ?? false,
   });
+}
+
+/**
+ * Whether choosing this plan sends the business to the launch offer's price.
+ *
+ * The billing screen shows the price by this and the checkout charges by it,
+ * so the two cannot disagree. A plan this deployment has no launch plan for
+ * is shown and sold at its full price, never advertised at the other.
+ */
+export function launchPriceFor(
+  org: Parameters<typeof launchOfferApplies>[0],
+  config: PayPalConfig | null,
+  plan: LicensePlan,
+  interval: PayPalInterval,
+  now: Date = new Date(),
+): boolean {
+  return interval === "monthly" && launchPlanReady(config, plan) && launchOfferApplies(org, now);
 }
 
 /**

@@ -632,6 +632,140 @@ describe("choosing a plan", () => {
   });
 });
 
+// ------------------------------------------------------ launch-week offer ---
+
+describe("the launch-week offer", () => {
+  const LAUNCH_IDS = {
+    PAYPAL_PLAN_STARTER_MONTHLY_LAUNCH: "P-STARTER-M-LAUNCH",
+    PAYPAL_PLAN_BUSINESS_MONTHLY_LAUNCH: "P-BUSINESS-M-LAUNCH",
+    PAYPAL_PLAN_PRO_MONTHLY_LAUNCH: "P-PRO-M-LAUNCH",
+  };
+  const BEFORE = new Date("2026-09-29T15:00:00Z");
+  const DURING = new Date("2026-10-07T15:00:00Z");
+  const AFTER = new Date("2026-10-20T15:00:00Z");
+
+  const page = async () =>
+    renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
+  const choose = (plan: string, interval: string) => {
+    request.headers = { "next-action": "a1b2c3" };
+    return choosePlan(form({ plan, interval }));
+  };
+  const startedOn = () =>
+    sent.find((r) => r.path === "/v1/billing/subscriptions")?.body?.plan_id;
+
+  beforeEach(() => {
+    for (const [name, value] of Object.entries(LAUNCH_IDS)) vi.stubEnv(name, value);
+    // Only the clock: Prisma and the fake PayPal still need real timers.
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("starts a business that signs up that week on the half-price first month", async () => {
+    vi.setSystemTime(DURING);
+    const b = await business({ createdAt: DURING });
+    signInAs(b.owner);
+
+    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+
+    expect(startedOn()).toBe("P-STARTER-M-LAUNCH");
+  });
+
+  it("shows the first month's price beside each monthly plan", async () => {
+    vi.setSystemTime(DURING);
+    const b = await business({ createdAt: DURING });
+    signInAs(b.owner);
+
+    const html = await page();
+
+    expect(html).toContain("Launch week:");
+    expect(html).toContain("$14.50 for your first month");
+    expect(html).toContain("$29.50 for your first month");
+    expect(html).toContain("$49.50 for your first month");
+    expect(html).toContain("for the first month only");
+  });
+
+  it("charges a yearly plan its own price, which has a discount of its own", async () => {
+    vi.setSystemTime(DURING);
+    const b = await business({ createdAt: DURING });
+    signInAs(b.owner);
+
+    await expect(choose("business", "annual")).rejects.toThrow("ba_token=BA-1");
+
+    expect(startedOn()).toBe("P-BUSINESS-A");
+  });
+
+  it("keeps the offer for a business that signed up in the week and pays after it", async () => {
+    vi.setSystemTime(DURING);
+    const b = await business({ createdAt: DURING });
+    vi.setSystemTime(AFTER);
+    signInAs(b.owner);
+
+    await expect(choose("pro", "monthly")).rejects.toThrow("ba_token=BA-1");
+
+    expect(startedOn()).toBe("P-PRO-M-LAUNCH");
+  });
+
+  it("charges the full price to a business that neither signed up nor chose in the week", async () => {
+    vi.setSystemTime(BEFORE);
+    const b = await business({ createdAt: BEFORE });
+    vi.setSystemTime(AFTER);
+    signInAs(b.owner);
+
+    expect(await page()).not.toContain("for your first month");
+    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-STARTER-M");
+  });
+
+  it("is a business's first plan only, not a way back after cancelling", async () => {
+    vi.setSystemTime(DURING);
+    const b = await business({
+      ...PAYING,
+      createdAt: DURING,
+      subscriptionId: "I-FIRST",
+      subscriptionStatus: "CANCELLED",
+      paidThrough: new Date(DURING.getTime() - DAY_MS),
+    });
+    signInAs(b.owner);
+
+    expect(await page()).not.toContain("for your first month");
+    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-STARTER-M");
+  });
+
+  it("is neither shown nor sold where PayPal has no launch plan", async () => {
+    vi.setSystemTime(DURING);
+    vi.stubEnv("PAYPAL_PLAN_BUSINESS_MONTHLY_LAUNCH", "");
+    const b = await business({ createdAt: DURING });
+    signInAs(b.owner);
+
+    const html = await page();
+    expect(html).toContain("$14.50 for your first month");
+    expect(html).not.toContain("$29.50 for your first month");
+
+    await expect(choose("business", "monthly")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-BUSINESS-M");
+  });
+
+  it("opens the business on its monthly plan once PayPal has the launch subscription", async () => {
+    vi.setSystemTime(DURING);
+    const b = await business({ createdAt: DURING });
+    const renews = new Date(DURING.getTime() + 31 * DAY_MS);
+    paypalHas("I-LAUNCH", { customId: b.orgId, plan: "P-STARTER-M-LAUNCH", nextBilling: renews });
+
+    const synced = await syncSubscription("I-LAUNCH");
+
+    expect(synced).toMatchObject({ linked: true, organizationId: b.orgId, status: "ACTIVE" });
+    expect(await orgOf(b)).toMatchObject({
+      subscriptionPlan: "starter",
+      subscriptionInterval: "monthly",
+      paidThrough: renews,
+    });
+  });
+});
+
 // --------------------------------------------------- keeping step with PayPal ---
 
 describe("syncSubscription", () => {
