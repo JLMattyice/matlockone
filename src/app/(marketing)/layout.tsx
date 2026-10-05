@@ -210,8 +210,16 @@ export default async function MarketingLayout({
           </div>
 
           <p className="mt-10 border-t border-line pt-6 text-xs text-ink-subtle">
-            © {new Date().getFullYear()} Matlock One. Built by Matlock Software
-            Development, Lenoir City, TN.
+            © {new Date().getFullYear()} Matlock One.{" "}
+            <a
+              href="https://www.matlocksoftware.com"
+              target="_blank"
+              rel="noopener"
+              className="text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+            >
+              Created by Matlock Software
+            </a>
+            , Lenoir City, TN.
           </p>
         </div>
       </footer>
