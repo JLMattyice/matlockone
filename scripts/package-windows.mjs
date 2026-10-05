@@ -90,6 +90,16 @@ const apps = fs.existsSync(unpacked)
 const files = [...installers, ...apps];
 if (installers.length === 0) fail(`no installer found in ${OUT_DIR}.`);
 
+// Windows PowerShell, which is what an installed copy checks updates with —
+// but without PSModulePath. The workflow's steps run in PowerShell 7, whose
+// module path Windows PowerShell inherits and then cannot load its own
+// Get-AuthenticodeSignature from: it prints an error, exits 0, and every
+// field comes back empty.
+const probeEnv = { ...process.env };
+for (const key of Object.keys(probeEnv)) {
+  if (/^psmodulepath$/i.test(key)) delete probeEnv[key];
+}
+
 const problems = [];
 for (const file of files) {
   const probe = spawnSync(
@@ -98,18 +108,25 @@ for (const file of files) {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      `$s = Get-AuthenticodeSignature -LiteralPath '${file.replace(/'/g, "''")}'; ` +
+      `$s = Get-AuthenticodeSignature -LiteralPath '${path.resolve(file).replace(/'/g, "''")}'; ` +
         `@{ status = [string]$s.Status; subject = [string]$s.SignerCertificate.Subject; ` +
         `timestamped = [bool]$s.TimeStamperCertificate } | ConvertTo-Json -Compress`,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: probeEnv },
   );
-  if (probe.status !== 0) {
-    problems.push(`${file}: could not read its signature (${probe.stderr.trim()})`);
+
+  let result = null;
+  try {
+    result = JSON.parse(probe.stdout.trim());
+  } catch {
+    // Reported below with whatever PowerShell said.
+  }
+  if (probe.status !== 0 || !result?.status) {
+    problems.push(`${file}: could not read its signature (${(probe.stderr || probe.stdout).trim()})`);
     continue;
   }
 
-  const { status, subject, timestamped } = JSON.parse(probe.stdout.trim());
+  const { status, subject, timestamped } = result;
   const cn = /(?:^|,\s*)CN=("?)([^",]+)\1/.exec(subject ?? "")?.[2] ?? null;
   console.log(`  ${file}\n    ${status} · ${subject || "no signer"}${timestamped ? " · timestamped" : ""}`);
 
