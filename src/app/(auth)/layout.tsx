@@ -21,7 +21,17 @@ export default function AuthLayout({
         </div>
       </div>
       <footer className="pb-8 text-center text-xs text-ink-subtle">
-        Your business, all in one place
+        <p>Your business, all in one place</p>
+        <p className="mt-1">
+          <a
+            href="https://www.matlocksoftware.com"
+            target="_blank"
+            rel="noopener"
+            className="underline-offset-2 hover:text-ink hover:underline"
+          >
+            Created by Matlock Software
+          </a>
+        </p>
       </footer>
     </div>
   );
