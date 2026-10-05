@@ -735,7 +735,15 @@ function FinalCta({ demo }: { demo: boolean }) {
         </div>
 
         <p className="mt-8 text-sm text-ink-subtle">
-          Built by Matlock Software Development.
+          <a
+            href="https://www.matlocksoftware.com"
+            target="_blank"
+            rel="noopener"
+            className="underline-offset-2 hover:text-ink hover:underline"
+          >
+            Built by Matlock Software Development
+          </a>
+          .
         </p>
       </Section>
     </div>
