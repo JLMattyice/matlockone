@@ -182,11 +182,20 @@ export async function startFakeQuickBooks(
       }
     }
     if (resource === "payment") {
-      const lines = (body.Line as { Amount: number; LinkedTxn: { TxnId: string }[] }[]) ?? [];
+      type PaymentLine = { Amount: number; LinkedTxn: { TxnId: string }[] };
+      const lines = (body.Line as PaymentLine[]) ?? [];
+      // An update applies the payment afresh: what it already paid on an
+      // invoice is that invoice's to take again.
+      const before = (exceptId ? (store.payment.get(exceptId)?.Line as PaymentLine[]) : null) ?? [];
       for (const line of lines) {
         const invoice = store.invoice.get(line.LinkedTxn?.[0]?.TxnId ?? "");
         if (!invoice) return fault("2500", "Invalid Reference Id", "LinkedTxn");
-        if (cents(line.Amount) > cents(invoice.Balance)) return fault("6000", "Payment is more than the balance");
+        const already = before
+          .filter((l) => l.LinkedTxn?.[0]?.TxnId === invoice.Id)
+          .reduce((sum, l) => sum + cents(l.Amount), 0);
+        if (cents(line.Amount) > cents(invoice.Balance) + already) {
+          return fault("6000", "Payment is more than the balance");
+        }
       }
     }
     if (resource === "purchase") {
@@ -351,6 +360,7 @@ export async function startFakeQuickBooks(
           const updated: FakeRecord = { ...existing, ...fields, Id: existing.Id, SyncToken: String(Number(existing.SyncToken) + 1) };
           settle(resource, updated);
           records.set(existing.Id, updated);
+          if (resource === "payment") settleInvoicesOf(updated);
           return send(200, { [ENTITY[resource]]: updated });
         }
 

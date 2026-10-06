@@ -5,11 +5,14 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { failed, invalid, saved, text, type ActionState } from "@/lib/action-state";
-import { requirePermission } from "@/lib/auth";
+import { requirePermission, safeNextPath } from "@/lib/auth";
 import {
+  asStatus,
   DISCOUNT_TYPES,
   LINE_ITEM_KINDS,
+  PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
+  type PaymentMethod,
 } from "@/lib/constants";
 import { record } from "@/lib/activity";
 import { runEventWorkflows } from "@/lib/workflows/run";
@@ -24,6 +27,8 @@ import { invoicePdfFor } from "@/lib/pdf/invoice-document";
 import { notify, notifyClientByEmail } from "@/lib/notifications";
 import { computeTotals, formatMoney, parseMoneyToCents } from "@/lib/money";
 import { allocateNumber } from "@/lib/numbering";
+import { formatIn } from "@/lib/time-zone";
+import { viewerTimeZone } from "@/lib/viewer-time-zone";
 import type { Prisma } from "@/generated/prisma/client";
 
 // ------------------------------------------------------------------ schema ---
@@ -778,17 +783,156 @@ export async function recordPayment(
   );
 }
 
+const paymentEditSchema = z.object({
+  id: z.string().min(1),
+  amount: z.string().trim().nullish(),
+  method: z.enum(PAYMENT_METHODS).nullish(),
+  receivedAt: z.string().trim().nullish(),
+  reference: z.string().trim().nullish(),
+  notes: z.string().trim().nullish(),
+  back: z.string().nullish(),
+});
+
+const methodLabel = (method: string) =>
+  PAYMENT_METHOD_LABELS[asStatus(PAYMENT_METHODS, method, "OTHER") as PaymentMethod];
+
+/**
+ * Corrects a payment after it was recorded — the amount, method, date,
+ * reference or notes — and works its invoice's balance and status out again
+ * in the same transaction, so a fix that settles the invoice, or unsettles
+ * it, shows at once.
+ *
+ * A payment a processor reported keeps its amount, method and date: those are
+ * the processor's record of the money, and nothing typed here changes what it
+ * took. Its reference and notes are the business's own.
+ *
+ * Quiet on purpose. A correction sends no receipt and runs none of the
+ * "invoice paid" automations; those went when the payment was recorded.
+ */
+export async function updatePayment(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { user, org } = await requirePermission("payments:record");
+
+  const parsed = paymentEditSchema.safeParse({
+    id: formData.get("id"),
+    amount: text(formData, "amount"),
+    method: text(formData, "method"),
+    receivedAt: text(formData, "receivedAt"),
+    reference: text(formData, "reference"),
+    notes: text(formData, "notes"),
+    back: text(formData, "back"),
+  });
+  if (!parsed.success) return invalid(parsed.error);
+  const input = parsed.data;
+
+  const payment = await prisma.payment.findFirst({
+    where: { id: input.id, organizationId: org.id },
+    select: {
+      id: true,
+      invoiceId: true,
+      clientId: true,
+      amountCents: true,
+      method: true,
+      receivedAt: true,
+      reference: true,
+      notes: true,
+      provider: true,
+      invoice: { select: { number: true } },
+    },
+  });
+  if (!payment) return failed("That payment no longer exists.");
+
+  let { amountCents, method, receivedAt } = payment;
+
+  if (!payment.provider) {
+    const cents = parseMoneyToCents(input.amount);
+    if (cents === null || cents <= 0) {
+      return { ok: false, fieldErrors: { amount: "Enter an amount above zero." } };
+    }
+    if (!input.receivedAt) {
+      return { ok: false, fieldErrors: { receivedAt: "Pick a date." } };
+    }
+
+    amountCents = cents;
+    method = input.method ?? payment.method;
+
+    // The day as it was shown keeps the moment it was saved at, so opening a
+    // payment and saving a new reference cannot move it across midnight.
+    const shownDay = formatIn(payment.receivedAt, "yyyy-MM-dd", await viewerTimeZone());
+    if (input.receivedAt !== shownDay) {
+      const day = parseDate(input.receivedAt);
+      if (!day) return { ok: false, fieldErrors: { receivedAt: "Pick a valid date." } };
+      receivedAt = day;
+    }
+  }
+
+  const reference = input.reference ?? null;
+  const notes = input.notes ?? null;
+  const back = safeNextPath(input.back, `/invoices/${payment.invoiceId}`);
+  const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
+
+  // What the activity line says changed. Nothing changed, nothing written.
+  const changes = [
+    amountCents !== payment.amountCents
+      ? `amount ${money(payment.amountCents)} → ${money(amountCents)}`
+      : null,
+    method !== payment.method
+      ? `method ${methodLabel(payment.method)} → ${methodLabel(method)}`
+      : null,
+    receivedAt.getTime() !== payment.receivedAt.getTime() ? "date" : null,
+    reference !== payment.reference ? "reference" : null,
+    notes !== payment.notes ? "notes" : null,
+  ].filter((change): change is string => change !== null);
+
+  if (changes.length === 0) redirect(back);
+
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { amountCents, method, receivedAt, reference, notes, editedAt: new Date() },
+    });
+    await recalculateInvoice(tx, payment.invoiceId);
+  });
+
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "payment.changed",
+    entityType: "INVOICE",
+    entityId: payment.invoiceId,
+    summary: `Payment on invoice ${payment.invoice.number} corrected — ${changes.join(", ")}`,
+    metadata: { paymentId: payment.id, fromCents: payment.amountCents, toCents: amountCents },
+  });
+
+  await sendToQuickBooksSoon(org.id, { payments: [payment.id] });
+  revalidatePaymentPages(payment);
+  redirect(back);
+}
+
 export async function deletePayment(formData: FormData) {
-  const { org } = await requirePermission("payments:record");
+  const { user, org } = await requirePermission("payments:record");
 
   const id = String(formData.get("id") ?? "");
+  const back = text(formData, "back");
   if (!id) return;
 
   const payment = await prisma.payment.findFirst({
     where: { id, organizationId: org.id },
-    select: { id: true, invoiceId: true },
+    select: {
+      id: true,
+      invoiceId: true,
+      clientId: true,
+      amountCents: true,
+      invoice: { select: { number: true } },
+    },
   });
-  if (!payment) return;
+  // Already gone — a second click, or another tab. Back to where they were.
+  if (!payment) {
+    if (back) redirect(safeNextPath(back, "/payments"));
+    return;
+  }
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.payment.delete({ where: { id: payment.id } });
@@ -796,10 +940,27 @@ export async function deletePayment(formData: FormData) {
     await recalculateInvoice(tx, payment.invoiceId);
   });
 
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "payment.removed",
+    entityType: "INVOICE",
+    entityId: payment.invoiceId,
+    summary: `${formatMoney(payment.amountCents, org.currency, org.locale)} payment on invoice ${payment.invoice.number} deleted`,
+    metadata: { paymentId: payment.id, amountCents: payment.amountCents },
+  });
+
   await sendToQuickBooksSoon(org.id, { invoices: [payment.invoiceId], cleanup: true });
+  revalidatePaymentPages(payment);
+  if (back) redirect(safeNextPath(back, `/invoices/${payment.invoiceId}`));
+}
+
+/** Every page that shows a payment, or the balance it moves. */
+function revalidatePaymentPages(payment: { invoiceId: string; clientId: string | null }) {
   revalidatePath("/invoices");
   revalidatePath("/payments");
   revalidatePath(`/invoices/${payment.invoiceId}`);
+  if (payment.clientId) revalidatePath(`/clients/${payment.clientId}`);
 }
 
 // ------------------------------------------------------- lifecycle actions ---

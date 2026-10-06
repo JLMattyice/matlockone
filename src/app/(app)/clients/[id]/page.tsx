@@ -333,6 +333,11 @@ export default async function ClientDetailPage({
             currency={org.currency}
             locale={org.locale}
             zone={zone}
+            editFrom={
+              can(user, "payments:record")
+                ? `/clients/${client.id}?view=payments`
+                : undefined
+            }
           />
         </Card>
       ) : null}

@@ -1050,7 +1050,10 @@ model Payment {
   recordedById String?
   recordedBy   User?   @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
 
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  /// When somebody last corrected it by hand. Null for one never changed —
+  /// nearly all of them — and what tells QuickBooks sync to send it again.
+  editedAt  DateTime?
 
   @@unique([organizationId, provider, externalId])
   @@index([organizationId, receivedAt])

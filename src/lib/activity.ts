@@ -57,6 +57,8 @@ export type ActivityAction =
   | "invoice.drafted"
   | "invoice.autopay"
   | "payment.recorded"
+  | "payment.changed"
+  | "payment.removed"
   | "note.added"
   | "file.uploaded"
   | "task.completed";
@@ -82,6 +84,8 @@ export const ACTIVITY_META: Record<
   "invoice.drafted": { icon: "repeat", tone: "brand" },
   "invoice.autopay": { icon: "repeat", tone: "success" },
   "payment.recorded": { icon: "banknote", tone: "success" },
+  "payment.changed": { icon: "banknote", tone: "neutral" },
+  "payment.removed": { icon: "x", tone: "warning" },
   "note.added": { icon: "note", tone: "neutral" },
   "file.uploaded": { icon: "paperclip", tone: "neutral" },
   "task.completed": { icon: "check", tone: "success" },
@@ -291,7 +295,7 @@ export function hiddenActions(actor: Actor): ActivityAction[] {
     hidden.push("invoice.sent", "invoice.cancelled", "invoice.repeat", "invoice.drafted", "invoice.autopay");
   }
   if (!can(actor, "payments:read")) {
-    hidden.push("payment.recorded");
+    hidden.push("payment.recorded", "payment.changed", "payment.removed");
   }
 
   return hidden;

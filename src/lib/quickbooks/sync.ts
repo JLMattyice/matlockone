@@ -242,6 +242,7 @@ async function pendingPayments(
       method: true,
       receivedAt: true,
       reference: true,
+      editedAt: true,
       invoice: { select: { id: true, number: true, issueDate: true, clientId: true } },
     },
   });
@@ -255,8 +256,11 @@ async function pendingPayments(
       name: `Payment on invoice ${record.invoice.number}`,
       href: `/invoices/${record.invoice.id}`,
     }))
-    // A payment never changes once recorded: sent once is sent.
-    .filter(({ link }) => !link?.syncedAt)
+    // Sent once is sent, unless somebody has corrected it here since.
+    .filter(
+      ({ record, link }) =>
+        !link?.syncedAt || (record.editedAt !== null && changedSince(link, record.editedAt.getTime())),
+    )
     .sort(byWaiting);
 }
 
@@ -422,7 +426,7 @@ async function invoicesStep(ctx: Context, ids?: string[]) {
 async function paymentsStep(ctx: Context, ids?: string[], invoiceIds?: string[]) {
   const pending = await pendingPayments(ctx.connection, ctx.zone, ids, invoiceIds);
 
-  await sendEach(ctx, "payments", "PAYMENT", pending, async ({ record }) => {
+  await sendEach(ctx, "payments", "PAYMENT", pending, async ({ record, link }) => {
     const invoiceLink = await linkFor(ctx.connection, "INVOICE", record.invoice.id);
     if (!invoiceLink?.externalId || invoiceLink.remoteStatus !== "ACTIVE") {
       throw new QuickBooksError(
@@ -431,7 +435,7 @@ async function paymentsStep(ctx: Context, ids?: string[], invoiceIds?: string[])
       );
     }
     const customerId = await customerFor(ctx, record.invoice.clientId);
-    return outcome(await pushPayment(ctx.connection, record, customerId, invoiceLink.externalId, ctx.zone));
+    return outcome(await pushPayment(ctx.connection, record, link, customerId, invoiceLink.externalId, ctx.zone));
   });
 }
 

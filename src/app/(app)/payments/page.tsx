@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Wallet } from "lucide-react";
+import { Pencil, Wallet } from "lucide-react";
 
 import { listPayments } from "../invoices/queries";
+import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ListToolbar } from "@/components/ui/list-toolbar";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
@@ -16,6 +17,7 @@ import {
   type PaymentMethod,
 } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
+import { can } from "@/lib/permissions";
 import { formatIn } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
@@ -31,7 +33,7 @@ export default async function PaymentsPage({
     page?: string;
   }>;
 }) {
-  const { org } = await requirePermission("payments:read");
+  const { user, org } = await requirePermission("payments:read");
   const zone = await viewerTimeZone();
   const params = await searchParams;
 
@@ -45,6 +47,19 @@ export default async function PaymentsPage({
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
   const isFiltered = Boolean(params.q || params.method || params.clientId);
+
+  // Editing comes back to this same page of this same search.
+  const here = new URLSearchParams(
+    Object.entries({
+      q: params.q,
+      method: params.method,
+      clientId: params.clientId,
+      page: params.page,
+    }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  ).toString();
+  const editFrom = can(user, "payments:record")
+    ? `/payments${here ? `?${here}` : ""}`
+    : null;
 
   return (
     <div className="space-y-6">
@@ -89,6 +104,11 @@ export default async function PaymentsPage({
                 <Th className="hidden lg:table-cell">Reference</Th>
                 <Th className="hidden xl:table-cell">Recorded by</Th>
                 <Th align="right">Amount</Th>
+                {editFrom ? (
+                  <Th align="right">
+                    <span className="sr-only">Edit</span>
+                  </Th>
+                ) : null}
               </THead>
 
               <TBody>
@@ -150,6 +170,19 @@ export default async function PaymentsPage({
                     >
                       {money(payment.amountCents)}
                     </Td>
+
+                    {editFrom ? (
+                      <Td align="right" className="whitespace-nowrap">
+                        <Link
+                          href={`/payments/${payment.id}/edit?back=${encodeURIComponent(editFrom)}`}
+                          aria-label="Edit payment"
+                          title="Edit payment"
+                          className={buttonClasses("ghost", "sm", "px-2")}
+                        >
+                          <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        </Link>
+                      </Td>
+                    ) : null}
                   </Tr>
                 ))}
               </TBody>

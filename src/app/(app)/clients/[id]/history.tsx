@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import { Briefcase, FileText, Receipt, Wallet } from "lucide-react";
+import { Briefcase, FileText, Pencil, Receipt, Trash2, Wallet } from "lucide-react";
 
+import { deletePayment } from "@/app/(app)/invoices/actions";
 import { Badge } from "@/components/ui/badge";
+import { buttonClasses } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { EmptyState } from "@/components/ui/page-header";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import {
@@ -22,8 +25,9 @@ import { formatMoney } from "@/lib/money";
 import { formatIn } from "@/lib/time-zone";
 
 /**
- * Read-only history for a client. Every row links through to the record it
- * summarises.
+ * History for a client. Every row links through to the record it summarises;
+ * payments can also be corrected or deleted from here, by whoever may record
+ * them.
  */
 
 type Money = { currency: string; locale: string };
@@ -288,9 +292,15 @@ export function PaymentsTable({
   currency,
   locale,
   zone,
+  editFrom,
 }: {
   /** The viewer's time zone: a payment taken by a card processor is a moment, not a date. */
   zone: string;
+  /**
+   * The page to come back to after editing or deleting one — given only to
+   * somebody who may record payments, and without it the table is read-only.
+   */
+  editFrom?: string;
   payments: {
     id: string;
     amountCents: number;
@@ -318,6 +328,11 @@ export function PaymentsTable({
         <Th className="hidden sm:table-cell">Method</Th>
         <Th className="hidden lg:table-cell">Reference</Th>
         <Th align="right">Amount</Th>
+        {editFrom ? (
+          <Th align="right">
+            <span className="sr-only">Actions</span>
+          </Th>
+        ) : null}
       </THead>
       <TBody>
         {payments.map((payment) => (
@@ -326,7 +341,16 @@ export function PaymentsTable({
               {formatIn(payment.receivedAt, "MMM d, yyyy", zone)}
             </Td>
             <Td className="tabular font-medium whitespace-nowrap">
-              {payment.invoice?.number ?? "—"}
+              {payment.invoice ? (
+                <Link
+                  href={`/invoices/${payment.invoice.id}`}
+                  className="transition-colors hover:text-brand"
+                >
+                  {payment.invoice.number}
+                </Link>
+              ) : (
+                "—"
+              )}
             </Td>
             <Td className="hidden text-ink-muted sm:table-cell">
               {
@@ -344,6 +368,35 @@ export function PaymentsTable({
             >
               {formatMoney(payment.amountCents, currency, locale)}
             </Td>
+            {editFrom ? (
+              <Td align="right" className="whitespace-nowrap">
+                <div className="flex items-center justify-end gap-1">
+                  <Link
+                    href={`/payments/${payment.id}/edit?back=${encodeURIComponent(editFrom)}`}
+                    aria-label="Edit payment"
+                    title="Edit payment"
+                    className={buttonClasses("ghost", "sm", "px-2")}
+                  >
+                    <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  </Link>
+                  <form action={deletePayment}>
+                    <input type="hidden" name="id" value={payment.id} />
+                    {/* Two clicks: the first turns it red and asks. */}
+                    <ConfirmButton
+                      variant="ghost"
+                      size="sm"
+                      className="px-2"
+                      confirmLabel="Delete?"
+                      pendingLabel="Deleting…"
+                      title="Delete payment"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      <span className="sr-only">Delete payment</span>
+                    </ConfirmButton>
+                  </form>
+                </div>
+              </Td>
+            ) : null}
           </Tr>
         ))}
       </TBody>

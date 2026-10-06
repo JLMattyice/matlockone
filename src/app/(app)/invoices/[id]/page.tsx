@@ -480,17 +480,32 @@ export default async function InvoiceDetailPage({
                     </div>
 
                     {canRecord ? (
-                      <form action={deletePayment} className="shrink-0">
-                        <input type="hidden" name="id" value={payment.id} />
-                        <button
-                          type="submit"
-                          aria-label="Remove payment"
-                          title="Remove payment"
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:bg-danger/10 hover:text-danger"
+                      // Shown on hover with a mouse; always on a touch
+                      // screen, which has no hover to reveal them.
+                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+                        <Link
+                          href={`/payments/${payment.id}/edit?back=${encodeURIComponent(`/invoices/${invoice.id}`)}`}
+                          aria-label="Edit payment"
+                          title="Edit payment"
+                          className={buttonClasses("ghost", "sm", "px-2")}
                         >
-                          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        </button>
-                      </form>
+                          <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        </Link>
+                        <form action={deletePayment}>
+                          <input type="hidden" name="id" value={payment.id} />
+                          <ConfirmButton
+                            variant="ghost"
+                            size="sm"
+                            className="px-2"
+                            confirmLabel="Delete?"
+                            pendingLabel="Deleting…"
+                            title="Delete payment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            <span className="sr-only">Delete payment</span>
+                          </ConfirmButton>
+                        </form>
+                      </div>
                     ) : null}
                   </li>
                 ))}

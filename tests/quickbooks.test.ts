@@ -911,6 +911,45 @@ describe("sending payments", () => {
     expect(qb.invoices.get(invoiceId)?.Balance).toBe(40);
   });
 
+  it("updates the one already there when it is corrected here, rather than sending a second", async () => {
+    const jane = await addClient({ displayName: "Jane Doe" });
+    const invoice = await addInvoice(jane.id, {
+      number: "INV-1",
+      lines: [{ name: "Visit", quantity: 1, unitPriceCents: 10_000, totalCents: 10_000 }],
+    });
+    const payment = await prisma.payment.create({
+      data: { organizationId, invoiceId: invoice.id, clientId: jane.id, amountCents: 4_000, method: "CHECK", reference: "1042" },
+    });
+    await connectedFromTheStart();
+    await sendToQuickBooksNow(IDLE, new FormData());
+    const invoiceId = (await invoiceLink(invoice.id))!.externalId!;
+    expect(qb.invoices.get(invoiceId)?.Balance).toBe(60);
+
+    // Corrected here, the way the edit page saves it: more money, and the
+    // check number taken off.
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { amountCents: 7_500, method: "CASH", reference: null, editedAt: new Date() },
+    });
+    await sendToQuickBooksSoon(organizationId, { payments: [payment.id] });
+    for (const task of deferred.splice(0)) await task();
+
+    expect(qb.payments.size).toBe(1);
+    const [sent] = [...qb.payments.values()];
+    expect(sent).toMatchObject({
+      TotalAmt: 75,
+      PaymentRefNum: "",
+      PrivateNote: "Cash, recorded in Matlock One.",
+      SyncToken: "1",
+      Line: [{ Amount: 75, LinkedTxn: [{ TxnId: invoiceId, TxnType: "Invoice" }] }],
+    });
+    expect(qb.invoices.get(invoiceId)?.Balance).toBe(25);
+
+    // Sent once for the correction, not again on every run after.
+    await syncQuickBooks(organizationId);
+    expect([...qb.payments.values()][0].SyncToken).toBe("1");
+  });
+
   it("goes in the background with its invoice when recorded", async () => {
     const jane = await addClient({ displayName: "Jane Doe" });
     const invoice = await addInvoice(jane.id, {
