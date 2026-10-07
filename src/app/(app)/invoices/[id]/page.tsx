@@ -12,7 +12,7 @@ import { FileText,
   Wallet,
 } from "lucide-react";
 
-import { PaymentForm, SendInvoice } from "./payment-form";
+import { MarkPaid, PaymentForm, SendInvoice } from "./payment-form";
 import {
   deleteInvoice,
   deletePayment,
@@ -309,6 +309,15 @@ export default async function InvoiceDetailPage({
                   alreadySent={Boolean(invoice.sentAt)}
                 />
               ) : null}
+              {canRecord && !cancelled && invoice.balanceCents > 0 ? (
+                <MarkPaid
+                  invoiceId={invoice.id}
+                  owed={money(invoice.balanceCents)}
+                  today={formatIn(new Date(), "yyyy-MM-dd", zone)}
+                  isDraft={isDraft}
+                  receiptTo={invoice.client.email ? invoice.client.displayName : null}
+                />
+              ) : null}
             </div>
 
             {!isDraft && !cancelled ? (
@@ -435,7 +444,8 @@ export default async function InvoiceDetailPage({
 
             {isDraft ? (
               <p className="border-b border-line px-5 py-3 text-xs text-ink-muted">
-                Send the invoice before recording payments against it.
+                Send the invoice before recording part of a payment — or, if it
+                was paid in full, use Mark as paid above.
               </p>
             ) : null}
 

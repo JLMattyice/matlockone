@@ -114,10 +114,12 @@ partly paid, a payment recorded twice.
   sign; the signature keeps a copy of what they agreed to. Deposits and
   progress invoices: a deposit billed on acceptance, progress invoices for a
   share of the total, and a final invoice for the rest (no retainage or change
-  orders). A recorded payment can be corrected or deleted later — from the
-  client's Payments tab, the invoice, or the payments list — and the invoice's
-  balance follows; one a processor reported keeps the processor's amount and
-  date.
+  orders). Money that came in some other way — cash, a check, a card machine,
+  a transfer — marks an invoice paid in one step, from the invoice or the
+  invoice list; a draft paid on the spot is issued as paid. A recorded payment
+  can be corrected or deleted later — from the client's Payments tab, the
+  invoice, or the payments list — and the invoice's balance follows; one a
+  processor reported keeps the processor's amount and date.
 - Products & services: the price book the line-item editor picks from, with
   archive/restore. Importable from a CSV price list (QuickBooks' own export
   included); "$85/yd" reads as a price and a unit, a price that cannot be read

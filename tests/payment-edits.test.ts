@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Correcting and deleting a payment after it was recorded.
+ * Correcting and deleting a payment after it was recorded, and marking an
+ * invoice paid in one step when the money came in some other way.
  *
  * The promise worth pinning is that the invoice follows: its balance and
  * status are worked out again from what is left, so a fixed amount can settle
@@ -40,7 +41,7 @@ vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
 }));
 
-import { deletePayment, updatePayment } from "@/app/(app)/invoices/actions";
+import { deletePayment, markInvoicePaid, updatePayment } from "@/app/(app)/invoices/actions";
 import { IDLE } from "@/lib/action-state";
 import { prisma } from "@/lib/db";
 
@@ -273,5 +274,80 @@ describe("deleting a payment", () => {
     await expect(deletePayment(form({ id: "no-such-payment", back: back() }))).rejects.toThrow(
       `NEXT_REDIRECT ${back()}`,
     );
+  });
+});
+
+describe("marking an invoice paid", () => {
+  it("records what is still owed, in cash today unless told otherwise, and settles the invoice", async () => {
+    await paid(3_000);
+    await prisma.client.update({ where: { id: clientId }, data: { email: "jane@example.test" } });
+
+    expect(await markInvoicePaid(IDLE, form({ id: invoiceId }))).toEqual({
+      ok: true,
+      message: "Marked paid — $70.00 by cash.",
+    });
+
+    expect(await invoice()).toMatchObject({ status: "PAID", amountPaidCents: 10_000, balanceCents: 0 });
+    const latest = await prisma.payment.findFirstOrThrow({
+      where: { invoiceId, amountCents: 7_000 },
+    });
+    expect(latest).toMatchObject({ method: "CASH", reference: null, clientId });
+    expect(Math.abs(latest.receivedAt.getTime() - Date.now())).toBeLessThan(60_000);
+
+    // The same follow-up as any recorded payment: on the record, and a receipt.
+    const logged = await prisma.auditLog.findFirstOrThrow({
+      where: { organizationId, action: "payment.recorded" },
+    });
+    expect(logged.summary).toBe("$70.00 received against invoice INV-1042 — paid in full");
+    const receipt = await prisma.outboxMessage.findFirstOrThrow({ where: { organizationId } });
+    expect(receipt).toMatchObject({ toAddress: "jane@example.test", subject: "Payment received — INV-1042" });
+  });
+
+  it("takes the method, reference and day it is given", async () => {
+    expect(
+      await markInvoicePaid(
+        IDLE,
+        form({ id: invoiceId, method: "CHECK", reference: "1043", receivedAt: "2026-10-02" }),
+      ),
+    ).toEqual({ ok: true, message: "Marked paid — $100.00 by check." });
+
+    const payment = await prisma.payment.findFirstOrThrow({ where: { invoiceId } });
+    expect(payment).toMatchObject({ amountCents: 10_000, method: "CHECK", reference: "1043" });
+    expect(payment.receivedAt.toISOString().slice(0, 10)).toBe("2026-10-02");
+  });
+
+  it("issues a draft as paid, without claiming it was sent", async () => {
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "DRAFT", sentAt: null } });
+
+    expect((await markInvoicePaid(IDLE, form({ id: invoiceId, method: "OTHER" }))).ok).toBe(true);
+
+    expect(await invoice()).toMatchObject({ status: "PAID", balanceCents: 0, sentAt: null });
+  });
+
+  it("refuses one already paid, one cancelled, and another business's, recording nothing", async () => {
+    await paid(10_000);
+    expect(await markInvoicePaid(IDLE, form({ id: invoiceId }))).toEqual({
+      ok: false,
+      error: "Invoice INV-1042 is already paid.",
+    });
+    expect(await prisma.payment.count({ where: { invoiceId } })).toBe(1);
+
+    await prisma.payment.deleteMany({ where: { invoiceId } });
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "CANCELLED" } });
+    expect(await markInvoicePaid(IDLE, form({ id: invoiceId }))).toEqual({
+      ok: false,
+      error: "This invoice has been cancelled.",
+    });
+
+    const other = await prisma.organization.create({
+      data: { slug: `payment-edits-${randomUUID()}`, name: "Someone Else", billingExempt: true },
+    });
+    orgs.push(other.id);
+    session.org = other as unknown as Record<string, unknown>;
+    expect(await markInvoicePaid(IDLE, form({ id: invoiceId }))).toEqual({
+      ok: false,
+      error: "That invoice no longer exists.",
+    });
+    expect(await prisma.payment.count({ where: { invoiceId } })).toBe(0);
   });
 });

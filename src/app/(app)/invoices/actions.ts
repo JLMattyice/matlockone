@@ -658,15 +658,7 @@ export async function recordPayment(
 
   const invoice = await prisma.invoice.findFirst({
     where: { id: input.invoiceId, organizationId: org.id },
-    select: {
-      id: true,
-      number: true,
-      clientId: true,
-      status: true,
-      balanceCents: true,
-      createdById: true,
-      client: { select: { displayName: true, email: true } },
-    },
+    select: PAYABLE_INVOICE,
   });
   if (!invoice) return failed("That invoice no longer exists.");
   if (invoice.status === "CANCELLED") {
@@ -707,13 +699,144 @@ export async function recordPayment(
   );
 
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
+  await announcePayment({ org, userId: user.id, invoice, amountCents, result });
 
-  // Whoever raised the invoice hears that it was paid; the client gets a
-  // receipt. Both are best-effort and must not undo the recorded payment.
+  return saved(
+    result?.settled
+      ? `${money(amountCents)} recorded — invoice paid in full.`
+      : `${money(amountCents)} recorded. ${money(result?.balanceCents ?? 0)} still outstanding.`,
+  );
+}
+
+const markPaidSchema = z.object({
+  id: z.string().min(1),
+  method: z.enum(PAYMENT_METHODS),
+  receivedAt: z.string().trim().nullish(),
+  reference: z.string().trim().nullish(),
+});
+
+/**
+ * Marks an invoice paid in full by money that came in some other way — cash
+ * in hand, a check, a card machine, a bank transfer — in one step: a payment
+ * for whatever is still owed, today unless another day is given.
+ *
+ * A draft can be marked paid too. A customer who pays on the spot often never
+ * needs the invoice sent, so marking it paid issues it as paid; the invoice
+ * itself is not emailed, only the receipt every recorded payment sends.
+ */
+export async function markInvoicePaid(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { user, org } = await requirePermission("payments:record");
+
+  const parsed = markPaidSchema.safeParse({
+    id: formData.get("id"),
+    method: text(formData, "method") ?? "CASH",
+    receivedAt: text(formData, "receivedAt"),
+    reference: text(formData, "reference"),
+  });
+  if (!parsed.success) return invalid(parsed.error);
+  const input = parsed.data;
+
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: input.id, organizationId: org.id },
+    select: PAYABLE_INVOICE,
+  });
+  if (!invoice) return failed("That invoice no longer exists.");
+  if (invoice.status === "CANCELLED") {
+    return failed("This invoice has been cancelled.");
+  }
+
+  let receivedAt = new Date();
+  if (input.receivedAt) {
+    const day = parseDate(input.receivedAt);
+    if (!day) return { ok: false, fieldErrors: { receivedAt: "Pick a valid date." } };
+    receivedAt = day;
+  }
+
+  // Worked out inside the transaction, from the payments themselves: a
+  // payment landing a moment earlier — the processor, another tab — is not
+  // charged a second time.
+  const outcome = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const paid = await tx.payment.aggregate({
+      where: { invoiceId: invoice.id },
+      _sum: { amountCents: true },
+    });
+    const owedCents = invoice.totalCents - (paid._sum.amountCents ?? 0);
+    if (owedCents <= 0) return null;
+
+    if (invoice.status === "DRAFT") {
+      await tx.invoice.update({ where: { id: invoice.id }, data: { status: "SENT" } });
+    }
+
+    await tx.payment.create({
+      data: {
+        organizationId: org.id,
+        invoiceId: invoice.id,
+        clientId: invoice.clientId,
+        amountCents: owedCents,
+        method: input.method,
+        receivedAt,
+        reference: input.reference ?? null,
+        recordedById: user.id,
+      },
+    });
+
+    return { amountCents: owedCents, result: await recalculateInvoice(tx, invoice.id) };
+  });
+
+  if (!outcome) return failed(`Invoice ${invoice.number} is already paid.`);
+
+  await announcePayment({ org, userId: user.id, invoice, ...outcome });
+
+  const amount = formatMoney(outcome.amountCents, org.currency, org.locale);
+  const how = input.method === "OTHER" ? "" : ` by ${methodLabel(input.method).toLowerCase()}`;
+  return saved(`Marked paid — ${amount}${how}.`);
+}
+
+const PAYABLE_INVOICE = {
+  id: true,
+  number: true,
+  clientId: true,
+  status: true,
+  totalCents: true,
+  balanceCents: true,
+  createdById: true,
+  client: { select: { displayName: true, email: true } },
+} as const;
+
+/**
+ * Everything that follows money coming in by hand. Whoever raised the invoice
+ * hears that it was paid, the client gets a receipt, it goes on the record,
+ * and the "invoice paid" automations run once it is settled. All of it is
+ * best-effort and must not undo the payment already saved.
+ */
+async function announcePayment({
+  org,
+  userId,
+  invoice,
+  amountCents,
+  result,
+}: {
+  org: { id: string; name: string; currency: string; locale: string };
+  userId: string;
+  invoice: {
+    id: string;
+    number: string;
+    clientId: string;
+    createdById: string | null;
+    client: { displayName: string; email: string | null } | null;
+  };
+  amountCents: number;
+  result: Awaited<ReturnType<typeof recalculateInvoice>>;
+}) {
+  const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
+
   await notify({
     organizationId: org.id,
     userIds: invoice.createdById ? [invoice.createdById] : [],
-    exceptUserId: user.id,
+    exceptUserId: userId,
     type: "PAYMENT_RECEIVED",
     title: `${money(amountCents)} received on ${invoice.number}`,
     body: result?.settled
@@ -742,12 +865,12 @@ export async function recordPayment(
     ].join("\n"),
     relatedType: "invoice",
     relatedId: invoice.id,
-    createdById: user.id,
+    createdById: userId,
   });
 
   await record({
     organizationId: org.id,
-    userId: user.id,
+    userId,
     action: "payment.recorded",
     entityType: "INVOICE",
     entityId: invoice.id,
@@ -771,16 +894,8 @@ export async function recordPayment(
   }
 
   await sendToQuickBooksSoon(org.id, { invoices: [invoice.id] });
-  revalidatePath("/invoices");
-  revalidatePath("/payments");
+  revalidatePaymentPages({ invoiceId: invoice.id, clientId: invoice.clientId });
   revalidatePath("/tasks");
-  revalidatePath(`/invoices/${invoice.id}`);
-
-  return saved(
-    result?.settled
-      ? `${money(amountCents)} recorded — invoice paid in full.`
-      : `${money(amountCents)} recorded. ${money(result?.balanceCents ?? 0)} still outstanding.`,
-  );
 }
 
 const paymentEditSchema = z.object({

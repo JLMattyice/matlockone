@@ -1,14 +1,16 @@
 "use client";
 
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import { Banknote } from "lucide-react";
 
-import { recordPayment, sendInvoice } from "../actions";
+import { markInvoicePaid, recordPayment, sendInvoice } from "../actions";
 import { buttonClasses } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { useKeepTyped } from "@/components/ui/keep-typed";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 export function PaymentForm({
   invoiceId,
@@ -111,6 +113,132 @@ export function PaymentForm({
         <SubmitButton size="sm" className="ml-auto" pendingLabel="Recording…">
           Record payment
         </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Paid in full some other way — cash, a check, a card machine, a transfer —
+ * in a couple of taps: how it was paid, and the day if it was not today.
+ */
+export function MarkPaid({
+  invoiceId,
+  owed,
+  today,
+  isDraft,
+  receiptTo,
+}: {
+  invoiceId: string;
+  /** What is still owed, formatted: the amount the payment will be for. */
+  owed: string;
+  today: string;
+  isDraft: boolean;
+  /** The client's name when they have an email address for the receipt. */
+  receiptTo: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, formAction] = useActionState<ActionState, FormData>(
+    markInvoicePaid,
+    IDLE,
+  );
+
+  // React clears the form when the save returns; this puts the typing
+  // back when the answer was a refusal.
+  const keep = useKeepTyped(state);
+
+  if (state.ok) {
+    return <span className="text-sm text-success">{state.message}</span>;
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={buttonClasses("outline", "md")}
+      >
+        <Banknote className="h-3.5 w-3.5" strokeWidth={2} />
+        Mark as paid
+      </button>
+    );
+  }
+
+  const notes = [
+    isDraft ? "It hasn’t been sent — this issues it as paid, without emailing the invoice." : null,
+    receiptTo ? `${receiptTo} gets a receipt by email.` : null,
+  ].filter(Boolean);
+
+  return (
+    <form
+      ref={keep}
+      action={formAction}
+      className="w-full space-y-4 rounded-lg border border-line bg-surface p-4"
+    >
+      <input type="hidden" name="id" value={invoiceId} />
+
+      <div>
+        <p className="text-sm font-semibold text-ink">
+          Mark <span className="tabular">{owed}</span> as paid
+        </p>
+        <p className="text-xs text-ink-muted">For money that came in outside Matlock One.</p>
+      </div>
+
+      <fieldset>
+        <legend className="mb-1.5 text-xs font-medium text-ink-muted">How was it paid?</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {PAYMENT_METHODS.map((method) => (
+            <label key={method} className="cursor-pointer">
+              <input
+                type="radio"
+                name="method"
+                value={method}
+                defaultChecked={method === "CASH"}
+                className="peer sr-only"
+              />
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors",
+                  "hover:bg-surface-3 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-brand-ink",
+                  "peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40",
+                )}
+              >
+                {PAYMENT_METHOD_LABELS[method]}
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field
+          label="Received"
+          htmlFor="markPaidOn"
+          required
+          error={state.fieldErrors?.receivedAt}
+        >
+          <Input id="markPaidOn" name="receivedAt" type="date" defaultValue={today} required />
+        </Field>
+
+        <Field label="Reference" htmlFor="markPaidReference" hint="Check number, transfer note.">
+          <Input id="markPaidReference" name="reference" placeholder="Optional" />
+        </Field>
+      </div>
+
+      {notes.length ? <p className="text-xs text-ink-subtle">{notes.join(" ")}</p> : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <SubmitButton pendingLabel="Saving…">
+          Mark paid · <span className="tabular">{owed}</span>
+        </SubmitButton>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className={buttonClasses("ghost", "md")}
+        >
+          Cancel
+        </button>
+        <ActionStatus state={state} className="text-xs" />
       </div>
     </form>
   );

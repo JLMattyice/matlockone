@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus, Receipt, Repeat } from "lucide-react";
 
+import { MarkPaidMenu } from "./mark-paid-menu";
 import { invoiceSummary, listInvoices } from "./queries";
 import { reminderCandidateCount } from "./reminders";
 import { SendReminders } from "./send-reminders";
@@ -62,6 +63,7 @@ export default async function InvoicesPage({
   const money = (cents: number) => formatMoney(cents, org.currency, org.locale);
   const writable = can(user, "invoices:write");
   const deletable = can(user, "invoices:delete");
+  const canRecord = can(user, "payments:record");
   const isFiltered = Boolean(params.q || params.status || params.clientId);
 
   return (
@@ -250,9 +252,18 @@ export default async function InvoicesPage({
                         className="tabular font-medium whitespace-nowrap"
                       >
                         {invoice.balanceCents > 0 ? (
-                          <span className={overdue ? "text-danger" : "text-warning"}>
-                            {money(invoice.balanceCents)}
-                          </span>
+                          <>
+                            <span className={overdue ? "text-danger" : "text-warning"}>
+                              {money(invoice.balanceCents)}
+                            </span>
+                            {canRecord && invoice.status !== "CANCELLED" ? (
+                              <MarkPaidMenu
+                                invoiceId={invoice.id}
+                                number={invoice.number}
+                                owed={money(invoice.balanceCents)}
+                              />
+                            ) : null}
+                          </>
                         ) : (
                           <span className="text-success">Paid</span>
                         )}
