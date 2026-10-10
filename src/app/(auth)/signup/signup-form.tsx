@@ -30,7 +30,14 @@ function SubmitButton() {
  * could only reload the page it sits on — which reads as a sign-in button that
  * does nothing.
  */
-export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
+export function SignupForm({
+  offerSignIn,
+  code,
+}: {
+  offerSignIn: boolean;
+  /** A free-month code the sign-up link carried, put on the new business. */
+  code?: string | null;
+}) {
   const [state, formAction] = useActionState<AuthFormState, FormData>(
     signupAction,
     {},
@@ -62,6 +69,7 @@ export function SignupForm({ offerSignIn }: { offerSignIn: boolean }) {
   return (
     <form action={formAction} className="space-y-4">
       <FormError>{state.error}</FormError>
+      {code ? <input type="hidden" name="code" value={code} /> : null}
 
       <Field
         label="Business name"

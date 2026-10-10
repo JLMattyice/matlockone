@@ -47,8 +47,15 @@ vi.mock("next/navigation", () => ({
 
 import { NextRequest } from "next/server";
 
+import { createTrialCode, setTrialCodeOn } from "@/app/(app)/accounts/actions";
 import { activateLicense } from "@/app/(app)/settings/license/actions";
-import { cancelPlan, choosePlan } from "@/app/(billing)/billing/actions";
+import { signupAction } from "@/app/(auth)/actions";
+import {
+  cancelPlan,
+  choosePlan,
+  enterTrialCode,
+  removeTrialCode,
+} from "@/app/(billing)/billing/actions";
 import BillingPage from "@/app/(billing)/billing/page";
 import BillingReturnPage from "@/app/(billing)/billing/return/page";
 import { POST as webhook } from "@/app/api/checkout/paypal/webhook/route";
@@ -763,6 +770,343 @@ describe("the launch-week offer", () => {
       subscriptionInterval: "monthly",
       paidThrough: renews,
     });
+  });
+});
+
+// ------------------------------------------------------- free-month codes ---
+
+describe("free-month codes", () => {
+  const TRIAL_IDS = {
+    PAYPAL_PLAN_STARTER_MONTHLY_TRIAL: "P-STARTER-M-TRIAL",
+    PAYPAL_PLAN_BUSINESS_MONTHLY_TRIAL: "P-BUSINESS-M-TRIAL",
+    PAYPAL_PLAN_PRO_MONTHLY_TRIAL: "P-PRO-M-TRIAL",
+  };
+
+  const page = async (params: Record<string, string> = {}) =>
+    renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve(params) }));
+  const asAction = () => {
+    request.headers = { "next-action": "a1b2c3" };
+  };
+  const choose = (plan: string, interval: string) => {
+    asAction();
+    return choosePlan(form({ plan, interval }));
+  };
+  const enter = (code: string) => {
+    asAction();
+    return enterTrialCode(IDLE, form({ code }));
+  };
+  const startedOn = () =>
+    sent.find((r) => r.path === "/v1/billing/subscriptions")?.body?.plan_id;
+
+  /** A code as the operator would make it, with a name no other test uses. */
+  const makeCode = (fields: Record<string, unknown> = {}) =>
+    prisma.trialCode.create({
+      data: { code: `FRIEND-${randomUUID().slice(0, 8).toUpperCase()}`, ...fields },
+    });
+
+  beforeEach(() => {
+    for (const [name, value] of Object.entries(TRIAL_IDS)) vi.stubEnv(name, value);
+  });
+
+  it("takes a code however it is typed, and puts it on the business", async () => {
+    const b = await business();
+    const code = await makeCode();
+    signInAs(b.owner);
+
+    const result = await enter(` ${code.code.toLowerCase()} `);
+
+    expect(result).toMatchObject({ ok: true });
+    expect((await orgOf(b)).trialCodeId).toBe(code.id);
+  });
+
+  it("shows the free month beside every monthly plan once a code is on", async () => {
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    signInAs(b.owner);
+
+    const html = await page();
+
+    expect(html).toContain(`Code ${code.code}:`);
+    expect(html.match(/First month free/g)).toHaveLength(3);
+    expect(html).toContain("PayPal takes nothing today and the first payment a month from now");
+    expect(html).toContain("Remove code");
+    expect(html).not.toContain("Have a code?");
+  });
+
+  it("offers the box to a business choosing its first plan, filled in from a link", async () => {
+    const b = await business();
+    signInAs(b.owner);
+
+    const html = await page({ code: "friend 30" });
+
+    expect(html).toContain("Have a code?");
+    expect(html).toContain('value="FRIEND30"');
+    // Only into the box: nothing is put on the business until it is applied.
+    expect((await orgOf(b)).trialCodeId).toBeNull();
+  });
+
+  it("starts a monthly plan on the free month, and a yearly one at its own price", async () => {
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    signInAs(b.owner);
+
+    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-STARTER-M-TRIAL");
+
+    sent = [];
+    await expect(choose("business", "annual")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-BUSINESS-A");
+  });
+
+  it("refuses a code it does not know, one turned off, one ended and one full", async () => {
+    const b = await business();
+    signInAs(b.owner);
+
+    expect(await enter("NO-SUCH-CODE")).toMatchObject({ ok: false, error: expect.stringContaining("isn’t one we know") });
+
+    const off = await makeCode({ disabledAt: new Date() });
+    expect(await enter(off.code)).toMatchObject({ ok: false, error: expect.stringContaining("no longer active") });
+
+    const ended = await makeCode({ expiresAt: new Date(Date.now() - 1000) });
+    expect(await enter(ended.code)).toMatchObject({ ok: false, error: expect.stringContaining("has ended") });
+
+    const full = await makeCode({ maxUses: 1 });
+    await business({ trialCodeId: full.id });
+    // Making a business signs in as its people; back to this one.
+    signInAs(b.owner);
+    expect(await enter(full.code)).toMatchObject({ ok: false, error: expect.stringContaining("as many times") });
+
+    expect((await orgOf(b)).trialCodeId).toBeNull();
+  });
+
+  it("does not count a business against the limit twice for entering its own code again", async () => {
+    const code = await makeCode({ maxUses: 1 });
+    const b = await business({ trialCodeId: code.id });
+    signInAs(b.owner);
+
+    expect(await enter(code.code)).toMatchObject({ ok: true });
+  });
+
+  it("is a business's first plan only", async () => {
+    const code = await makeCode();
+    const b = await business({
+      ...PAYING,
+      subscriptionId: `I-FIRST-${randomUUID()}`,
+      subscriptionStatus: "CANCELLED",
+      paidThrough: inDays(-1),
+    });
+    signInAs(b.owner);
+
+    expect(await page()).not.toContain("Have a code?");
+    expect(await enter(code.code)).toMatchObject({ ok: false, error: expect.stringContaining("first plan") });
+
+    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-STARTER-M");
+  });
+
+  it("stops giving the free month the moment the code is turned off", async () => {
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    await prisma.trialCode.update({ where: { id: code.id }, data: { disabledAt: new Date() } });
+    signInAs(b.owner);
+
+    const html = await page();
+    expect(html).toContain(`The code ${code.code} is no longer active`);
+    expect(html).not.toContain("First month free");
+
+    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-STARTER-M");
+  });
+
+  it("gives the free month rather than the launch week's half-price one", async () => {
+    vi.stubEnv("PAYPAL_PLAN_STARTER_MONTHLY_LAUNCH", "P-STARTER-M-LAUNCH");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-07T15:00:00Z"));
+      const code = await makeCode();
+      const b = await business({ createdAt: new Date(), trialCodeId: code.id });
+      signInAs(b.owner);
+
+      const html = await page();
+      expect(html).not.toContain("Launch week:");
+      expect(html).not.toContain("for your first month");
+
+      await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+      expect(startedOn()).toBe("P-STARTER-M-TRIAL");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is neither offered nor sold where PayPal has no free-month plans", async () => {
+    for (const name of Object.keys(TRIAL_IDS)) vi.stubEnv(name, "");
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    signInAs(b.owner);
+
+    const html = await page();
+    expect(html).not.toContain("Have a code?");
+    expect(html).not.toContain("First month free");
+
+    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
+    expect(startedOn()).toBe("P-STARTER-M");
+  });
+
+  it("can be taken back off before a plan is chosen", async () => {
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    signInAs(b.owner);
+    asAction();
+
+    await expect(removeTrialCode()).rejects.toThrow("NEXT_REDIRECT /billing");
+
+    expect((await orgOf(b)).trialCodeId).toBeNull();
+  });
+
+  it("is entered by whoever manages settings, not by anybody on the team", async () => {
+    const code = await makeCode();
+    const b = await business();
+    signInAs(b.employee);
+
+    await expect(enter(code.code)).rejects.toThrow();
+    expect((await orgOf(b)).trialCodeId).toBeNull();
+  });
+
+  it("opens the business for the free month, and remembers when it ends", async () => {
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    const firstCharge = inDays(31);
+    paypalHas("I-TRIAL", { customId: b.orgId, plan: "P-STARTER-M-TRIAL", nextBilling: firstCharge });
+
+    expect(await syncSubscription("I-TRIAL")).toMatchObject({ linked: true, status: "ACTIVE" });
+    expect(await orgOf(b)).toMatchObject({
+      subscriptionPlan: "starter",
+      subscriptionInterval: "monthly",
+      paidThrough: firstCharge,
+      trialEndsAt: firstCharge,
+    });
+
+    signInAs(b.owner);
+    const html = await page();
+    expect(html).toContain("Your free month runs until");
+    expect(html).not.toContain("Have a code?");
+
+    // The first payment moves the next billing date on a month; the free
+    // month still ended where it ended.
+    const renewal = inDays(61);
+    paypalHas("I-TRIAL", {
+      customId: b.orgId,
+      plan: "P-STARTER-M-TRIAL",
+      nextBilling: renewal,
+      lastPayment: firstCharge,
+    });
+    await syncSubscription("I-TRIAL");
+    expect(await orgOf(b)).toMatchObject({ paidThrough: renewal, trialEndsAt: firstCharge });
+  });
+
+  it("goes onto a new business from its sign-up link", async () => {
+    const code = await makeCode();
+    request.headers = { "x-forwarded-for": `198.51.100.${Math.floor(Math.random() * 200)}` };
+
+    const email = `trial-${randomUUID()}@example.test`;
+    await expect(
+      signupAction(
+        {},
+        form({
+          businessName: "Bayside Lawn Care",
+          name: "Dana Whitfield",
+          email,
+          password: "correct horse battery staple 42",
+          code: code.code.toLowerCase(),
+        }),
+      ),
+    ).rejects.toThrow(/NEXT_REDIRECT \/billing\?welcome=1$/);
+
+    const owner = await prisma.user.findFirstOrThrow({ where: { email }, include: { organization: true } });
+    expect(owner.organization.trialCodeId).toBe(code.id);
+  });
+
+  it("hands a code that does not work on to the billing screen's box", async () => {
+    request.headers = { "x-forwarded-for": `198.51.100.${Math.floor(Math.random() * 200)}` };
+
+    await expect(
+      signupAction(
+        {},
+        form({
+          businessName: "Bayside Lawn Care",
+          name: "Dana Whitfield",
+          email: `trial-${randomUUID()}@example.test`,
+          password: "correct horse battery staple 42",
+          code: "NOT-A-CODE",
+        }),
+      ),
+    ).rejects.toThrow("NEXT_REDIRECT /billing?welcome=1&code=NOT-A-CODE");
+  });
+});
+
+// ------------------------------------------- making codes, Accounts page ---
+
+describe("making free-month codes on the Accounts page", () => {
+  let operator: Business;
+
+  beforeEach(async () => {
+    operator = await business({ billingExempt: true });
+    const owner = await prisma.user.findFirstOrThrow({ where: { organizationId: operator.orgId, role: "OWNER" } });
+    vi.stubEnv("OPERATOR_EMAILS", owner.email);
+    request.headers = { "next-action": "a1b2c3" };
+  });
+
+  const make = (fields: Record<string, string>) => createTrialCode(IDLE, form(fields));
+
+  it("makes the code typed, in capitals", async () => {
+    const typed = `Bni-${randomUUID().slice(0, 6)}`;
+    signInAs(operator.owner);
+
+    const result = await make({ code: typed, note: "BNI chapter", maxUses: "20", lastDay: "2099-12-31" });
+
+    expect(result).toMatchObject({ ok: true });
+    const made = await prisma.trialCode.findUniqueOrThrow({ where: { code: typed.toUpperCase() } });
+    expect(made).toMatchObject({ note: "BNI chapter", maxUses: 20, disabledAt: null });
+    // Works through the whole of the last day, on the operator's clock.
+    expect(made.expiresAt).toEqual(new Date("2100-01-01T05:00:00Z"));
+  });
+
+  it("makes one up when none is typed", async () => {
+    signInAs(operator.owner);
+
+    const result = await make({});
+
+    expect(result).toMatchObject({ ok: true, message: expect.stringMatching(/^Made FREE-[A-Z2-9]{6}\.$/) });
+  });
+
+  it("refuses a code that already exists, a bad limit and a day already gone", async () => {
+    const taken = await prisma.trialCode.create({ data: { code: `TAKEN-${randomUUID().slice(0, 6).toUpperCase()}` } });
+    signInAs(operator.owner);
+
+    expect(await make({ code: taken.code })).toMatchObject({ fieldErrors: { code: "That code already exists." } });
+    expect(await make({ code: "AB" })).toMatchObject({ fieldErrors: { code: expect.any(String) } });
+    expect(await make({ maxUses: "0" })).toMatchObject({ fieldErrors: { maxUses: expect.any(String) } });
+    expect(await make({ lastDay: "2020-01-01" })).toMatchObject({ fieldErrors: { lastDay: "That day has already gone." } });
+  });
+
+  it("turns a code off and back on", async () => {
+    const code = await prisma.trialCode.create({ data: { code: `TOGGLE-${randomUUID().slice(0, 6).toUpperCase()}` } });
+    signInAs(operator.owner);
+
+    await setTrialCodeOn(form({ id: code.id, on: "false" }));
+    expect((await prisma.trialCode.findUniqueOrThrow({ where: { id: code.id } })).disabledAt).not.toBeNull();
+
+    await setTrialCodeOn(form({ id: code.id, on: "true" }));
+    expect((await prisma.trialCode.findUniqueOrThrow({ where: { id: code.id } })).disabledAt).toBeNull();
+  });
+
+  it("answers anybody but the operator with a 404, and makes nothing", async () => {
+    const b = await business({ billingExempt: true });
+    signInAs(b.owner);
+    const typed = `SNEAKY-${randomUUID().slice(0, 6).toUpperCase()}`;
+
+    await expect(make({ code: typed })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(await prisma.trialCode.findUnique({ where: { code: typed } })).toBeNull();
   });
 });
 

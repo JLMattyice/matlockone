@@ -1,10 +1,20 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { failed, saved, text, type ActionState } from "@/lib/action-state";
 import { requirePermission } from "@/lib/auth";
 import { BILLING_PATH } from "@/lib/billing/entitlement";
-import { CANCELLABLE, launchPriceFor, restartDate, startCheckout } from "@/lib/billing/subscription";
+import {
+  CANCELLABLE,
+  enteredTrialCode,
+  offerFor,
+  restartDate,
+  startCheckout,
+} from "@/lib/billing/subscription";
+import { applyTrialCode } from "@/lib/billing/trial-code-store";
+import { APPLY_REFUSALS } from "@/lib/billing/trial-codes";
 import { isPlan } from "@/lib/checkout/plans";
 import { cancelSubscription, paypalConfig, revisePlan } from "@/lib/checkout/paypal";
 import { resolveAppUrl } from "@/lib/config";
@@ -20,8 +30,9 @@ import { prisma } from "@/lib/db";
  * A business already paying on an active subscription changes that one
  * rather than starting another beside it, which would bill it twice.
  *
- * A first plan chosen by the month during launch week starts on the launch
- * offer's plan, at the price the billing screen showed.
+ * A first plan chosen by the month starts on an offer's plan where one
+ * applies — the free month from a code the business entered, or the launch
+ * week's half-price month — at the price the billing screen showed.
  */
 export async function choosePlan(formData: FormData) {
   const { user, org } = await requirePermission("settings:write", { unpaid: "allow" });
@@ -34,6 +45,7 @@ export async function choosePlan(formData: FormData) {
 
   const config = paypalConfig();
   const appUrl = resolveAppUrl();
+  const code = await enteredTrialCode(org);
 
   const result =
     config && org.subscriptionId && org.subscriptionStatus === "ACTIVE"
@@ -50,7 +62,7 @@ export async function choosePlan(formData: FormData) {
           plan,
           interval,
           startAt: restartDate(org),
-          launch: launchPriceFor(org, config, plan, interval),
+          offer: offerFor(org, code, config, plan, interval),
         });
 
   // A code, not PayPal's words. The screen shows fixed text for each, so a
@@ -100,4 +112,38 @@ export async function cancelPlan() {
   });
 
   redirect(`${BILLING_PATH}?plan_cancelled=1`);
+}
+
+/**
+ * Entering a free-month code. Kept on the business until it chooses a plan,
+ * which is when the free month is given; the plan cards say so meanwhile.
+ *
+ * Only whoever manages settings, like choosing a plan, and only a business
+ * that has never had a plan.
+ */
+export async function enterTrialCode(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { org } = await requirePermission("settings:write", { unpaid: "allow" });
+
+  const typed = text(formData, "code");
+  if (!typed) return failed("Type the code first.");
+
+  const refusal = await applyTrialCode(org, typed);
+  if (refusal) return failed(APPLY_REFUSALS[refusal]);
+
+  revalidatePath(BILLING_PATH);
+  return saved("Code accepted.");
+}
+
+/** Taking the code back off, before a plan is chosen. */
+export async function removeTrialCode() {
+  const { org } = await requirePermission("settings:write", { unpaid: "allow" });
+
+  // Only while no plan has been chosen: afterwards the code is the record of
+  // how the business came in, not something to change.
+  await prisma.organization.updateMany({
+    where: { id: org.id, subscriptionId: null },
+    data: { trialCodeId: null },
+  });
+
+  redirect(BILLING_PATH);
 }

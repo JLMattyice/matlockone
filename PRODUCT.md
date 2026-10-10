@@ -207,6 +207,11 @@ partly paid, a payment recorded twice.
   open it (anybody else gets a 404), and it is not in `NAVIGATION`: no role
   in a business reaches it. Its counts read `entitlement()`, so "paying"
   means exactly what the paywall means.
+- **Free-month codes are the operator's, not a free tier.** Made on
+  `/accounts` and handed out by hand or as a `/signup?code=…` link, a code
+  makes a business's first monthly plan start with a free month. The buyer
+  still approves the plan in PayPal first, so it converts by itself; nobody
+  without a code gets a month free.
 - **The site leads with `/signup`.** Hosted sign-up is how a customer gets the
   account the desktop app signs in to, and it lands on choosing a plan.
   `ALLOW_SIGNUP=false` closes sign-up if that ever needs to stop.

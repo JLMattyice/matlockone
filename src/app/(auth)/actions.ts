@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { login, logout, safeNextPath } from "@/lib/auth";
+import { applyTrialCode } from "@/lib/billing/trial-code-store";
 import {
   DEFAULT_BUSINESS_TYPE,
   isBusinessType,
@@ -261,8 +262,20 @@ export async function signupAction(
 
   await rememberEmail(email);
   await createSession(user.id);
+
+  // A free-month code from the sign-up link goes straight onto the business.
+  // One that does not work is handed on to the billing screen's code box
+  // instead, where trying it says why.
+  const code = dataStaysOnThisMachine() ? null : text(formData.get("code")).trim() || null;
+  const refused = code
+    ? await applyTrialCode(
+        { id: user.organizationId, subscriptionId: null, isDemo: false, billingExempt: false },
+        code,
+      )
+    : null;
+
   // No free tier: a new business chooses its plan before anything else.
-  redirect("/billing?welcome=1");
+  redirect(refused && code ? `/billing?welcome=1&code=${encodeURIComponent(code)}` : "/billing?welcome=1");
 }
 
 async function uniqueSlug(businessName: string) {

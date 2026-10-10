@@ -96,7 +96,30 @@ describe("mapping plans", () => {
     expect(planForPayPalId(config, "P-BUSINESS-A")).toEqual({
       plan: "business",
       interval: "annual",
+      offer: null,
     });
+  });
+
+  it("resolves an offer's plan to the monthly plan it opens, and says which offer", () => {
+    const offers = {
+      ...config,
+      planIds: { ...config.planIds, starter_monthly_trial: "P-STARTER-M-TRIAL", pro_monthly_launch: "P-PRO-M-LAUNCH" },
+    };
+
+    expect(planForPayPalId(offers, "P-STARTER-M-TRIAL")).toEqual({
+      plan: "starter",
+      interval: "monthly",
+      offer: "trial",
+    });
+    expect(planForPayPalId(offers, "P-PRO-M-LAUNCH")).toEqual({
+      plan: "pro",
+      interval: "monthly",
+      offer: "launch",
+    });
+    expect(planIdFor(offers, "starter", "monthly", "trial")).toBe("P-STARTER-M-TRIAL");
+    // An offer's plan or nothing: never the full-price plan in its place.
+    expect(planIdFor(offers, "business", "monthly", "trial")).toBeNull();
+    expect(planIdFor(offers, "starter", "annual", "trial")).toBeNull();
   });
 
   it("refuses a plan id it does not know", () => {

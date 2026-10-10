@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Building2, CircleDollarSign, UserPlus, Users } from "lucide-react";
 
-import { allBusinesses, newestPeople, type BusinessRow } from "./queries";
+import { allBusinesses, allTrialCodes, newestPeople, type BusinessRow } from "./queries";
+import { TrialCodesCard } from "./trial-codes-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -18,10 +19,12 @@ import {
   type Standing,
 } from "@/lib/accounts-overview";
 import { PLAN_ORDER, PLANS } from "@/lib/checkout/plans";
+import { paypalConfig, trialPlansReady } from "@/lib/checkout/paypal";
+import { resolveAppUrl } from "@/lib/config";
 import { asStatus, ROLE_META, ROLES, type Role } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
 import { requireOperator } from "@/lib/operator";
-import { formatIn } from "@/lib/time-zone";
+import { formatIn, todayIn } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "Accounts" };
@@ -43,9 +46,10 @@ export default async function AccountsPage({
   const filter: Standing | null = isStanding(show) ? show : null;
 
   const now = new Date();
-  const [businesses, people, zone] = await Promise.all([
+  const [businesses, people, codes, zone] = await Promise.all([
     allBusinesses(),
     newestPeople(),
+    allTrialCodes(),
     viewerTimeZone(),
   ]);
 
@@ -156,6 +160,15 @@ export default async function AccountsPage({
         )}
       </Card>
 
+      <TrialCodesCard
+        codes={codes}
+        ready={trialPlansReady(paypalConfig())}
+        appUrl={resolveAppUrl()}
+        today={todayIn(zone)}
+        day={day}
+        now={now}
+      />
+
       <Card>
         <CardHeader
           title="Newest accounts"
@@ -228,7 +241,10 @@ function BusinessLine({
     <Tr>
       <Td>
         <span className="block font-medium">{business.name}</span>
-        <span className="block text-xs text-ink-subtle">Signed up {day(business.createdAt)}</span>
+        <span className="block text-xs text-ink-subtle">
+          Signed up {day(business.createdAt)}
+          {business.trialCode ? ` · code ${business.trialCode.code}` : null}
+        </span>
       </Td>
       <Td>
         {owner ? (
@@ -249,7 +265,11 @@ function BusinessLine({
         </span>
       </Td>
       <Td className="tabular hidden whitespace-nowrap text-ink-muted md:table-cell">
-        {business.paidThrough ? day(business.paidThrough) : "—"}
+        {standing === "trial" && business.trialEndsAt
+          ? `Free to ${day(business.trialEndsAt)}`
+          : business.paidThrough
+            ? day(business.paidThrough)
+            : "—"}
       </Td>
       <Td align="right" className="tabular hidden text-ink-muted sm:table-cell">
         {active}

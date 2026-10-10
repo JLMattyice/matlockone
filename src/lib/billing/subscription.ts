@@ -2,17 +2,19 @@ import "server-only";
 
 import {
   getSubscription,
-  launchPlanReady,
+  offerPlanReady,
   paypalConfig,
   planForPayPalId,
   startSubscription,
   type PayPalConfig,
   type PayPalInterval,
+  type PlanOffer,
   type StartResult,
   type SubscriptionDetails,
 } from "@/lib/checkout/paypal";
 import { BILLING_PATH } from "./entitlement";
 import { launchOfferApplies } from "./launch-offer";
+import { trialOfferApplies, type TrialCodeFields } from "./trial-codes";
 import { resolveAppUrl } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import type { LicensePlan } from "@/lib/license/token";
@@ -87,6 +89,7 @@ export async function syncSubscription(
     subscriptionId: true,
     subscriptionStatus: true,
     paidThrough: true,
+    trialEndsAt: true,
   } as const;
   const org = details.customId
     ? await prisma.organization.findUnique({ where: { id: details.customId }, select })
@@ -121,6 +124,14 @@ export async function syncSubscription(
 
   const paidThrough = paidThroughFor(details, matched.interval, org.paidThrough, options.now);
 
+  // The free month's end is its first charge, which is PayPal's next billing
+  // date the first time the subscription is seen active. Kept from then on:
+  // after that payment the next billing date has moved on a month, and the
+  // free month is still the one that ended where it ended.
+  const trialEndsAt =
+    org.trialEndsAt ??
+    (matched.offer === "trial" && details.status === "ACTIVE" ? details.nextBillingTime : null);
+
   try {
     await prisma.organization.update({
       where: { id: org.id },
@@ -130,6 +141,7 @@ export async function syncSubscription(
         subscriptionPlan: matched.plan,
         subscriptionInterval: matched.interval,
         paidThrough,
+        trialEndsAt,
       },
     });
   } catch (error) {
@@ -155,8 +167,8 @@ export async function startCheckout(input: {
   interval: PayPalInterval;
   /** Take the first payment then rather than now. */
   startAt?: Date | null;
-  /** On the launch offer's plan — see launchPriceFor(). */
-  launch?: boolean;
+  /** On an offer's plan — see offerFor(). */
+  offer?: PlanOffer | null;
 }): Promise<StartResult> {
   const config = paypalConfig();
   if (!config) {
@@ -173,25 +185,40 @@ export async function startCheckout(input: {
     email: input.email,
     customId: input.organizationId,
     startTime: input.startAt ?? null,
-    launch: input.launch ?? false,
+    offer: input.offer ?? null,
   });
 }
 
 /**
- * Whether choosing this plan sends the business to the launch offer's price.
+ * Which offer, if any, choosing this plan starts the business on: a free
+ * month from the code it entered, or else the launch week's half-price one.
+ * The free month wins where both would apply, being the better of the two.
  *
  * The billing screen shows the price by this and the checkout charges by it,
- * so the two cannot disagree. A plan this deployment has no launch plan for
- * is shown and sold at its full price, never advertised at the other.
+ * so the two cannot disagree. A plan this deployment has no billing plan for
+ * on an offer is shown and sold without it, never advertised at a price
+ * checkout cannot charge.
+ *
+ * code: the free-month code the business entered, or null.
  */
-export function launchPriceFor(
+export function offerFor(
   org: Parameters<typeof launchOfferApplies>[0],
+  code: TrialCodeFields | null,
   config: PayPalConfig | null,
   plan: LicensePlan,
   interval: PayPalInterval,
   now: Date = new Date(),
-): boolean {
-  return interval === "monthly" && launchPlanReady(config, plan) && launchOfferApplies(org, now);
+): PlanOffer | null {
+  if (interval !== "monthly") return null;
+  if (offerPlanReady(config, plan, "trial") && trialOfferApplies(org, code, now)) return "trial";
+  if (offerPlanReady(config, plan, "launch") && launchOfferApplies(org, now)) return "launch";
+  return null;
+}
+
+/** The free-month code a business entered, as it stands now — or null. */
+export async function enteredTrialCode(org: { trialCodeId: string | null }) {
+  if (!org.trialCodeId) return null;
+  return prisma.trialCode.findUnique({ where: { id: org.trialCodeId } });
 }
 
 /**

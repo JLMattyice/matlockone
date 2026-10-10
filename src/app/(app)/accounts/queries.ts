@@ -23,6 +23,8 @@ export async function allBusinesses() {
       subscriptionPlan: true,
       subscriptionInterval: true,
       paidThrough: true,
+      trialEndsAt: true,
+      trialCode: { select: { code: true } },
       users: {
         orderBy: { createdAt: "asc" },
         select: { name: true, email: true, role: true, isActive: true, lastLoginAt: true },
@@ -51,3 +53,28 @@ export async function newestPeople(take = 50) {
     },
   });
 }
+
+/**
+ * Every free-month code, newest first, with the businesses that entered each
+ * — the demo never among them, since it cannot enter one.
+ */
+export async function allTrialCodes() {
+  return prisma.trialCode.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      code: true,
+      note: true,
+      maxUses: true,
+      expiresAt: true,
+      disabledAt: true,
+      createdAt: true,
+      organizations: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true },
+      },
+    },
+  });
+}
+
+export type TrialCodeRow = Awaited<ReturnType<typeof allTrialCodes>>[number];

@@ -3,7 +3,10 @@ import Link from "next/link";
 
 import { SignupForm } from "./signup-form";
 import { Card, CardBody } from "@/components/ui/card";
+import { normalizeTrialCode, TRIAL_CODE_MAX, trialCodeState } from "@/lib/billing/trial-codes";
+import { paypalConfig, trialPlansReady } from "@/lib/checkout/paypal";
 import { dataStaysOnThisMachine, signupOpen } from "@/lib/config";
+import { prisma } from "@/lib/db";
 import { isFirstRun } from "@/lib/first-run";
 
 export function generateMetadata(): Metadata {
@@ -46,11 +49,16 @@ function firstRunBlurb(local: boolean) {
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; code?: string }>;
 }) {
-  const { from } = await searchParams;
+  const { from, code: linked } = await searchParams;
   const first = await isFirstRun();
   const local = dataStaysOnThisMachine();
+
+  // A free-month code from the link travels with the form and goes on the
+  // new business. Only the hosted product sells plans, so only it takes one.
+  const code = local ? "" : normalizeTrialCode(linked).slice(0, TRIAL_CODE_MAX);
+  const freeMonth = code ? await liveCode(code) : false;
 
   // Shut, this explains itself instead of redirecting. Somebody arrives here
   // from a link and needs to know why there is no form, and /login already
@@ -92,6 +100,13 @@ export default async function SignupPage({
           </p>
         </div>
 
+        {freeMonth ? (
+          <p className="rounded-lg border border-brand/40 bg-surface px-3 py-2.5 text-sm text-ink">
+            <span className="font-medium">Code {code}:</span> your first month is free on any
+            monthly plan you choose after this.
+          </p>
+        ) : null}
+
         {from === "demo" ? (
           // Said before they start, so nobody goes looking for the demo's
           // records in their new workspace.
@@ -100,8 +115,22 @@ export default async function SignupPage({
           </p>
         ) : null}
 
-        <SignupForm offerSignIn={!first} />
+        <SignupForm offerSignIn={!first} code={code || null} />
       </CardBody>
     </Card>
   );
+}
+
+/**
+ * Whether the page should promise the free month: the code exists, still
+ * works and has room, and PayPal can give it. Anything else says nothing —
+ * the billing screen explains a code that does not work, when it is tried.
+ */
+async function liveCode(code: string): Promise<boolean> {
+  if (!trialPlansReady(paypalConfig())) return false;
+  const found = await prisma.trialCode.findUnique({
+    where: { code },
+    include: { _count: { select: { organizations: true } } },
+  });
+  return found !== null && trialCodeState(found, found._count.organizations) === "live";
 }

@@ -110,6 +110,9 @@ PAYPAL_PLAN_PRO_ANNUAL="P-..."
 PAYPAL_PLAN_STARTER_MONTHLY_LAUNCH="P-..."
 PAYPAL_PLAN_BUSINESS_MONTHLY_LAUNCH="P-..."
 PAYPAL_PLAN_PRO_MONTHLY_LAUNCH="P-..."
+PAYPAL_PLAN_STARTER_MONTHLY_TRIAL="P-..."
+PAYPAL_PLAN_BUSINESS_MONTHLY_TRIAL="P-..."
+PAYPAL_PLAN_PRO_MONTHLY_TRIAL="P-..."
 
 # Matlock One's own mailbox — see Forgot password below. A from address, and
 # either a Resend key or an SMTP login.
@@ -262,8 +265,8 @@ It asks for the PayPal app's Client ID and Secret (developer.paypal.com → Apps
 & Credentials, with the Live switch on) and whether to use live or sandbox.
 Then it shows what the account already has and what it would create — the
 "Matlock One" product, a monthly and a yearly billing plan for each of the
-three plans at the catalog's prices, the launch offer's monthly plans (see
-below), and a webhook to
+three plans at the catalog's prices, the launch offer's and the free month's
+monthly plans (see below), and a webhook to
 `https://www.matlockone.com/api/checkout/paypal/webhook` — and changes nothing
 until you type `yes`. It prints the settings above; put them and the client id
 and secret in Vercel and redeploy.
@@ -302,6 +305,30 @@ the full price until cancelled — and prints `PAYPAL_PLAN_*_MONTHLY_LAUNCH`.
 Until those are in Vercel, nothing advertises the offer and nobody is sent to
 it. Keep them there after the week ends: they are how a renewal on a
 launch-week subscription is recognised as the monthly plan it is.
+
+### Free-month codes
+
+On `/accounts`, the operator makes codes (typed, or made up), optionally with
+a limit on how many businesses may use one, a last day, and a note of who it
+is for. Each has a sign-up link, `/signup?code=…`, that puts the code on the
+new business; anybody can also type one into "Have a code?" on the billing
+screen. A business with a working code gets its first month of a monthly
+plan free — first plan only, never the demo or an exempt business, and
+yearly plans are paid for as usual.
+
+PayPal does the free month: `npm run paypal:setup` makes a "free first month"
+plan for each tier — a free month (no price on the cycle, which is how PayPal
+writes free), then the full price until cancelled — and prints
+`PAYPAL_PLAN_*_MONTHLY_TRIAL`. The buyer approves the plan in PayPal up
+front, so the first charge comes a month later by itself unless they cancel.
+Until those settings are in Vercel, the billing screen shows no code box and
+the Accounts page says codes do nothing yet. Keep them after: they are how a
+renewal on one of those subscriptions is recognised.
+
+Turning a code off, or passing its last day, stops it at once — including for
+a business that entered it and has not chosen a plan yet. A business already
+on its free month keeps it. Businesses on a free month show as "Free month"
+on `/accounts` and are not counted in the monthly revenue until they pay.
 
 ### Businesses that are never billed
 

@@ -16,7 +16,7 @@ import {
   planList,
   type Plan,
 } from "@/lib/checkout/plans";
-import { launchPlanReady, paypalConfig } from "@/lib/checkout/paypal";
+import { offerPlanReady, paypalConfig } from "@/lib/checkout/paypal";
 import { demoAvailable } from "@/lib/demo";
 import { latestInstaller, type InstallerLookup } from "@/lib/releases";
 import { cn } from "@/lib/utils";
@@ -780,7 +780,7 @@ export default async function MatlockOnePage() {
   const config = paypalConfig();
   const firstMonth = launchWeekOpen()
     ? (Object.fromEntries(
-        PLANS.filter((plan) => launchPlanReady(config, plan.id)).map((plan) => [
+        PLANS.filter((plan) => offerPlanReady(config, plan.id, "launch")).map((plan) => [
           plan.id,
           launchMonthCents(plan),
         ]),

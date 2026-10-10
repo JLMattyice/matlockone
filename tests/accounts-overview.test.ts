@@ -101,6 +101,21 @@ describe("where a business stands", () => {
   it("is free for an exempt business", () => {
     expect(standingOf(account({ billingExempt: true }), NOW)).toBe("exempt");
   });
+
+  it("is on its free month until the month is up, then paying", () => {
+    const freeMonth = { ...paying("starter", "monthly"), trialEndsAt: new Date(NOW.getTime() + 10 * DAY) };
+    expect(standingOf(freeMonth, NOW)).toBe("trial");
+    expect(standingOf(freeMonth, new Date(NOW.getTime() + 11 * DAY))).toBe("paying");
+  });
+
+  it("is cancelled, not on a free month, when it cancels during one", () => {
+    const freeMonth = {
+      ...paying("starter", "monthly"),
+      subscriptionStatus: "CANCELLED",
+      trialEndsAt: new Date(NOW.getTime() + 10 * DAY),
+    };
+    expect(standingOf(freeMonth, NOW)).toBe("cancelling");
+  });
 });
 
 describe("what it adds up to", () => {
@@ -110,6 +125,16 @@ describe("what it adds up to", () => {
       Math.round(annualCents(PLANS.business) / 12),
     );
     expect(monthlyCentsOf({ ...paying("pro", "monthly"), subscriptionStatus: "CANCELLED" }, NOW)).toBe(0);
+  });
+
+  it("counts nothing for a business on its free month, which has paid nothing yet", () => {
+    const freeMonth = { ...paying("business", "monthly"), trialEndsAt: new Date(NOW.getTime() + 10 * DAY) };
+    expect(monthlyCentsOf(freeMonth, NOW)).toBe(0);
+
+    const summary = summarizeAccounts([freeMonth, paying("starter", "monthly")], NOW);
+    expect(summary.byStanding).toMatchObject({ paying: 1, trial: 1 });
+    expect(summary.byPlan).toEqual({ starter: 1, business: 0, pro: 0 });
+    expect(summary.monthlyCents).toBe(PLANS.starter.monthlyCents);
   });
 
   it("totals the businesses, the paying ones by plan, and the new ones", () => {

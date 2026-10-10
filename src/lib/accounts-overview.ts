@@ -14,6 +14,7 @@ import type { LicensePlan } from "./license/token";
 
 export type Standing =
   | "paying"
+  | "trial"
   | "past-due"
   | "cancelling"
   | "unpaid"
@@ -23,6 +24,11 @@ export type Standing =
 
 export const STANDING_META: Record<Standing, { label: string; tone: Tone; hint: string }> = {
   paying: { label: "Paying", tone: "success", hint: "Subscription active and paid up." },
+  trial: {
+    label: "Free month",
+    tone: "info",
+    hint: "On the free month from a code. PayPal takes the first payment when it ends, unless they cancel.",
+  },
   "past-due": {
     label: "Payment problem",
     tone: "warning",
@@ -42,6 +48,7 @@ export const STANDING_META: Record<Standing, { label: string; tone: Tone; hint: 
 /** In the order the page lists them. */
 export const STANDINGS: Standing[] = [
   "paying",
+  "trial",
   "past-due",
   "cancelling",
   "unpaid",
@@ -54,19 +61,32 @@ export function isStanding(value: unknown): value is Standing {
   return typeof value === "string" && (STANDINGS as string[]).includes(value);
 }
 
-export type AccountFields = BillingFields & {
-  createdAt: Date;
-  subscriptionInterval: string | null;
-};
+/** When a free month from a code ends, if the business had one. */
+type TrialFields = { trialEndsAt?: Date | null };
 
-export function standingOf(org: BillingFields, now: Date = new Date()): Standing {
+export type AccountFields = BillingFields &
+  TrialFields & {
+    createdAt: Date;
+    subscriptionInterval: string | null;
+  };
+
+export function standingOf(org: BillingFields & TrialFields, now: Date = new Date()): Standing {
   const access = entitlement(org, now);
   if (!access.ok) return access.reason === "never-paid" ? "unpaid" : "lapsed";
   if (access.via === "licence") return "licence";
   if (access.via !== "subscription") return "exempt";
 
   // Open on a subscription: whether it will charge again is what PayPal says.
-  // APPROVED is one that starts when the time already paid for runs out.
+  // APPROVED is one that starts when the time already paid for runs out. An
+  // active one still in its free month has not paid anything yet, so it is
+  // not counted as paying until the month is up.
+  if (
+    org.subscriptionStatus === "ACTIVE" &&
+    org.trialEndsAt &&
+    org.trialEndsAt.getTime() > now.getTime()
+  ) {
+    return "trial";
+  }
   if (org.subscriptionStatus === "ACTIVE" || org.subscriptionStatus === "APPROVED") return "paying";
   if (org.subscriptionStatus === "SUSPENDED") return "past-due";
   return "cancelling";

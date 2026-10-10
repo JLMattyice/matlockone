@@ -119,6 +119,15 @@ model Organization {
   subscriptionInterval String? // monthly | annual
   paidThrough          DateTime?
 
+  // The free-month code this business entered on the billing screen, or came
+  // in on through a sign-up link. It changes only the first plan the business
+  // chooses, and stays afterwards as the record of where it came from.
+  trialCodeId String?
+  trialCode   TrialCode? @relation(fields: [trialCodeId], references: [id], onDelete: SetNull)
+  // When its free month ends, which is PayPal's first charge. Written once,
+  // the first time its subscription is seen active on a free-month plan.
+  trialEndsAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -156,6 +165,29 @@ model Organization {
   workflowRuns   WorkflowRun[]
   conversations  Conversation[]
   messages       Message[]
+
+  @@index([trialCodeId])
+}
+
+/// A code for a free first month, made on the operator's Accounts page and
+/// handed out by them. Not one business's data, so no organizationId: the
+/// businesses that entered it point here instead.
+model TrialCode {
+  id   String @id @default(cuid())
+  /// What people type, kept in capitals; matched without regard to case.
+  code String @unique
+  /// Who it was made for. The operator's own reference, never shown to a customer.
+  note String?
+  /// How many businesses may enter it, or null for no limit.
+  maxUses   Int?
+  /// The moment it stops being accepted, or null for never.
+  expiresAt DateTime?
+  /// Turned off by hand. Kept rather than deleted, so the businesses that
+  /// came in on it still say so.
+  disabledAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  organizations Organization[]
 }
 
 // ------------------------------------------------------------------- auth ---

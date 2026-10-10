@@ -1,6 +1,11 @@
 import { launchMonthCents } from "@/lib/billing/launch-offer";
 import { annualCents, planList, type Plan } from "@/lib/checkout/plans";
-import { SUBSCRIPTION_EVENTS, type PayPalInterval, type PayPalPlanKey } from "@/lib/checkout/paypal";
+import {
+  SUBSCRIPTION_EVENTS,
+  type PayPalInterval,
+  type PayPalPlanKey,
+  type PlanOffer,
+} from "@/lib/checkout/paypal";
 
 /**
  * Setting up PayPal to sell Matlock One: the product, a billing plan for each
@@ -29,11 +34,14 @@ export type PlanKey = PayPalPlanKey;
 
 const INTERVALS: PayPalInterval[] = ["monthly", "annual"];
 
-export type PlanSlot = { key: PlanKey; plan: Plan; interval: PayPalInterval; launch: boolean };
+export type PlanSlot = { key: PlanKey; plan: Plan; interval: PayPalInterval; offer: PlanOffer | null };
+
+const OFFERS: PlanOffer[] = ["launch", "trial"];
 
 /**
  * Every plan we sell, in the order the env lines are printed: each plan by
- * the month and by the year, then the launch offer's monthly plans.
+ * the month and by the year, then each offer's monthly plans — the launch
+ * offer's, then the free month's.
  */
 export function planSlots(): PlanSlot[] {
   const plans = planList();
@@ -43,22 +51,29 @@ export function planSlots(): PlanSlot[] {
         key: `${plan.id}_${interval}` as PlanKey,
         plan,
         interval,
-        launch: false,
+        offer: null,
       })),
     ),
-    ...plans.map((plan) => ({
-      key: `${plan.id}_monthly_launch` as PlanKey,
-      plan,
-      interval: "monthly" as const,
-      launch: true,
-    })),
+    ...OFFERS.flatMap((offer) =>
+      plans.map((plan) => ({
+        key: `${plan.id}_monthly_${offer}` as PlanKey,
+        plan,
+        interval: "monthly" as const,
+        offer,
+      })),
+    ),
   ];
 }
 
+const OFFER_NAMES: Record<PlanOffer, string> = {
+  launch: "launch offer",
+  trial: "free first month",
+};
+
 /** The name the plan carries in PayPal, and on the buyer's PayPal receipt. */
-export function planName(plan: Plan, interval: PayPalInterval, launch = false): string {
+export function planName(plan: Plan, interval: PayPalInterval, offer: PlanOffer | null = null): string {
   const every = interval === "monthly" ? "monthly" : "yearly";
-  return `${PRODUCT_NAME} ${plan.name} (${launch ? `${every}, launch offer` : every})`;
+  return `${PRODUCT_NAME} ${plan.name} (${offer ? `${every}, ${OFFER_NAMES[offer]}` : every})`;
 }
 
 const money = (cents: number) => (cents / 100).toFixed(2);
@@ -68,33 +83,50 @@ export function cyclePrice(plan: Plan, interval: PayPalInterval): string {
   return money(interval === "monthly" ? plan.monthlyCents : annualCents(plan));
 }
 
-/**
- * What each cycle costs, in the order PayPal runs them: the launch offer's
- * discounted month first, then the price it renews at.
- */
-export function cyclePrices(slot: Pick<PlanSlot, "plan" | "interval" | "launch">): string[] {
-  const regular = cyclePrice(slot.plan, slot.interval);
-  return slot.launch ? [money(launchMonthCents(slot.plan)), regular] : [regular];
+/** What an offer's opening month costs, as PayPal writes money. */
+function openingPrice(plan: Plan, offer: PlanOffer): string {
+  return offer === "trial" ? money(0) : money(launchMonthCents(plan));
 }
 
-export function planBody(productId: string, plan: Plan, interval: PayPalInterval, launch = false) {
+/**
+ * What each cycle costs, in the order PayPal runs them: an offer's opening
+ * month first, then the price it renews at.
+ */
+export function cyclePrices(slot: Pick<PlanSlot, "plan" | "interval" | "offer">): string[] {
+  const regular = cyclePrice(slot.plan, slot.interval);
+  return slot.offer ? [openingPrice(slot.plan, slot.offer), regular] : [regular];
+}
+
+export function planBody(
+  productId: string,
+  plan: Plan,
+  interval: PayPalInterval,
+  offer: PlanOffer | null = null,
+) {
   const frequency = { interval_unit: interval === "monthly" ? "MONTH" : "YEAR", interval_count: 1 };
   const price = (value: string) => ({ fixed_price: { value, currency_code: "USD" } });
-  const first = launch ? money(launchMonthCents(plan)) : null;
+  const first = offer ? openingPrice(plan, offer) : null;
 
   return {
     product_id: productId,
-    name: planName(plan, interval, launch),
-    description: first
-      ? `${plan.seatLabel}. Every part of ${PRODUCT_NAME}. Launch offer: the first month at $${first}.`
-      : `${plan.seatLabel}. Every part of ${PRODUCT_NAME}.`,
+    name: planName(plan, interval, offer),
+    description:
+      offer === "trial"
+        ? `${plan.seatLabel}. Every part of ${PRODUCT_NAME}. The first month free.`
+        : first
+          ? `${plan.seatLabel}. Every part of ${PRODUCT_NAME}. Launch offer: the first month at $${first}.`
+          : `${plan.seatLabel}. Every part of ${PRODUCT_NAME}.`,
     status: "ACTIVE",
     billing_cycles: [
-      // PayPal's word for a discounted opening period is a trial. It is paid
-      // for, at its own price, the moment the buyer approves.
-      ...(first
-        ? [{ frequency, tenure_type: "TRIAL", sequence: 1, total_cycles: 1, pricing_scheme: price(first) }]
-        : []),
+      // PayPal's word for an opening period is a trial. A discounted one is
+      // paid for, at its own price, the moment the buyer approves. A free one
+      // has no price at all — PayPal's way of writing free — and nothing is
+      // taken until the month is up.
+      ...(offer === "trial"
+        ? [{ frequency, tenure_type: "TRIAL", sequence: 1, total_cycles: 1 }]
+        : first
+          ? [{ frequency, tenure_type: "TRIAL", sequence: 1, total_cycles: 1, pricing_scheme: price(first) }]
+          : []),
       {
         frequency,
         tenure_type: "REGULAR",
@@ -164,22 +196,23 @@ export async function survey(call: PayPalCall, webhookUrl: string): Promise<Surv
     : [];
 
   for (const slot of planSlots()) {
-    const { key, plan, interval, launch } = slot;
-    const match = existing.find((p) => p.name === planName(plan, interval, launch));
+    const { key, plan, interval, offer } = slot;
+    const match = existing.find((p) => p.name === planName(plan, interval, offer));
     if (!match) {
       plans[key] = { state: "missing" };
       continue;
     }
 
     // The listing leaves the price out, so each match is read in full. Every
-    // cycle is compared, in the order PayPal runs them: a launch plan whose
-    // first month or renewal is off is as wrong as a plain one.
+    // cycle is compared, in the order PayPal runs them: an offer's plan whose
+    // first month or renewal is off is as wrong as a plain one. A cycle with
+    // no price is a free one.
     const detail = (await call("GET", `/v1/billing/plans/${encodeURIComponent(match.id)}`)) as {
       billing_cycles?: { sequence?: number; pricing_scheme?: { fixed_price?: { value?: string } } }[];
     };
     const prices = [...(detail.billing_cycles ?? [])]
       .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
-      .map((cycle) => cycle.pricing_scheme?.fixed_price?.value ?? "");
+      .map((cycle) => cycle.pricing_scheme?.fixed_price?.value ?? money(0));
     const expected = cyclePrices(slot);
     plans[key] =
       prices.length === expected.length && prices.every((price, i) => Number(price) === Number(expected[i]))
@@ -216,7 +249,7 @@ export function describeSurvey(found: Survey, webhookUrl: string): string[] {
   ];
   for (const slot of planSlots()) {
     const finding = found.plans[slot.key];
-    const label = `Plan "${planName(slot.plan, slot.interval, slot.launch)}" at $${cyclePrices(slot).join(" then $")}`;
+    const label = `Plan "${planName(slot.plan, slot.interval, slot.offer)}" at $${cyclePrices(slot).join(" then $")}`;
     lines.push(
       finding.state === "ready"
         ? `${label}: already there`
@@ -280,12 +313,12 @@ export async function applySetup(
     })) as { id: string }).id;
 
   const planIds = {} as Record<PlanKey, string>;
-  for (const { key, plan, interval, launch } of planSlots()) {
+  for (const { key, plan, interval, offer } of planSlots()) {
     const finding = found.plans[key];
     planIds[key] =
       finding.state === "ready"
         ? finding.id
-        : ((await call("POST", "/v1/billing/plans", planBody(productId, plan, interval, launch))) as { id: string })
+        : ((await call("POST", "/v1/billing/plans", planBody(productId, plan, interval, offer))) as { id: string })
             .id;
   }
 
