@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { MIN_CRON_SECRET } from "@/lib/config";
 import { syncAutopay } from "@/lib/autopay";
+import { remindFreeMonths } from "@/lib/billing/free-month-reminder";
 import { sweepPayLinks } from "@/lib/payments/reconcile";
 import { sweepQuickBooks } from "@/lib/quickbooks/sync";
 import { recordDueExpenses } from "@/lib/recurring-expenses";
@@ -39,6 +40,10 @@ import { sweepEveryBusiness } from "@/lib/workflows/run";
  * Pay links are checked first of all. A client who paid last night must not
  * be chased this morning because the notice went astray, so every open link
  * is asked about before the overdue automation looks at anything.
+ *
+ * Free months from a code that are about to end are the one thing here that
+ * is Matlock One's own business rather than a customer's: their owners get
+ * one email, a few days out, if no plan is lined up to follow.
  */
 
 export const dynamic = "force-dynamic";
@@ -73,6 +78,7 @@ export async function GET(request: Request) {
   const repeating = await draftDueInvoices();
   const autopay = await syncAutopay();
   const bills = await recordDueExpenses();
+  const freeMonths = await remindFreeMonths();
   const quickbooks = await sweepQuickBooks({ budgetMs: 15_000 });
   const billsRecorded = bills.done.filter((item) => item.kind === "recorded").length;
 
@@ -89,6 +95,10 @@ export async function GET(request: Request) {
       (autopay.failed.length > 0 ? `, ${autopay.failed.length} failed` : "") +
       `; repeating expenses: ${billsRecorded} recorded, ${bills.done.length - billsRecorded} to enter` +
       (bills.failed.length > 0 ? `, ${bills.failed.length} schedules failed` : "") +
+      (freeMonths.notConfigured
+        ? "; free-month reminders: no mailbox"
+        : `; free-month reminders: ${freeMonths.reminded} sent` +
+          (freeMonths.failed > 0 ? `, ${freeMonths.failed} failed` : "")) +
       `; QuickBooks: ${quickbooks.sent} customers sent for ${quickbooks.businesses} businesses` +
       (quickbooks.failed > 0 ? `, ${quickbooks.failed} failed` : "") +
       (quickbooks.stoppedEarly ? ", more waiting" : ""),
@@ -106,6 +116,8 @@ export async function GET(request: Request) {
     expensesRecorded: billsRecorded,
     expensesToEnter: bills.done.length - billsRecorded,
     expensesFailed: bills.failed,
+    freeMonthReminders: freeMonths.reminded,
+    freeMonthRemindersFailed: freeMonths.failed,
     quickbooksSent: quickbooks.sent,
     quickbooksFailed: quickbooks.failed,
   });

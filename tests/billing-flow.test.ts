@@ -828,6 +828,18 @@ describe("free-month codes", () => {
     expect(html).not.toContain("Have a code?");
   });
 
+  it("says a reminder email is coming, where there is a mailbox to send it", async () => {
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    signInAs(b.owner);
+
+    expect(await page()).not.toContain("We’ll email a reminder");
+
+    vi.stubEnv("SYSTEM_MAIL_FROM_EMAIL", "hello@matlockone.test");
+    vi.stubEnv("SYSTEM_MAIL_RESEND_API_KEY", "re_test");
+    expect(await page()).toContain("We’ll email a reminder 3 days before it ends.");
+  });
+
   it("opens the business on the plan chosen for a month, without PayPal", async () => {
     const code = await makeCode();
     const b = await business({ trialCodeId: code.id });

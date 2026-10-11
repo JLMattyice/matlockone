@@ -12,6 +12,7 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { SubmitButton } from "@/components/ui/submit";
 import { requireContext } from "@/lib/auth";
 import { entitlement, GRACE_DAYS } from "@/lib/billing/entitlement";
+import { REMINDER_DAYS } from "@/lib/billing/free-month-reminder";
 import { launchMonthCents } from "@/lib/billing/launch-offer";
 import { CANCELLABLE, enteredTrialCode, offerFor, restartDate } from "@/lib/billing/subscription";
 import {
@@ -32,6 +33,7 @@ import {
   PLANS,
   type Plan,
 } from "@/lib/checkout/plans";
+import { systemMailer } from "@/lib/checkout/deliver";
 import { manageSubscriptionUrl, paypalConfig } from "@/lib/checkout/paypal";
 import { dataStaysOnThisMachine } from "@/lib/config";
 import { prisma } from "@/lib/db";
@@ -309,6 +311,9 @@ export default async function BillingPage({
                     Your free month starts the moment you pick a plan, and nothing is charged. To
                     keep going after it, choose how to pay here before it ends; if you don’t,
                     Matlock One locks until you do, and nothing is deleted.{" "}
+                    {systemMailer()
+                      ? `We’ll email a reminder ${REMINDER_DAYS} days before it ends. `
+                      : null}
                   </>
                 ) : (
                   <>

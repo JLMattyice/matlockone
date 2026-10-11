@@ -324,6 +324,15 @@ ends. Choosing a plan during it lines up a PayPal subscription whose first
 payment is the day the free month ends. With nothing chosen, the business
 locks when the month runs out, like any plan that ends; nothing is deleted.
 
+About three days before the end, the morning run (`/api/cron/automations`)
+emails the owners — or the admins, if there is no active owner — of every
+business on a free month with no plan lined up, from Matlock's own mailbox
+(`SYSTEM_MAIL_*`, the same as password resets). Once per business: the send
+is recorded in its audit log, which is what stops a second. It needs
+`CRON_SECRET` set (as every morning automation does) and the system mailbox;
+without the mailbox the run logs "free-month reminders: no mailbox" and
+sends nothing.
+
 Turning a code off, or passing its last day, stops it at once — including for
 a business that entered it and has not chosen a plan yet. A business already
 on its free month keeps it. Businesses on a free month show as "Free month"
