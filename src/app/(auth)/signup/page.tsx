@@ -4,7 +4,6 @@ import Link from "next/link";
 import { SignupForm } from "./signup-form";
 import { Card, CardBody } from "@/components/ui/card";
 import { normalizeTrialCode, TRIAL_CODE_MAX, trialCodeState } from "@/lib/billing/trial-codes";
-import { paypalConfig, trialPlansReady } from "@/lib/checkout/paypal";
 import { dataStaysOnThisMachine, signupOpen } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { isFirstRun } from "@/lib/first-run";
@@ -102,8 +101,8 @@ export default async function SignupPage({
 
         {freeMonth ? (
           <p className="rounded-lg border border-brand/40 bg-surface px-3 py-2.5 text-sm text-ink">
-            <span className="font-medium">Code {code}:</span> your first month is free on any
-            monthly plan you choose after this.
+            <span className="font-medium">Code {code}:</span> your first month is free, with no
+            payment needed to start.
           </p>
         ) : null}
 
@@ -123,11 +122,10 @@ export default async function SignupPage({
 
 /**
  * Whether the page should promise the free month: the code exists, still
- * works and has room, and PayPal can give it. Anything else says nothing —
- * the billing screen explains a code that does not work, when it is tried.
+ * works and has room. Anything else says nothing — the billing screen
+ * explains a code that does not work, when it is tried.
  */
 async function liveCode(code: string): Promise<boolean> {
-  if (!trialPlansReady(paypalConfig())) return false;
   const found = await prisma.trialCode.findUnique({
     where: { code },
     include: { _count: { select: { organizations: true } } },

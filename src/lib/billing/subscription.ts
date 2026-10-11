@@ -14,7 +14,6 @@ import {
 } from "@/lib/checkout/paypal";
 import { BILLING_PATH } from "./entitlement";
 import { launchOfferApplies } from "./launch-offer";
-import { trialOfferApplies, type TrialCodeFields } from "./trial-codes";
 import { resolveAppUrl } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import type { LicensePlan } from "@/lib/license/token";
@@ -124,10 +123,11 @@ export async function syncSubscription(
 
   const paidThrough = paidThroughFor(details, matched.interval, org.paidThrough, options.now);
 
-  // The free month's end is its first charge, which is PayPal's next billing
-  // date the first time the subscription is seen active. Kept from then on:
-  // after that payment the next billing date has moved on a month, and the
-  // free month is still the one that ended where it ended.
+  // A free month is kept as it was: one started from a code here already
+  // has its end, and a plan chosen during it starts when it runs out. The
+  // first version of codes gave the month through PayPal instead, on a free
+  // first-month plan; a subscription still on one of those has its free
+  // month's end read from PayPal's first billing date, once.
   const trialEndsAt =
     org.trialEndsAt ??
     (matched.offer === "trial" && details.status === "ACTIVE" ? details.nextBillingTime : null);
@@ -190,27 +190,23 @@ export async function startCheckout(input: {
 }
 
 /**
- * Which offer, if any, choosing this plan starts the business on: a free
- * month from the code it entered, or else the launch week's half-price one.
- * The free month wins where both would apply, being the better of the two.
+ * Which PayPal offer, if any, choosing this plan starts the business on: the
+ * launch week's half-price first month. (A free-month code never reaches
+ * PayPal — see startFreeMonth.)
  *
  * The billing screen shows the price by this and the checkout charges by it,
  * so the two cannot disagree. A plan this deployment has no billing plan for
  * on an offer is shown and sold without it, never advertised at a price
  * checkout cannot charge.
- *
- * code: the free-month code the business entered, or null.
  */
 export function offerFor(
   org: Parameters<typeof launchOfferApplies>[0],
-  code: TrialCodeFields | null,
   config: PayPalConfig | null,
   plan: LicensePlan,
   interval: PayPalInterval,
   now: Date = new Date(),
 ): PlanOffer | null {
   if (interval !== "monthly") return null;
-  if (offerPlanReady(config, plan, "trial") && trialOfferApplies(org, code, now)) return "trial";
   if (offerPlanReady(config, plan, "launch") && launchOfferApplies(org, now)) return "launch";
   return null;
 }

@@ -209,8 +209,9 @@ partly paid, a payment recorded twice.
   means exactly what the paywall means.
 - **Free-month codes are the operator's, not a free tier.** Made on
   `/accounts` and handed out by hand or as a `/signup?code=…` link, a code
-  makes a business's first monthly plan start with a free month. The buyer
-  still approves the plan in PayPal first, so it converts by itself; nobody
+  opens a business's first plan for a month with no payment details at all.
+  To keep going it chooses a plan before the month ends (the first charge
+  waits for the end); otherwise it locks like any plan that ends. Nobody
   without a code gets a month free.
 - **The site leads with `/signup`.** Hosted sign-up is how a customer gets the
   account the desktop app signs in to, and it lands on choosing a plan.

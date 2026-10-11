@@ -27,7 +27,7 @@ export const STANDING_META: Record<Standing, { label: string; tone: Tone; hint: 
   trial: {
     label: "Free month",
     tone: "info",
-    hint: "On the free month from a code. PayPal takes the first payment when it ends, unless they cancel.",
+    hint: "On the free month from a code, which needs no payment. Locks when it ends unless they choose a plan.",
   },
   "past-due": {
     label: "Payment problem",
@@ -76,14 +76,15 @@ export function standingOf(org: BillingFields & TrialFields, now: Date = new Dat
   if (access.via === "licence") return "licence";
   if (access.via !== "subscription") return "exempt";
 
-  // Open on a subscription: whether it will charge again is what PayPal says.
-  // APPROVED is one that starts when the time already paid for runs out. An
-  // active one still in its free month has not paid anything yet, so it is
-  // not counted as paying until the month is up.
+  // Still in a free month from a code: nothing paid yet, whether or not a
+  // plan is lined up to start when it ends, so not counted as paying until
+  // the month is up. One that cancelled the plan it lined up, or whose
+  // payment failed, says so instead.
   if (
-    org.subscriptionStatus === "ACTIVE" &&
     org.trialEndsAt &&
-    org.trialEndsAt.getTime() > now.getTime()
+    org.trialEndsAt.getTime() > now.getTime() &&
+    org.subscriptionStatus !== "CANCELLED" &&
+    org.subscriptionStatus !== "SUSPENDED"
   ) {
     return "trial";
   }

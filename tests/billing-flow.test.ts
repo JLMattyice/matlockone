@@ -60,6 +60,7 @@ import BillingPage from "@/app/(billing)/billing/page";
 import BillingReturnPage from "@/app/(billing)/billing/return/page";
 import { POST as webhook } from "@/app/api/checkout/paypal/webhook/route";
 import { POST as uploadTicket } from "@/app/api/files/upload-ticket/route";
+import { BillingBanner } from "@/components/app-shell/billing-banner";
 import { requireContext, requirePermission } from "@/lib/auth";
 import { paidThroughFor, restartDate, syncSubscription } from "@/lib/billing/subscription";
 import { IDLE } from "@/lib/action-state";
@@ -776,37 +777,29 @@ describe("the launch-week offer", () => {
 // ------------------------------------------------------- free-month codes ---
 
 describe("free-month codes", () => {
-  const TRIAL_IDS = {
-    PAYPAL_PLAN_STARTER_MONTHLY_TRIAL: "P-STARTER-M-TRIAL",
-    PAYPAL_PLAN_BUSINESS_MONTHLY_TRIAL: "P-BUSINESS-M-TRIAL",
-    PAYPAL_PLAN_PRO_MONTHLY_TRIAL: "P-PRO-M-TRIAL",
-  };
-
   const page = async (params: Record<string, string> = {}) =>
     renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve(params) }));
   const asAction = () => {
     request.headers = { "next-action": "a1b2c3" };
   };
-  const choose = (plan: string, interval: string) => {
+  const choose = (plan: string, interval: string, extra: Record<string, string> = {}) => {
     asAction();
-    return choosePlan(form({ plan, interval }));
+    return choosePlan(form({ plan, interval, ...extra }));
   };
+  const startFree = (plan: string) => choose(plan, "monthly", { free: "1" });
   const enter = (code: string) => {
     asAction();
     return enterTrialCode(IDLE, form({ code }));
   };
   const startedOn = () =>
     sent.find((r) => r.path === "/v1/billing/subscriptions")?.body?.plan_id;
+  const wentToPayPal = () => sent.some((r) => r.path === "/v1/billing/subscriptions");
 
   /** A code as the operator would make it, with a name no other test uses. */
   const makeCode = (fields: Record<string, unknown> = {}) =>
     prisma.trialCode.create({
       data: { code: `FRIEND-${randomUUID().slice(0, 8).toUpperCase()}`, ...fields },
     });
-
-  beforeEach(() => {
-    for (const [name, value] of Object.entries(TRIAL_IDS)) vi.stubEnv(name, value);
-  });
 
   it("takes a code however it is typed, and puts it on the business", async () => {
     const b = await business();
@@ -819,7 +812,7 @@ describe("free-month codes", () => {
     expect((await orgOf(b)).trialCodeId).toBe(code.id);
   });
 
-  it("shows the free month beside every monthly plan once a code is on", async () => {
+  it("offers a free month on every plan once a code is on, with no payment", async () => {
     const code = await makeCode();
     const b = await business({ trialCodeId: code.id });
     signInAs(b.owner);
@@ -827,13 +820,62 @@ describe("free-month codes", () => {
     const html = await page();
 
     expect(html).toContain(`Code ${code.code}:`);
+    expect(html).toContain("no payment");
     expect(html.match(/First month free/g)).toHaveLength(3);
-    expect(html).toContain("PayPal takes nothing today and the first payment a month from now");
+    expect(html.match(/Start free month/g)).toHaveLength(3);
+    expect(html).not.toContain("Opening PayPal");
     expect(html).toContain("Remove code");
     expect(html).not.toContain("Have a code?");
   });
 
-  it("offers the box to a business choosing its first plan, filled in from a link", async () => {
+  it("opens the business on the plan chosen for a month, without PayPal", async () => {
+    const code = await makeCode();
+    const b = await business({ trialCodeId: code.id });
+    signInAs(b.owner);
+
+    await expect(startFree("business")).rejects.toThrow("NEXT_REDIRECT /dashboard?welcome=1");
+
+    expect(wentToPayPal()).toBe(false);
+    const org = await orgOf(b);
+    expect(org).toMatchObject({ subscriptionId: null, subscriptionStatus: null, subscriptionPlan: "business" });
+    expect(org.trialEndsAt).toEqual(org.paidThrough);
+    const days = (org.trialEndsAt!.getTime() - Date.now()) / DAY_MS;
+    expect(days).toBeGreaterThan(27);
+    expect(days).toBeLessThan(32);
+    // Open: the lock lets it in.
+    await expect(requireContext()).resolves.toMatchObject({ org: { id: b.orgId } });
+  });
+
+  it("uses a code left in the box without Apply, when a plan is chosen", async () => {
+    // Typed, then straight to a plan: they meant to use it, and must never
+    // end up at PayPal paying full price for having skipped a button.
+    const code = await makeCode();
+    const b = await business();
+    signInAs(b.owner);
+
+    await expect(choose("starter", "monthly", { code: code.code.toLowerCase() })).rejects.toThrow(
+      "NEXT_REDIRECT /dashboard?welcome=1",
+    );
+
+    expect(wentToPayPal()).toBe(false);
+    expect(await orgOf(b)).toMatchObject({ trialCodeId: code.id, subscriptionPlan: "starter" });
+  });
+
+  it("stops, and sends nobody to PayPal, when the code left in the box does not work", async () => {
+    const b = await business();
+    signInAs(b.owner);
+
+    await expect(choose("starter", "monthly", { code: "NOT-A-CODE" })).rejects.toThrow(
+      "NEXT_REDIRECT /billing?error=code-unknown",
+    );
+    expect(wentToPayPal()).toBe(false);
+
+    const html = await page({ error: "code-unknown" });
+    expect(html).toContain("isn’t one we know");
+    expect(html).toContain("Nothing was started.");
+  });
+
+  it("fills the box from a link, and its plan buttons carry what is in it", async () => {
     const b = await business();
     signInAs(b.owner);
 
@@ -841,21 +883,9 @@ describe("free-month codes", () => {
 
     expect(html).toContain("Have a code?");
     expect(html).toContain('value="FRIEND30"');
-    // Only into the box: nothing is put on the business until it is applied.
+    expect(html).toContain('name="code" value="FRIEND30"');
+    // Only into the box: nothing is put on the business until it is used.
     expect((await orgOf(b)).trialCodeId).toBeNull();
-  });
-
-  it("starts a monthly plan on the free month, and a yearly one at its own price", async () => {
-    const code = await makeCode();
-    const b = await business({ trialCodeId: code.id });
-    signInAs(b.owner);
-
-    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
-    expect(startedOn()).toBe("P-STARTER-M-TRIAL");
-
-    sent = [];
-    await expect(choose("business", "annual")).rejects.toThrow("ba_token=BA-1");
-    expect(startedOn()).toBe("P-BUSINESS-A");
   });
 
   it("refuses a code it does not know, one turned off, one ended and one full", async () => {
@@ -904,7 +934,7 @@ describe("free-month codes", () => {
     expect(startedOn()).toBe("P-STARTER-M");
   });
 
-  it("stops giving the free month the moment the code is turned off", async () => {
+  it("stops giving the free month the moment the code is turned off, and never charges instead", async () => {
     const code = await makeCode();
     const b = await business({ trialCodeId: code.id });
     await prisma.trialCode.update({ where: { id: code.id }, data: { disabledAt: new Date() } });
@@ -912,8 +942,13 @@ describe("free-month codes", () => {
 
     const html = await page();
     expect(html).toContain(`The code ${code.code} is no longer active`);
-    expect(html).not.toContain("First month free");
+    expect(html).not.toContain("Start free month");
 
+    // A "Start free month" button drawn before it was turned off.
+    await expect(startFree("starter")).rejects.toThrow("NEXT_REDIRECT /billing?error=code-off");
+    expect(wentToPayPal()).toBe(false);
+
+    // Choosing a plan at its price, knowingly, still goes to PayPal.
     await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
     expect(startedOn()).toBe("P-STARTER-M");
   });
@@ -931,25 +966,11 @@ describe("free-month codes", () => {
       expect(html).not.toContain("Launch week:");
       expect(html).not.toContain("for your first month");
 
-      await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
-      expect(startedOn()).toBe("P-STARTER-M-TRIAL");
+      await expect(startFree("starter")).rejects.toThrow("NEXT_REDIRECT /dashboard?welcome=1");
+      expect(wentToPayPal()).toBe(false);
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("is neither offered nor sold where PayPal has no free-month plans", async () => {
-    for (const name of Object.keys(TRIAL_IDS)) vi.stubEnv(name, "");
-    const code = await makeCode();
-    const b = await business({ trialCodeId: code.id });
-    signInAs(b.owner);
-
-    const html = await page();
-    expect(html).not.toContain("Have a code?");
-    expect(html).not.toContain("First month free");
-
-    await expect(choose("starter", "monthly")).rejects.toThrow("ba_token=BA-1");
-    expect(startedOn()).toBe("P-STARTER-M");
   });
 
   it("can be taken back off before a plan is chosen", async () => {
@@ -972,34 +993,102 @@ describe("free-month codes", () => {
     expect((await orgOf(b)).trialCodeId).toBeNull();
   });
 
-  it("opens the business for the free month, and remembers when it ends", async () => {
-    const code = await makeCode();
-    const b = await business({ trialCodeId: code.id });
+  describe("during the free month", () => {
+    const freeMonth = async () => {
+      const code = await makeCode();
+      const ends = inDays(20);
+      return {
+        code,
+        ends,
+        b: await business({ trialCodeId: code.id, subscriptionPlan: "business", paidThrough: ends, trialEndsAt: ends }),
+      };
+    };
+
+    it("says when it ends and how to keep going, and offers no second one", async () => {
+      const { b, code } = await freeMonth();
+      signInAs(b.owner);
+
+      const html = await page();
+
+      expect(html).toContain("free month");
+      expect(html).toContain("Your free month runs until");
+      expect(html).toContain("Keep going after");
+      expect(html).toContain("PayPal takes its first payment on");
+      expect(html).not.toContain("Manage in PayPal");
+      expect(html).not.toContain("Have a code?");
+      expect(html).not.toContain("Start free month");
+      expect(await enter(code.code)).toMatchObject({ ok: false, error: expect.stringContaining("first plan") });
+    });
+
+    it("lines up a plan whose first payment waits for the month to end", async () => {
+      const { b, ends } = await freeMonth();
+      signInAs(b.owner);
+
+      await expect(choose("business", "monthly")).rejects.toThrow("ba_token=BA-1");
+
+      const started = sent.find((r) => r.path === "/v1/billing/subscriptions")!.body!;
+      expect(started.plan_id).toBe("P-BUSINESS-M");
+      expect(started.start_time).toBe(ends.toISOString());
+    });
+
+    it("keeps the free month's end when that plan is approved, and says it starts then", async () => {
+      const { b, ends } = await freeMonth();
+      paypalHas("I-AFTER-FREE", { customId: b.orgId, status: "APPROVED", nextBilling: null });
+
+      await syncSubscription("I-AFTER-FREE");
+
+      expect(await orgOf(b)).toMatchObject({
+        subscriptionId: "I-AFTER-FREE",
+        subscriptionStatus: "APPROVED",
+        paidThrough: ends,
+        trialEndsAt: ends,
+      });
+      signInAs(b.owner);
+      expect(await page()).toContain("This plan starts then");
+    });
+
+    it("shows a line above the work until a plan is lined up", async () => {
+      const { b } = await freeMonth();
+      const org = await orgOf(b);
+
+      const banner = renderToStaticMarkup(BillingBanner({ org, canManage: true }));
+      expect(banner).toContain("Your free month runs until");
+      expect(banner).toContain("Choose a plan");
+
+      const lined = renderToStaticMarkup(
+        BillingBanner({ org: { ...org, subscriptionId: "I-LINED", subscriptionStatus: "APPROVED" }, canManage: true }),
+      );
+      expect(lined).toBe("");
+    });
+
+    it("locks when the month runs out with no plan chosen, and says so", async () => {
+      const code = await makeCode();
+      const b = await business({
+        trialCodeId: code.id,
+        subscriptionPlan: "business",
+        paidThrough: inDays(-5),
+        trialEndsAt: inDays(-5),
+      });
+      signInAs(b.owner);
+
+      await expect(requireContext()).rejects.toThrow("NEXT_REDIRECT /billing");
+      expect(await page()).toContain("Your free month has ended");
+    });
+  });
+
+  it("still remembers when a free month ends for a subscription on the old PayPal free-month plans", async () => {
+    // The first version of codes gave the month through PayPal; anybody who
+    // started on one of those plans keeps renewing on it.
+    vi.stubEnv("PAYPAL_PLAN_STARTER_MONTHLY_TRIAL", "P-STARTER-M-TRIAL");
+    const b = await business();
     const firstCharge = inDays(31);
     paypalHas("I-TRIAL", { customId: b.orgId, plan: "P-STARTER-M-TRIAL", nextBilling: firstCharge });
 
     expect(await syncSubscription("I-TRIAL")).toMatchObject({ linked: true, status: "ACTIVE" });
-    expect(await orgOf(b)).toMatchObject({
-      subscriptionPlan: "starter",
-      subscriptionInterval: "monthly",
-      paidThrough: firstCharge,
-      trialEndsAt: firstCharge,
-    });
+    expect(await orgOf(b)).toMatchObject({ subscriptionPlan: "starter", paidThrough: firstCharge, trialEndsAt: firstCharge });
 
-    signInAs(b.owner);
-    const html = await page();
-    expect(html).toContain("Your free month runs until");
-    expect(html).not.toContain("Have a code?");
-
-    // The first payment moves the next billing date on a month; the free
-    // month still ended where it ended.
     const renewal = inDays(61);
-    paypalHas("I-TRIAL", {
-      customId: b.orgId,
-      plan: "P-STARTER-M-TRIAL",
-      nextBilling: renewal,
-      lastPayment: firstCharge,
-    });
+    paypalHas("I-TRIAL", { customId: b.orgId, plan: "P-STARTER-M-TRIAL", nextBilling: renewal, lastPayment: firstCharge });
     await syncSubscription("I-TRIAL");
     expect(await orgOf(b)).toMatchObject({ paidThrough: renewal, trialEndsAt: firstCharge });
   });

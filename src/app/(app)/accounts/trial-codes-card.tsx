@@ -16,15 +16,12 @@ import { TRIAL_CODE_STATE_META, trialCodeState, usesLabel } from "@/lib/billing/
  */
 export function TrialCodesCard({
   codes,
-  ready,
   appUrl,
   today,
   day,
   now,
 }: {
   codes: TrialCodeRow[];
-  /** Whether PayPal has the free-month plans, without which a code does nothing. */
-  ready: boolean;
   appUrl: string;
   /** "YYYY-MM-DD" on the operator's clock, the earliest last day a code can have. */
   today: string;
@@ -35,18 +32,10 @@ export function TrialCodesCard({
     <Card id="codes">
       <CardHeader
         title="Free-month codes"
-        description="Give someone a code and their first month on a monthly plan is free. They still approve the plan in PayPal, which takes the first payment a month later unless they cancel."
+        description="Give someone a code and they get a month free, with no payment details needed. Before it ends they choose a plan to keep going, and the first charge waits until the month is up. If they don’t, their account locks."
       />
 
       <CardBody className="space-y-4">
-        {ready ? null : (
-          <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-ink" role="status">
-            PayPal doesn’t have the free-month plans yet, so codes don’t do anything for now. Run{" "}
-            <code className="font-mono text-xs">npm run paypal:setup</code>, put the three{" "}
-            <code className="font-mono text-xs">PAYPAL_PLAN_…_MONTHLY_TRIAL</code> lines it prints into
-            Vercel, and redeploy.
-          </p>
-        )}
         <NewTrialCodeForm today={today} />
       </CardBody>
 

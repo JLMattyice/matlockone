@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyRefusal,
   canTakeTrial,
+  freeMonthEnds,
   normalizeTrialCode,
   trialCodeLive,
   trialCodeProblem,
@@ -27,7 +28,7 @@ const code = (fields: Partial<{ maxUses: number | null; expiresAt: Date | null; 
   ...fields,
 });
 
-const NEW_BUSINESS = { subscriptionId: null, isDemo: false, billingExempt: false };
+const NEW_BUSINESS = { subscriptionId: null, trialEndsAt: null, isDemo: false, billingExempt: false };
 
 describe("what a code looks like", () => {
   it("is kept in capitals with the spaces taken out, however it was typed", () => {
@@ -79,6 +80,11 @@ describe("who can enter one", () => {
     expect(canTakeTrial({ ...NEW_BUSINESS, subscriptionId: "I-BEFORE" })).toBe(false);
   });
 
+  it("is never a business that has already had its free month", () => {
+    expect(canTakeTrial({ ...NEW_BUSINESS, trialEndsAt: new Date(NOW.getTime() + 5 * DAY) })).toBe(false);
+    expect(canTakeTrial({ ...NEW_BUSINESS, trialEndsAt: new Date(NOW.getTime() - 5 * DAY) })).toBe(false);
+  });
+
   it("is never the demo or an exempt business, which are not billed", () => {
     expect(canTakeTrial({ ...NEW_BUSINESS, isDemo: true })).toBe(false);
     expect(canTakeTrial({ ...NEW_BUSINESS, billingExempt: true })).toBe(false);
@@ -110,5 +116,17 @@ describe("whether choosing a plan gets the free month", () => {
   it("does not without a code, or after a first plan", () => {
     expect(trialOfferApplies(NEW_BUSINESS, null, NOW)).toBe(false);
     expect(trialOfferApplies({ ...NEW_BUSINESS, subscriptionId: "I-BEFORE" }, code(), NOW)).toBe(false);
+  });
+});
+
+describe("how long the free month is", () => {
+  it("runs to the same day next month", () => {
+    expect(freeMonthEnds(new Date("2026-10-15T15:00:00Z"))).toEqual(new Date("2026-11-15T15:00:00Z"));
+    expect(freeMonthEnds(new Date("2026-12-20T09:30:00Z"))).toEqual(new Date("2027-01-20T09:30:00Z"));
+  });
+
+  it("stops at the end of a shorter month rather than running into the next", () => {
+    expect(freeMonthEnds(new Date("2027-01-31T12:00:00Z"))).toEqual(new Date("2027-02-28T12:00:00Z"));
+    expect(freeMonthEnds(new Date("2026-08-31T12:00:00Z"))).toEqual(new Date("2026-09-30T12:00:00Z"));
   });
 });

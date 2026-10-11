@@ -269,7 +269,7 @@ export async function signupAction(
   const code = dataStaysOnThisMachine() ? null : text(formData.get("code")).trim() || null;
   const refused = code
     ? await applyTrialCode(
-        { id: user.organizationId, subscriptionId: null, isDemo: false, billingExempt: false },
+        { id: user.organizationId, subscriptionId: null, trialEndsAt: null, isDemo: false, billingExempt: false },
         code,
       )
     : null;

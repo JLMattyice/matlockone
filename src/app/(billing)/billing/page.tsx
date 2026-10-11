@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { format } from "date-fns";
 
 import { cancelPlan, choosePlan, removeTrialCode } from "./actions";
-import { TrialCodeForm } from "./code-form";
+import { TrialCodeForm, TrialCodeProvider, TypedCode } from "./code-form";
 import { LicenseForm } from "@/app/(app)/settings/license/license-form";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -14,7 +14,13 @@ import { requireContext } from "@/lib/auth";
 import { entitlement, GRACE_DAYS } from "@/lib/billing/entitlement";
 import { launchMonthCents } from "@/lib/billing/launch-offer";
 import { CANCELLABLE, enteredTrialCode, offerFor, restartDate } from "@/lib/billing/subscription";
-import { canTakeTrial, normalizeTrialCode, TRIAL_CODE_MAX, trialCodeLive } from "@/lib/billing/trial-codes";
+import {
+  APPLY_REFUSALS,
+  canTakeTrial,
+  normalizeTrialCode,
+  TRIAL_CODE_MAX,
+  trialCodeLive,
+} from "@/lib/billing/trial-codes";
 import { storageUsage, type StorageUsage } from "@/lib/quotas";
 import { formatBytes } from "@/lib/storage-limits";
 import {
@@ -26,7 +32,7 @@ import {
   PLANS,
   type Plan,
 } from "@/lib/checkout/plans";
-import { manageSubscriptionUrl, paypalConfig, trialPlansReady } from "@/lib/checkout/paypal";
+import { manageSubscriptionUrl, paypalConfig } from "@/lib/checkout/paypal";
 import { dataStaysOnThisMachine } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -52,6 +58,10 @@ const ERRORS: Record<string, string> = {
   setup: "Payments aren’t set up on this site yet.",
   cancel:
     "PayPal didn’t cancel it just now, so nothing has changed. Try again in a moment, or cancel it in PayPal.",
+  // A code that did not work when a plan was chosen. Nothing was started.
+  ...Object.fromEntries(
+    Object.entries(APPLY_REFUSALS).map(([refusal, text]) => [`code-${refusal}`, `${text} Nothing was started.`]),
+  ),
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -106,22 +116,24 @@ export default async function BillingPage({
   const restartsOn = access.ok ? restartDate(org) : null;
   const waitingToStart = org.subscriptionStatus === "APPROVED";
 
-  // What each monthly plan's first month costs this business — nothing on a
-  // code it entered, half on the launch offer — asked the same way the
-  // checkout asks. A plan on neither is left out.
+  // A code can be entered by a business choosing its first plan. Holding one
+  // that works, choosing a plan starts a free month on it — no PayPal.
   const code = await enteredTrialCode(org);
-  const firstMonth: Partial<Record<Plan["id"], number>> = {};
-  for (const plan of planList()) {
-    const offer = offerFor(org, code, config, plan.id, "monthly");
-    if (offer) firstMonth[plan.id] = offer === "trial" ? 0 : launchMonthCents(plan);
-  }
-  const freeMonth = Object.values(firstMonth).includes(0);
-  const launchOffer = !freeMonth && Object.keys(firstMonth).length > 0;
+  const codes = !!config && canTakeTrial(org);
+  const freeOffer = codes && code !== null && trialCodeLive(code);
+  // A free month from a code, still running or run out, with no plan chosen.
+  const onFreeMonth = org.trialEndsAt !== null && org.subscriptionId === null;
 
-  // A code can be entered by a business choosing its first plan, where PayPal
-  // has the free-month plans to give it on.
-  const codes = !!config && canTakeTrial(org) && trialPlansReady(config);
-  const codeLive = code !== null && trialCodeLive(code);
+  // The launch offer's first month, for each plan this business would get it
+  // on — asked the same way the checkout asks. Not beside a free month.
+  const firstMonth = freeOffer
+    ? {}
+    : (Object.fromEntries(
+        planList()
+          .filter((plan) => offerFor(org, config, plan.id, "monthly") === "launch")
+          .map((plan) => [plan.id, launchMonthCents(plan)]),
+      ) as Partial<Record<Plan["id"], number>>);
+  const launchOffer = Object.keys(firstMonth).length > 0;
 
   return (
     <div className="space-y-6 py-4">
@@ -129,18 +141,26 @@ export default async function BillingPage({
         title={
           access.ok
             ? "Billing"
-            : params.welcome
-              ? "Choose a plan to start"
-              : access.reason === "lapsed"
-                ? `${org.name}’s plan has ended`
-                : "Choose a plan to start using Matlock One"
+            : freeOffer
+              ? "Pick a plan for your free month"
+              : params.welcome
+                ? "Choose a plan to start"
+                : access.reason === "lapsed"
+                  ? onFreeMonth
+                    ? "Your free month has ended"
+                    : `${org.name}’s plan has ended`
+                  : "Choose a plan to start using Matlock One"
         }
         lead={
           access.ok
             ? null
-            : access.reason === "lapsed"
-              ? "Choose a plan to open it again. Nothing has been deleted — everything is where you left it."
-              : "Pick the plan that fits, approve it with PayPal, and you’re in. Every plan includes every part of Matlock One."
+            : freeOffer
+              ? "Every plan includes every part of Matlock One. Pick one and you’re in — no payment details needed. Choose how to pay any time before the month is up."
+              : access.reason === "lapsed"
+                ? onFreeMonth
+                  ? "Choose a plan to keep going. Nothing has been deleted — everything is where you left it."
+                  : "Choose a plan to open it again. Nothing has been deleted — everything is where you left it."
+                : "Pick the plan that fits, approve it with PayPal, and you’re in. Every plan includes every part of Matlock One."
         }
       />
 
@@ -157,6 +177,7 @@ export default async function BillingPage({
           status={org.subscriptionStatus}
           paidThrough={org.paidThrough}
           freeUntil={org.trialEndsAt && org.trialEndsAt > new Date() ? org.trialEndsAt : null}
+          subscribed={org.subscriptionId !== null}
           manageUrl={manageSubscriptionUrl(config)}
           canCancel={canPay && !!config && CANCELLABLE.has(org.subscriptionStatus ?? "")}
           storage={await storageUsage(org)}
@@ -220,84 +241,96 @@ export default async function BillingPage({
       canPay &&
       (!access.ok || (access.via === "subscription" && !waitingToStart)) ? (
         config ? (
-          <section className="space-y-3">
-            {access.ok ? (
-              <div className="space-y-1">
-                <h2 className="text-sm font-medium text-ink">
-                  {restartsOn ? `Keep going after ${longDate(restartsOn)}` : "Change plan"}
-                </h2>
-                {restartsOn ? (
-                  <p className="text-sm text-ink-muted">
-                    Choose a plan and it starts on {longDate(restartsOn)}, when the time
-                    you’ve paid for runs out, so nothing is charged twice.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-            {launchOffer ? (
-              <p className="rounded-lg border border-brand/40 bg-surface px-4 py-3 text-sm text-ink">
-                <span className="font-medium">Launch week:</span> your first month is half price
-                on any monthly plan.
-              </p>
-            ) : null}
-            {codes && code && codeLive ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand/40 bg-surface px-4 py-3">
-                <p className="text-sm text-ink">
-                  <span className="font-medium">Code {code.code}:</span> your first month is free
+          <TrialCodeProvider
+            // From the address only into the box, never onto the business:
+            // nothing is applied until it is submitted.
+            initial={codes ? normalizeTrialCode(params.code).slice(0, TRIAL_CODE_MAX) : ""}
+          >
+            <section className="space-y-3">
+              {access.ok ? (
+                <div className="space-y-1">
+                  <h2 className="text-sm font-medium text-ink">
+                    {restartsOn ? `Keep going after ${longDate(restartsOn)}` : "Change plan"}
+                  </h2>
+                  {restartsOn ? (
+                    <p className="text-sm text-ink-muted">
+                      {onFreeMonth
+                        ? `Choose a plan and PayPal takes its first payment on ${longDate(restartsOn)}, when your free month ends. Nothing is charged before then.`
+                        : `Choose a plan and it starts on ${longDate(restartsOn)}, when the time you’ve paid for runs out, so nothing is charged twice.`}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {launchOffer ? (
+                <p className="rounded-lg border border-brand/40 bg-surface px-4 py-3 text-sm text-ink">
+                  <span className="font-medium">Launch week:</span> your first month is half price
                   on any monthly plan.
                 </p>
-                <form action={removeTrialCode}>
-                  <SubmitButton variant="ghost" size="sm" pendingLabel="Removing…">
-                    Remove code
-                  </SubmitButton>
-                </form>
-              </div>
-            ) : codes ? (
-              <div className="space-y-2">
-                {code ? (
-                  <p className="text-sm text-ink-muted" role="status">
-                    The code {code.code} is no longer active, so plans are at their regular price.
+              ) : null}
+              {freeOffer && code ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand/40 bg-surface px-4 py-3">
+                  <p className="text-sm text-ink">
+                    <span className="font-medium">Code {code.code}:</span> a month free, no payment
+                    needed. Pick a plan below to start.
                   </p>
-                ) : null}
-                <TrialCodeForm
-                  // From the address only into the box, never onto the
-                  // business: nothing is applied until it is submitted.
-                  initial={normalizeTrialCode(params.code).slice(0, TRIAL_CODE_MAX)}
-                />
-              </div>
-            ) : null}
-            <PlanCards
-              firstMonth={firstMonth}
-              // Only a plan that is renewing is the one to stay on. After a
-              // cancellation every button is a way back, the same one included.
-              current={
-                access.ok && org.subscriptionStatus === "ACTIVE" && isPlan(org.subscriptionPlan)
-                  ? org.subscriptionPlan
-                  : null
-              }
-              currentInterval={access.ok ? org.subscriptionInterval : null}
-            />
-            {/* What a plan commits them to, beside the buttons that commit
-                them to it. */}
-            <p className="text-xs leading-relaxed text-ink-muted">
-              {freeMonth
-                ? "The free month is on monthly plans: PayPal takes nothing today and the first payment a month from now, unless you cancel before then. A yearly plan is paid for when you choose it. "
-                : launchOffer
-                  ? "The launch-week price is for the first month only; after that a monthly plan renews at its regular price. "
-                  : null}
-              Plans renew automatically until you cancel. Cancel any time here and keep
-              everything until the end of what you’ve paid for; unused time isn’t refunded.
-              Choosing a plan means you agree to the{" "}
-              <Link href="/terms" className="font-medium text-ink hover:underline">
-                Terms of Service
-              </Link>{" "}
-              and{" "}
-              <Link href="/refunds" className="font-medium text-ink hover:underline">
-                Refund Policy
-              </Link>
-              .
-            </p>
-          </section>
+                  <form action={removeTrialCode}>
+                    <SubmitButton variant="ghost" size="sm" pendingLabel="Removing…">
+                      Remove code
+                    </SubmitButton>
+                  </form>
+                </div>
+              ) : codes ? (
+                <div className="space-y-2">
+                  {code ? (
+                    <p className="text-sm text-ink-muted" role="status">
+                      The code {code.code} is no longer active, so plans are at their regular price.
+                    </p>
+                  ) : null}
+                  <TrialCodeForm />
+                </div>
+              ) : null}
+              <PlanCards
+                free={freeOffer}
+                firstMonth={firstMonth}
+                // Only a plan that is renewing is the one to stay on. After a
+                // cancellation every button is a way back, the same one included.
+                current={
+                  access.ok && org.subscriptionStatus === "ACTIVE" && isPlan(org.subscriptionPlan)
+                    ? org.subscriptionPlan
+                    : null
+                }
+                currentInterval={access.ok ? org.subscriptionInterval : null}
+              />
+              {/* What a plan commits them to, beside the buttons that commit
+                  them to it. */}
+              <p className="text-xs leading-relaxed text-ink-muted">
+                {freeOffer ? (
+                  <>
+                    Your free month starts the moment you pick a plan, and nothing is charged. To
+                    keep going after it, choose how to pay here before it ends; if you don’t,
+                    Matlock One locks until you do, and nothing is deleted.{" "}
+                  </>
+                ) : (
+                  <>
+                    {launchOffer
+                      ? "The launch-week price is for the first month only; after that a monthly plan renews at its regular price. "
+                      : null}
+                    Plans renew automatically until you cancel. Cancel any time here and keep
+                    everything until the end of what you’ve paid for; unused time isn’t refunded.{" "}
+                  </>
+                )}
+                Choosing a plan means you agree to the{" "}
+                <Link href="/terms" className="font-medium text-ink hover:underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/refunds" className="font-medium text-ink hover:underline">
+                  Refund Policy
+                </Link>
+                .
+              </p>
+            </section>
+          </TrialCodeProvider>
         ) : (
           <Card>
             <CardBody className="p-6 text-sm text-ink">{ERRORS.setup}</CardBody>
@@ -337,6 +370,7 @@ function CurrentPlan({
   status,
   paidThrough,
   freeUntil,
+  subscribed,
   manageUrl,
   canCancel,
   storage,
@@ -345,14 +379,17 @@ function CurrentPlan({
   interval: string | null;
   status: string | null;
   paidThrough: Date | null;
-  /** The end of a free month still running, which is when PayPal first charges. */
+  /** The end of a free month still running. */
   freeUntil: Date | null;
+  /** Whether there is a PayPal subscription at all, which a free month alone has not. */
+  subscribed: boolean;
   manageUrl: string;
   canCancel: boolean;
   storage: StorageUsage;
 }) {
   const name = plan ? PLANS[plan].name : "Your";
-  const billed = interval === "annual" ? "billed yearly" : "billed monthly";
+  const billed =
+    freeUntil && !subscribed ? "free month" : interval === "annual" ? "billed yearly" : "billed monthly";
 
   // Said in terms of what happens next, because that is what somebody opening
   // billing wants to know.
@@ -364,10 +401,14 @@ function CurrentPlan({
         : status === "SUSPENDED"
           ? `PayPal couldn’t take the last payment and will try again. Update your payment in PayPal before ${longDate(new Date(paidThrough.getTime() + GRACE_DAYS * DAY_MS))} to keep it open.`
           : status === "APPROVED"
-            ? `Starts on ${longDate(paidThrough)}, when the time already paid for runs out. PayPal takes the first payment then. To choose a different plan, cancel this one first.`
-            : freeUntil
-              ? `Your free month runs until ${longDate(freeUntil)}. PayPal takes the first payment then, and it renews automatically.`
-              : `Paid through ${longDate(paidThrough)}. Renews automatically.`;
+            ? freeUntil
+              ? `Your free month runs until ${longDate(freeUntil)}. This plan starts then, and PayPal takes the first payment that day. To choose a different plan, cancel this one first.`
+              : `Starts on ${longDate(paidThrough)}, when the time already paid for runs out. PayPal takes the first payment then. To choose a different plan, cancel this one first.`
+            : freeUntil && !subscribed
+              ? `Your free month runs until ${longDate(freeUntil)}. Choose a plan below before then to keep going — nothing is charged until it ends.`
+              : freeUntil
+                ? `Your free month runs until ${longDate(freeUntil)}. PayPal takes the first payment then, and it renews automatically.`
+                : `Paid through ${longDate(paidThrough)}. Renews automatically.`;
 
   return (
     <Card>
@@ -384,9 +425,11 @@ function CurrentPlan({
           <Link href="/dashboard" className={buttonClasses("primary", "md")}>
             Back to Matlock One
           </Link>
-          <a href={manageUrl} className={buttonClasses("outline", "md")} target="_blank" rel="noreferrer">
-            Manage in PayPal
-          </a>
+          {subscribed ? (
+            <a href={manageUrl} className={buttonClasses("outline", "md")} target="_blank" rel="noreferrer">
+              Manage in PayPal
+            </a>
+          ) : null}
         </div>
 
         {canCancel && paidThrough ? (
@@ -463,11 +506,14 @@ function PlanCards({
   current,
   currentInterval,
   firstMonth,
+  free,
 }: {
   current: Plan["id"] | null;
   currentInterval: string | null;
-  /** What the first month costs on an offer, for each plan this business gets one on. */
+  /** The launch offer's first month, for each plan this business gets it on. */
   firstMonth: Partial<Record<Plan["id"], number>>;
+  /** Holding a working code: each plan starts a free month instead of going to PayPal. */
+  free: boolean;
 }) {
   const saving = Math.round(ANNUAL_DISCOUNT_BP / 100);
 
@@ -489,7 +535,7 @@ function PlanCards({
                 {formatPrice(plan.monthlyCents)}
                 <span className="text-sm font-normal text-ink-muted"> / month</span>
               </p>
-              {firstMonth[plan.id] === 0 ? (
+              {free ? (
                 <p className="text-sm font-medium text-brand">First month free</p>
               ) : firstMonth[plan.id] !== undefined ? (
                 <p className="text-sm font-medium text-brand">
@@ -510,12 +556,27 @@ function PlanCards({
             ) : null}
 
             <div className="mt-auto flex flex-wrap gap-2">
-              {(["monthly", "annual"] as const).map((interval) => {
+              {free ? (
+                <form action={choosePlan}>
+                  <input type="hidden" name="plan" value={plan.id} />
+                  <input type="hidden" name="interval" value="monthly" />
+                  <input type="hidden" name="free" value="1" />
+                  <SubmitButton
+                    variant={plan.featured ? "primary" : "outline"}
+                    size="md"
+                    pendingLabel="Starting…"
+                  >
+                    Start free month
+                  </SubmitButton>
+                </form>
+              ) : null}
+              {(free ? [] : (["monthly", "annual"] as const)).map((interval) => {
                 const isCurrent = current === plan.id && currentInterval === interval;
                 return (
                   <form key={interval} action={choosePlan}>
                     <input type="hidden" name="plan" value={plan.id} />
                     <input type="hidden" name="interval" value={interval} />
+                    <TypedCode />
                     {isCurrent ? (
                       <span className={buttonClasses("outline", "md")} aria-current="true">
                         Current plan

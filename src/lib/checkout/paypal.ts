@@ -1,7 +1,7 @@
 import "server-only";
 
 import { isPlan } from "./plans";
-import { LICENSE_PLANS, type LicensePlan } from "@/lib/license/token";
+import type { LicensePlan } from "@/lib/license/token";
 
 /**
  * PayPal Subscriptions — how Matlock One is bought.
@@ -22,7 +22,9 @@ export type PayPalInterval = "monthly" | "annual";
 
 /**
  * A monthly plan's opening offer, each its own billing plan in PayPal: the
- * launch week's half-price first month, or a free-month code's free one.
+ * launch week's half-price first month, or the free first month the first
+ * version of free-month codes sold through PayPal. Codes no longer send
+ * anybody to the free ones; they stay so subscriptions on them still renew.
  */
 export type PlanOffer = "launch" | "trial";
 
@@ -82,8 +84,8 @@ export function paypalConfig(): PayPalConfig | null {
       starter_monthly_launch: process.env.PAYPAL_PLAN_STARTER_MONTHLY_LAUNCH?.trim(),
       business_monthly_launch: process.env.PAYPAL_PLAN_BUSINESS_MONTHLY_LAUNCH?.trim(),
       pro_monthly_launch: process.env.PAYPAL_PLAN_PRO_MONTHLY_LAUNCH?.trim(),
-      // The free first month, for a business that entered a code. Kept for
-      // the same reason as the launch plans.
+      // The free first month from the first version of codes. Nobody is sent
+      // to these any more; kept for the same reason as the launch plans.
       starter_monthly_trial: process.env.PAYPAL_PLAN_STARTER_MONTHLY_TRIAL?.trim(),
       business_monthly_trial: process.env.PAYPAL_PLAN_BUSINESS_MONTHLY_TRIAL?.trim(),
       pro_monthly_trial: process.env.PAYPAL_PLAN_PRO_MONTHLY_TRIAL?.trim(),
@@ -120,11 +122,6 @@ export function offerPlanReady(
   offer: PlanOffer,
 ): boolean {
   return Boolean(config?.planIds[`${plan}_monthly_${offer}`]);
-}
-
-/** Whether this deployment can sell any plan with a free first month. */
-export function trialPlansReady(config: PayPalConfig | null): boolean {
-  return LICENSE_PLANS.some((plan) => offerPlanReady(config, plan, "trial"));
 }
 
 /**

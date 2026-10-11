@@ -19,7 +19,6 @@ import {
   type Standing,
 } from "@/lib/accounts-overview";
 import { PLAN_ORDER, PLANS } from "@/lib/checkout/plans";
-import { paypalConfig, trialPlansReady } from "@/lib/checkout/paypal";
 import { resolveAppUrl } from "@/lib/config";
 import { asStatus, ROLE_META, ROLES, type Role } from "@/lib/constants";
 import { formatMoney } from "@/lib/money";
@@ -162,7 +161,6 @@ export default async function AccountsPage({
 
       <TrialCodesCard
         codes={codes}
-        ready={trialPlansReady(paypalConfig())}
         appUrl={resolveAppUrl()}
         today={todayIn(zone)}
         day={day}
@@ -266,7 +264,7 @@ function BusinessLine({
       </Td>
       <Td className="tabular hidden whitespace-nowrap text-ink-muted md:table-cell">
         {standing === "trial" && business.trialEndsAt
-          ? `Free to ${day(business.trialEndsAt)}`
+          ? `Free to ${day(business.trialEndsAt)}${business.subscriptionStatus === "APPROVED" ? ", then paying" : ""}`
           : business.paidThrough
             ? day(business.paidThrough)
             : "—"}

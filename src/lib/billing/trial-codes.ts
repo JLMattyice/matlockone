@@ -1,17 +1,13 @@
 /**
  * Free-month codes: the operator makes them on the Accounts page and hands
- * them out, and a business that enters one gets its first month of a monthly
- * plan free.
+ * them out, and a business that enters one gets a month of Matlock One free,
+ * without paying or giving any payment details.
  *
- * PayPal does the free month, through a "free first month" billing plan for
- * each tier — one month at nothing, then the full price until cancelled —
- * made by `npm run paypal:setup`. The buyer still approves the plan in PayPal
- * up front, so the first charge comes a month later by itself unless they
- * cancel first. Nothing here changes what anybody is charged; it only decides
- * which plan a business is sent to.
- *
- * Yearly plans are left out, like the launch offer: a yearly plan is paid for
- * in full the day it is chosen.
+ * Choosing a plan with a working code opens the business on that plan for a
+ * month straight away; PayPal is not involved. Before the month is up the
+ * business chooses a plan to keep going, and that plan's first payment waits
+ * until the free month ends (restartDate in subscription.ts). If it does not,
+ * the business locks when the month runs out, like any plan that ends.
  *
  * Pure, so every rule is tested without a database or a clock. Nothing from
  * Node either: the Accounts page's form reads the limits below in the browser.
@@ -87,17 +83,28 @@ export function trialCodeState(
 
 type FirstPlanFields = {
   subscriptionId: string | null;
+  trialEndsAt: Date | null;
   isDemo: boolean;
   billingExempt: boolean;
 };
 
 /**
- * Only a business's first plan: one that has ever held a subscription has
- * had its first month. Never the demo or an exempt business, which are not
- * billed at all.
+ * Only a business's first plan: one that has ever held a subscription, or
+ * already had a free month, has had its first month. Never the demo or an
+ * exempt business, which are not billed at all.
  */
 export function canTakeTrial(org: FirstPlanFields): boolean {
-  return !org.isDemo && !org.billingExempt && org.subscriptionId === null;
+  return !org.isDemo && !org.billingExempt && org.subscriptionId === null && org.trialEndsAt === null;
+}
+
+/** When a free month started now ends: the same day next month. */
+export function freeMonthEnds(now: Date = new Date()): Date {
+  const end = new Date(now);
+  const day = end.getUTCDate();
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  // January 31st plus a month is the end of February, not March 3rd.
+  if (end.getUTCDate() !== day) end.setUTCDate(0);
+  return end;
 }
 
 export type ApplyRefusal = "unknown" | "off" | "ended" | "used-up" | "not-first";
@@ -130,7 +137,7 @@ export function applyRefusal(
   return state === "live" ? null : state;
 }
 
-/** Whether a business choosing a plan gets the free month. */
+/** Whether a business choosing a plan starts a free month on it instead of paying. */
 export function trialOfferApplies(
   org: FirstPlanFields,
   code: TrialCodeFields | null,

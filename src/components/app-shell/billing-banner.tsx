@@ -13,13 +13,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * Quiet otherwise. A business that is paid up hears nothing about billing, and
  * one that is not paid up never sees the application at all — so this only
  * ever speaks in the days a plan is running out: cancelled and running to the
- * end of its month, a payment PayPal could not take, a licence near expiry.
+ * end of its month, a payment PayPal could not take, a licence near expiry —
+ * and through a free month from a code that has no plan to follow it yet,
+ * since that one ends by itself unless somebody acts.
  */
 export function BillingBanner({
   org,
   canManage,
 }: {
-  org: BillingFields;
+  org: BillingFields & { subscriptionId?: string | null; trialEndsAt?: Date | null };
   canManage: boolean;
 }) {
   const access = entitlement(org);
@@ -30,6 +32,24 @@ export function BillingBanner({
   }
 
   if (access.via !== "subscription" || !org.paidThrough) return null;
+
+  if (org.trialEndsAt && !org.subscriptionId && org.trialEndsAt > new Date()) {
+    return (
+      <div className="border-b border-brand/30 bg-brand/10 print:hidden">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 lg:px-6">
+          <p className="text-sm text-ink">
+            {`Your free month runs until ${format(org.trialEndsAt, "MMMM d")}.`}
+            {canManage ? " Choose a plan before then to keep going." : null}
+          </p>
+          {canManage ? (
+            <Link href="/billing" className="text-sm font-medium text-brand hover:underline">
+              Choose a plan
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   const message =
     org.subscriptionStatus === "CANCELLED"

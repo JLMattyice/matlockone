@@ -108,6 +108,16 @@ describe("where a business stands", () => {
     expect(standingOf(freeMonth, new Date(NOW.getTime() + 11 * DAY))).toBe("paying");
   });
 
+  it("is on its free month from a code, with or without a plan lined up after it", () => {
+    const ends = new Date(NOW.getTime() + 10 * DAY);
+    const noCard = account({ subscriptionPlan: "business", paidThrough: ends, trialEndsAt: ends });
+    expect(standingOf(noCard, NOW)).toBe("trial");
+    expect(standingOf({ ...noCard, subscriptionStatus: "APPROVED" }, NOW)).toBe("trial");
+    expect(monthlyCentsOf(noCard, NOW)).toBe(0);
+    // Run out with nothing chosen: locked, like any plan that ended.
+    expect(standingOf(noCard, new Date(NOW.getTime() + 20 * DAY))).toBe("lapsed");
+  });
+
   it("is cancelled, not on a free month, when it cancels during one", () => {
     const freeMonth = {
       ...paying("starter", "monthly"),
