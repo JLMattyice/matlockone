@@ -36,6 +36,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const days = (n: number) => new Date(now.getTime() + n * DAY_MS);
 
 const UNPAID: BillingFields = {
+  bannedAt: null,
   isDemo: false,
   billingExempt: false,
   licenseKey: null,
@@ -143,6 +144,14 @@ describe("entitlement", () => {
       reason: "lapsed",
     });
     expect(entitlement({ ...UNPAID, licenseKey: "not-a-key" }, now)).toMatchObject({ ok: false });
+  });
+
+  it("locks a banned business whatever else would open it", () => {
+    const banned = { bannedAt: days(-1) };
+    const locked = { ok: false, reason: "banned" };
+    expect(entitlement(paid(banned), now)).toEqual(locked);
+    expect(entitlement({ ...UNPAID, ...banned, billingExempt: true }, now)).toEqual(locked);
+    expect(entitlement({ ...UNPAID, ...banned, licenseKey: licence(30, 4) }, now)).toEqual(locked);
   });
 });
 

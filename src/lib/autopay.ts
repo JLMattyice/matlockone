@@ -250,6 +250,31 @@ export async function turnOffAutopay(input: {
 
 // ------------------------------------------------------------------ invite ---
 
+/**
+ * Turns auto-pay off on every repeating invoice a business has, so none of
+ * its customers is charged again — for when the business itself is being
+ * deleted. Each series is tried on its own; one PayPal refuses is counted,
+ * not fatal, since the customer can still cancel from their own PayPal.
+ */
+export async function turnOffAllAutopay(
+  organizationId: string,
+  reason: string,
+): Promise<{ stopped: number; failed: number }> {
+  const schedules = await prisma.invoiceSchedule.findMany({
+    where: { organizationId, autopaySubscriptions: { some: { status: { in: COLLECTING_STATUSES } } } },
+    select: { id: true },
+  });
+
+  let stopped = 0;
+  let failed = 0;
+  for (const schedule of schedules) {
+    const result = await turnOffAutopay({ organizationId, scheduleId: schedule.id, actorId: null, reason });
+    if (result.ok) stopped++;
+    else failed++;
+  }
+  return { stopped, failed };
+}
+
 export type InviteView = {
   scheduleId: string;
   organization: {
@@ -278,7 +303,7 @@ async function scheduleByToken(token: string) {
   if (!token || token.length < 20) return null;
 
   return prisma.invoiceSchedule.findUnique({
-    where: { autopayToken: token },
+    where: { autopayToken: token, organization: { bannedAt: null } },
     include: {
       organization: true,
       autopaySubscriptions: { orderBy: { createdAt: "desc" } },

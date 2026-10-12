@@ -172,7 +172,7 @@ export type EstimateDetail = Awaited<ReturnType<typeof getEstimate>>;
  */
 export async function getEstimateByToken(token: string) {
   return prisma.estimate.findUnique({
-    where: { publicToken: token },
+    where: { publicToken: token, organization: { bannedAt: null } },
     select: {
       id: true,
       number: true,

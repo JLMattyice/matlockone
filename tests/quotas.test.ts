@@ -147,6 +147,7 @@ afterEach(() => {
 
 describe("each plan's room for files", () => {
   const paid = (plan: string): BillingFields => ({
+    bannedAt: null,
     isDemo: false,
     billingExempt: false,
     licenseKey: null,
@@ -169,6 +170,7 @@ describe("each plan's room for files", () => {
 
   it("holds a licence to the plan it was issued for", () => {
     const licensed = (plan: "starter" | "pro"): BillingFields => ({
+      bannedAt: null,
       isDemo: false,
       billingExempt: false,
       licenseKey: licenceKey(plan),

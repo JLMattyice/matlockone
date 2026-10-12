@@ -59,7 +59,7 @@ export async function GET(
   if (!allowed.ok) return back(origin, token, "too-many");
 
   const invoice = await prisma.invoice.findUnique({
-    where: { publicToken: token },
+    where: { publicToken: token, organization: { bannedAt: null } },
     select: {
       number: true,
       title: true,

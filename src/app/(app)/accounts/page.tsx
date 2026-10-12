@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Building2, CircleDollarSign, UserPlus, Users } from "lucide-react";
 
 import { allBusinesses, allTrialCodes, newestPeople, type BusinessRow } from "./queries";
@@ -6,6 +7,7 @@ import { TrialCodesCard } from "./trial-codes-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
+import { FormSuccess } from "@/components/ui/form";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { TabLinks } from "@/components/ui/tab-links";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
@@ -38,10 +40,11 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string }>;
+  searchParams: Promise<{ show?: string; deleted?: string; autopay?: string }>;
 }) {
   await requireOperator();
-  const { show } = await searchParams;
+  const { show, deleted, autopay } = await searchParams;
+  const autopayLeft = Number(autopay) || 0;
   const filter: Standing | null = isStanding(show) ? show : null;
 
   const now = new Date();
@@ -73,6 +76,15 @@ export default async function AccountsPage({
         title="Accounts"
         description="Every business on Matlock One, and where it stands. Only you can see this page."
       />
+
+      {deleted ? (
+        <FormSuccess>
+          Business deleted.
+          {autopayLeft > 0
+            ? ` PayPal wouldn’t cancel ${autopayLeft} of its customers’ auto-pay, so those customers may still be charged — they can stop it from their own PayPal.`
+            : null}
+        </FormSuccess>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
@@ -107,7 +119,7 @@ export default async function AccountsPage({
       <Card>
         <CardHeader
           title="Businesses"
-          description="Newest first. The owner is whoever made the account."
+          description="Newest first. The owner is whoever made the account. Open one to ban or delete it."
         />
         <div className="px-4 pt-1">
           <TabLinks
@@ -199,7 +211,11 @@ export default async function AccountsPage({
                     </span>
                     <span className="block text-xs break-all text-ink-subtle">{person.email}</span>
                   </Td>
-                  <Td className="text-ink-muted">{person.organization.name}</Td>
+                  <Td className="text-ink-muted">
+                    <Link href={`/accounts/${person.organization.id}`} className="hover:text-brand hover:underline">
+                      {person.organization.name}
+                    </Link>
+                  </Td>
                   <Td className="hidden text-ink-muted sm:table-cell">{roleLabel(person.role)}</Td>
                   <Td className="tabular whitespace-nowrap text-ink-muted">{day(person.createdAt)}</Td>
                   <Td className="tabular hidden whitespace-nowrap text-ink-muted md:table-cell">
@@ -238,7 +254,9 @@ function BusinessLine({
   return (
     <Tr>
       <Td>
-        <span className="block font-medium">{business.name}</span>
+        <Link href={`/accounts/${business.id}`} className="block font-medium hover:text-brand hover:underline">
+          {business.name}
+        </Link>
         <span className="block text-xs text-ink-subtle">
           Signed up {day(business.createdAt)}
           {business.trialCode ? ` · code ${business.trialCode.code}` : null}

@@ -3,7 +3,9 @@
 import { randomInt } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
+import { banBusiness, deleteBusiness, liftBan } from "@/lib/account-bans";
 import { failed, saved, text, type ActionState } from "@/lib/action-state";
 import {
   normalizeTrialCode,
@@ -17,8 +19,9 @@ import { parseDateTimeLocal, todayIn } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 /**
- * Making and switching off free-month codes, from the Accounts page. Only
- * OPERATOR_EMAILS may: anybody else gets the same 404 the page gives them.
+ * Making and switching off free-month codes, and banning or deleting a
+ * business, from the Accounts page. Only OPERATOR_EMAILS may: anybody else
+ * gets the same 404 the page gives them.
  */
 
 const ACCOUNTS_PATH = "/accounts";
@@ -112,4 +115,57 @@ export async function setTrialCodeOn(formData: FormData) {
     data: { disabledAt: formData.get("on") === "true" ? null : new Date() },
   });
   revalidatePath(ACCOUNTS_PATH);
+}
+
+// --------------------------------------------------------- bans and deletes ---
+
+export async function banBusinessAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { org } = await requireOperator();
+  const id = text(formData, "id");
+  if (!id) return failed("That business no longer exists.");
+
+  const reason = text(formData, "reason");
+  if (!reason) return { ok: false, fieldErrors: { reason: "Say why, so you have it on record." } };
+
+  const result = await banBusiness({ organizationId: id, operatorOrganizationId: org.id, reason });
+  if (!result.ok) return failed(result.error);
+
+  revalidatePath(ACCOUNTS_PATH);
+  revalidatePath(`${ACCOUNTS_PATH}/${id}`);
+  if (typeof result.billing === "object") {
+    return saved(
+      `Banned. PayPal wouldn’t cancel its plan (${result.billing.error}), so cancel subscription ${result.billing.subscriptionId} in PayPal yourself.`,
+    );
+  }
+  return saved(result.billing === "stopped" ? "Banned, and its plan with you is cancelled." : "Banned.");
+}
+
+export async function liftBanAction(formData: FormData) {
+  const { org } = await requireOperator();
+  const id = text(formData, "id");
+  if (!id) return;
+
+  await liftBan({ organizationId: id, operatorOrganizationId: org.id });
+  revalidatePath(ACCOUNTS_PATH);
+  revalidatePath(`${ACCOUNTS_PATH}/${id}`);
+}
+
+export async function deleteBusinessAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { org } = await requireOperator();
+  const id = text(formData, "id");
+  if (!id) return failed("That business no longer exists.");
+
+  // Typing the name is the confirmation: a stray click cannot do this.
+  const target = await prisma.organization.findUnique({ where: { id }, select: { name: true } });
+  if (!target) return failed("That business no longer exists.");
+  if ((text(formData, "confirm") ?? "").toLowerCase() !== target.name.trim().toLowerCase()) {
+    return { ok: false, fieldErrors: { confirm: "Type the business’s name exactly to confirm." } };
+  }
+
+  const result = await deleteBusiness({ organizationId: id, operatorOrganizationId: org.id });
+  if (!result.ok) return failed(result.error);
+
+  revalidatePath(ACCOUNTS_PATH);
+  const leftovers = result.autopayLeft > 0 ? `&autopay=${result.autopayLeft}` : "";
+  redirect(`${ACCOUNTS_PATH}?deleted=1${leftovers}`);
 }

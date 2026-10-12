@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 
 import { BILLING_PATH, entitlement } from "./billing/entitlement";
 import { dataStaysOnThisMachine } from "./config";
+import { SUPPORT_EMAIL } from "./legal";
 import { prisma } from "./db";
 import { asStatus, ROLES, type Role } from "./constants";
 import { verifyPassword } from "./password";
@@ -234,6 +235,7 @@ export async function login(
   const candidates = await prisma.user.findMany({
     where: { email },
     orderBy: [{ isActive: "desc" }, { lastLoginAt: { sort: "desc", nulls: "last" } }],
+    include: { organization: { select: { bannedAt: true } } },
   });
 
   let user: (typeof candidates)[number] | null = null;
@@ -253,6 +255,9 @@ export async function login(
   }
 
   if (!user) return { ok: false, error: GENERIC };
+  // Said only after the password is right, so it tells nobody else whether
+  // an email belongs to a banned business.
+  if (user.organization.bannedAt) return { ok: false, error: BANNED_SIGN_IN };
   if (!user.isActive) {
     return {
       ok: false,
@@ -287,6 +292,9 @@ export async function login(
     },
   };
 }
+
+/** What somebody in a banned business is told when they sign in. */
+export const BANNED_SIGN_IN = `This account has been closed for breaking Matlock One's terms of service. If you think this is a mistake, email ${SUPPORT_EMAIL}.`;
 
 export async function logout() {
   await destroySession();

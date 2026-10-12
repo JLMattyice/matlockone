@@ -157,6 +157,9 @@ export async function resolveSession(token: string) {
   }
 
   if (!session.user.isActive) return null;
+  // Banning signs the business out by deleting its sessions; this catches a
+  // page already on its way while that happened.
+  if (session.user.organization.bannedAt) return null;
 
   const renewed = renewedExpiry(session);
   if (renewed) {

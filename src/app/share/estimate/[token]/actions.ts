@@ -44,7 +44,7 @@ export async function markEstimateViewed(token: string) {
   if (!(await shareAllowed()).ok) return;
 
   const estimate = await prisma.estimate.findUnique({
-    where: { publicToken: token },
+    where: { publicToken: token, organization: { bannedAt: null } },
     select: {
       id: true,
       status: true,
@@ -152,7 +152,7 @@ export async function respondToEstimate(
   }
 
   const estimate = await prisma.estimate.findUnique({
-    where: { publicToken: token },
+    where: { publicToken: token, organization: { bannedAt: null } },
     select: {
       id: true,
       organizationId: true,

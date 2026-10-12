@@ -20,7 +20,8 @@ export type Standing =
   | "unpaid"
   | "lapsed"
   | "exempt"
-  | "licence";
+  | "licence"
+  | "banned";
 
 export const STANDING_META: Record<Standing, { label: string; tone: Tone; hint: string }> = {
   paying: { label: "Paying", tone: "success", hint: "Subscription active and paid up." },
@@ -43,6 +44,11 @@ export const STANDING_META: Record<Standing, { label: string; tone: Tone; hint: 
   lapsed: { label: "Lapsed", tone: "danger", hint: "Paid once; the subscription has run out and the business is locked." },
   exempt: { label: "Free", tone: "accent", hint: "Exempt from billing, set by hand." },
   licence: { label: "Licence key", tone: "info", hint: "Runs on a licence key rather than a subscription." },
+  banned: {
+    label: "Banned",
+    tone: "danger",
+    hint: "Closed by you for breaking the terms. Nobody in it can sign in, and its customer links are switched off.",
+  },
 };
 
 /** In the order the page lists them. */
@@ -55,6 +61,7 @@ export const STANDINGS: Standing[] = [
   "lapsed",
   "exempt",
   "licence",
+  "banned",
 ];
 
 export function isStanding(value: unknown): value is Standing {
@@ -72,7 +79,10 @@ export type AccountFields = BillingFields &
 
 export function standingOf(org: BillingFields & TrialFields, now: Date = new Date()): Standing {
   const access = entitlement(org, now);
-  if (!access.ok) return access.reason === "never-paid" ? "unpaid" : "lapsed";
+  if (!access.ok) {
+    if (access.reason === "banned") return "banned";
+    return access.reason === "never-paid" ? "unpaid" : "lapsed";
+  }
   if (access.via === "licence") return "licence";
   if (access.via !== "subscription") return "exempt";
 

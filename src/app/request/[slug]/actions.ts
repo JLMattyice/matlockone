@@ -70,7 +70,7 @@ const field = (form: FormData, key: string) => {
 };
 
 export async function submitServiceRequest(slug: string, form: FormData): Promise<RequestResult> {
-  const org = await prisma.organization.findUnique({ where: { slug } });
+  const org = await prisma.organization.findUnique({ where: { slug, bannedAt: null } });
   if (!org || !org.requestsEnabled) {
     return { ok: false, error: "This business isn't taking requests online right now." };
   }

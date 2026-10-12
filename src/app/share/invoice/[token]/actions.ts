@@ -18,7 +18,7 @@ export async function markInvoiceViewed(token: string) {
   if (!(await shareAllowed()).ok) return;
 
   const invoice = await prisma.invoice.findUnique({
-    where: { publicToken: token },
+    where: { publicToken: token, organization: { bannedAt: null } },
     select: { id: true, status: true, viewedAt: true, organization: { select: { isDemo: true } } },
   });
   if (!invoice) {

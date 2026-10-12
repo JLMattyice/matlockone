@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { login, logout, safeNextPath } from "@/lib/auth";
+import { BANNED_SIGN_IN, login, logout, safeNextPath } from "@/lib/auth";
 import { applyTrialCode } from "@/lib/billing/trial-code-store";
 import {
   DEFAULT_BUSINESS_TYPE,
@@ -380,6 +380,13 @@ export async function resetPasswordAction(
   // They proved they hold the mailbox; a lockout they collected while
   // forgetting is not theirs to wait out.
   await forget(`login:email:${user.email}`);
+
+  // The new password is kept, but a banned business is not signed in to: the
+  // sign-in screen would only turn them away a step later.
+  const banned = await prisma.organization.count({
+    where: { id: user.organizationId, bannedAt: { not: null } },
+  });
+  if (banned > 0) return { error: BANNED_SIGN_IN };
 
   const headerList = await headers();
   await createSession(user.id, {

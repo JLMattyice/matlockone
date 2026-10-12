@@ -65,7 +65,7 @@ export async function portalView(token: string, now = new Date()) {
   if (!token || token.length < 20) return null;
 
   const client = await prisma.client.findUnique({
-    where: { portalToken: token },
+    where: { portalToken: token, organization: { bannedAt: null } },
     select: {
       id: true,
       displayName: true,

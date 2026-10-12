@@ -26,6 +26,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 function account(overrides: Partial<AccountFields> = {}): AccountFields {
   return {
+    bannedAt: null,
     isDemo: false,
     billingExempt: false,
     licenseKey: null,

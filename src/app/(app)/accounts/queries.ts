@@ -24,6 +24,7 @@ export async function allBusinesses() {
       subscriptionInterval: true,
       paidThrough: true,
       trialEndsAt: true,
+      bannedAt: true,
       trialCode: { select: { code: true } },
       users: {
         orderBy: { createdAt: "asc" },
@@ -49,7 +50,7 @@ export async function newestPeople(take = 50) {
       isActive: true,
       createdAt: true,
       lastLoginAt: true,
-      organization: { select: { name: true } },
+      organization: { select: { id: true, name: true } },
     },
   });
 }
@@ -78,3 +79,44 @@ export async function allTrialCodes() {
 }
 
 export type TrialCodeRow = Awaited<ReturnType<typeof allTrialCodes>>[number];
+
+/** One business, for its page under Accounts: who is in it and how much it holds. */
+export async function businessDetail(id: string) {
+  return prisma.organization.findFirst({
+    where: { id, isDemo: false },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      email: true,
+      phone: true,
+      createdAt: true,
+      isDemo: true,
+      billingExempt: true,
+      licenseKey: true,
+      subscriptionId: true,
+      subscriptionStatus: true,
+      subscriptionPlan: true,
+      subscriptionInterval: true,
+      paidThrough: true,
+      trialEndsAt: true,
+      bannedAt: true,
+      banReason: true,
+      users: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+          lastLoginAt: true,
+        },
+      },
+      _count: { select: { clients: true, jobs: true, invoices: true, attachments: true } },
+    },
+  });
+}
+
+export type BusinessDetail = NonNullable<Awaited<ReturnType<typeof businessDetail>>>;

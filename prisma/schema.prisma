@@ -135,6 +135,14 @@ model Organization {
   // the first time its subscription is seen active on a free-month plan.
   trialEndsAt DateTime?
 
+  // Closed by the operator for breaking Matlock One's terms, from the
+  // Accounts page. While set, nobody in the business can sign in, its
+  // customers' links stop answering, and entitlement() locks it ahead of
+  // every other reason it might be open. Clearing it reopens the business as
+  // it was left; only the operator can do either.
+  bannedAt  DateTime?
+  banReason String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -5,8 +5,10 @@ import type { LicensePlan } from "@/lib/license/token";
 /**
  * Whether a business may use Matlock One right now.
  *
- * There is no free tier. A business is open while one of these is true, and
- * closed — sign-in shows only the billing screen — when none is:
+ * A business the operator has banned is closed, whatever else is true of it —
+ * paid up, exempt, licensed. Short of that, there is no free tier. A business
+ * is open while one of these is true, and closed — sign-in shows only the
+ * billing screen — when none is:
  *
  *  - it is the demo, which nobody pays for and nobody can change;
  *  - it is exempt, which the operator sets by hand for their own business;
@@ -33,6 +35,8 @@ export const BILLING_PATH = "/billing";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type BillingFields = {
+  /** When the operator banned it, if they have. See Organization.bannedAt. */
+  bannedAt: Date | null;
   isDemo: boolean;
   billingExempt: boolean;
   licenseKey: string | null;
@@ -51,11 +55,15 @@ export type Entitlement =
     }
   | {
       ok: false;
-      /** Never paid, or paid once and it has run out. The screen says which. */
-      reason: "never-paid" | "lapsed";
+      /**
+       * Never paid, or paid once and it has run out — the screen says which —
+       * or banned by the operator, which no payment opens.
+       */
+      reason: "never-paid" | "lapsed" | "banned";
     };
 
 export function entitlement(org: BillingFields, now: Date = new Date()): Entitlement {
+  if (org.bannedAt) return { ok: false, reason: "banned" };
   if (org.isDemo) return { ok: true, via: "demo", plan: null, seats: null };
   if (org.billingExempt) return { ok: true, via: "exempt", plan: null, seats: null };
 

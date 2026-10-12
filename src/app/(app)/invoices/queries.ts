@@ -290,7 +290,7 @@ export type RecurringRevenue = Awaited<ReturnType<typeof loadRecurringRevenue>>;
 /** The public view, addressed only by its unguessable token. */
 export async function getInvoiceByToken(token: string) {
   return prisma.invoice.findUnique({
-    where: { publicToken: token },
+    where: { publicToken: token, organization: { bannedAt: null } },
     select: {
       id: true,
       number: true,

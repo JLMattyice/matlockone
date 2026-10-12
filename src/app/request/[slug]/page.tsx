@@ -26,7 +26,7 @@ export default async function RequestPage({
   const { for: portalToken } = await searchParams;
 
   const org = await prisma.organization.findUnique({
-    where: { slug },
+    where: { slug, bannedAt: null },
     select: {
       id: true,
       name: true,
