@@ -27,6 +27,8 @@ export const PUSHED_TYPES: ReadonlySet<NotificationType> = new Set<NotificationT
   "ESTIMATE_RESPONSE",
   "PAYMENT_RECEIVED",
   "SERVICE_REQUEST",
+  // A customer who was meant to be billed today and was not.
+  "INVOICE_NOT_SENT",
 ]);
 
 export type PushMessage = {

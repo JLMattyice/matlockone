@@ -17,13 +17,11 @@ import {
 import { record } from "@/lib/activity";
 import { runEventWorkflows } from "@/lib/workflows/run";
 import { prisma } from "@/lib/db";
-import { portalLine } from "@/lib/portal";
 import { finalCounting, priorBilling } from "@/lib/progress-billing";
 import { sendToQuickBooksSoon } from "@/lib/quickbooks/sync";
 import { recalculateInvoice } from "@/lib/invoice-balance";
-import { publicUrl, sendMessage } from "@/lib/messaging";
-import { attachPaymentLink } from "@/lib/payments/link";
-import { invoicePdfFor } from "@/lib/pdf/invoice-document";
+import { deliverInvoice } from "@/lib/invoice-delivery";
+import { resolveEmailAccount } from "@/lib/messaging";
 import { notify, notifyClientByEmail } from "@/lib/notifications";
 import { computeTotals, formatMoney, parseMoneyToCents } from "@/lib/money";
 import { allocateNumber } from "@/lib/numbering";
@@ -484,129 +482,21 @@ export async function sendInvoice(
   const id = String(formData.get("id") ?? "");
   if (!id) return failed("Missing invoice id.");
 
-  const invoice = await prisma.invoice.findFirst({
-    where: { id, organizationId: org.id },
-    include: {
-      client: { select: { displayName: true, email: true } },
-      _count: { select: { lineItems: true } },
-    },
-  });
-  if (!invoice) return failed("That invoice no longer exists.");
-  if (invoice._count.lineItems === 0) {
-    return failed("Add at least one line before sending.");
-  }
-  if (invoice.status === "CANCELLED") {
-    return failed("This invoice has been cancelled.");
-  }
-
-  const to = text(formData, "email") ?? invoice.client.email;
-  if (!to) {
-    return {
-      ok: false,
-      fieldErrors: {
-        email: "This client has no email address. Add one, or enter one here.",
-      },
-    };
-  }
-
-  const link = publicUrl(`/share/invoice/${invoice.publicToken}`);
-  const amount = formatMoney(invoice.balanceCents, org.currency, org.locale);
-
-  // The Pay now link goes first when there is one. It is hosted by the
-  // processor, so unlike the share link above it works from anywhere — which
-  // on the desktop build is often the only address the client can open.
-  //
-  // Attached here rather than left to a separate button. An invoice email that
-  // cannot be paid from is most of the point of sending it, and remembering to
-  // press "Add pay link" first is not a workflow anybody keeps up.
-  //
-  // A processor that is not connected, or an invoice in a state that cannot
-  // take money, is not an error: the invoice still goes out, just without the
-  // line. Only a processor that was asked and refused is worth reporting.
-  const linked =
-    invoice.status === "DRAFT"
-      ? // Sending is what promotes a draft to SENT, a few lines below. Ask for
-        // the link as though that had already happened.
-        await attachPaymentLink(org, { ...invoice, status: "SENT" })
-      : await attachPaymentLink(org, invoice);
-
-  const payUrl = linked.ok ? linked.url : null;
-  const payLines = payUrl ? [`Pay online: ${payUrl}`, ""] : [];
-
-  // The invoice itself, so the client keeps the document rather than only a
-  // link — and so it is still readable in their inbox years later, when no
-  // link is going to resolve. Built after the pay link is attached, so the
-  // PDF carries that too.
-  //
-  // A failure here must not stop the invoice going out. A plain email with a
-  // pay link is still a working invoice; sending nothing would be far worse
-  // than sending it without the file.
-  let attachments;
-  try {
-    const document = await invoicePdfFor(org, invoice.id);
-    if (document) {
-      attachments = [
-        {
-          filename: document.filename,
-          content: document.bytes,
-          contentType: "application/pdf",
-        },
-      ];
-    }
-  } catch {
-    attachments = undefined;
-  }
-
-  const result = await sendMessage({
-    organizationId: org.id,
-    channel: "EMAIL",
-    to,
-    toName: invoice.client.displayName,
-    attachments,
-    subject: `Invoice ${invoice.number} from ${org.name}`,
-    body: [
-      `Hi ${invoice.client.displayName},`,
-      "",
-      `Invoice ${invoice.number} for ${amount} is attached.`,
-      invoice.dueDate
-        ? `Payment is due by ${invoice.dueDate.toDateString()}.`
-        : "",
-      "",
-      ...payLines,
-      `View it online: ${link}`,
-      "",
-      ...(await portalLine(invoice.clientId)),
-      "Thank you,",
-      org.name,
-    ].join("\n"),
-    relatedType: "invoice",
-    relatedId: invoice.id,
-    createdById: user.id,
+  const result = await deliverInvoice(org, id, {
+    to: text(formData, "email"),
+    actorId: user.id,
   });
 
-  if (!result.ok) return failed(result.error ?? "Could not send that invoice.");
+  if (!result.ok) {
+    return result.field
+      ? { ok: false, fieldErrors: { [result.field]: result.error } }
+      : failed(result.error);
+  }
 
-  await prisma.invoice.update({
-    where: { id },
-    data: {
-      status: invoice.status === "DRAFT" ? "SENT" : invoice.status,
-      sentAt: invoice.sentAt ?? new Date(),
-    },
-  });
-
-  await record({
-    organizationId: org.id,
-    userId: user.id,
-    action: "invoice.sent",
-    entityType: "INVOICE",
-    entityId: id,
-    summary: `Invoice ${invoice.number} sent to ${to}`,
-    metadata: { payLink: Boolean(payUrl) },
-  });
-
-  await sendToQuickBooksSoon(org.id, { invoices: [id] });
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
+
+  const { to } = result;
 
   // Marked sent either way, but never described as delivered when it was not.
   if (!result.delivered) {
@@ -617,13 +507,158 @@ export async function sendInvoice(
 
   // The invoice went out. If the processor refused a link, say so plainly
   // rather than letting the customer assume the email carried one.
-  if (!linked.ok && linked.reason === "failed") {
+  if (result.linkRefused) {
     return saved(
-      `Sent to ${to}, but without a Pay now link — ${linked.error}`,
+      `Sent to ${to}, but without a Pay now link — ${result.linkRefused}`,
     );
   }
 
-  return saved(payUrl ? `Sent to ${to}, with a Pay now link.` : `Sent to ${to}.`);
+  return saved(result.payUrl ? `Sent to ${to}, with a Pay now link.` : `Sent to ${to}.`);
+}
+
+// -------------------------------------------------------------- send later ---
+
+/** The furthest ahead an invoice can be set to go, so a mistyped year is caught. */
+const SEND_LATER_DAYS = 366;
+
+const sendLaterEmail = z.string().trim().email("Enter a valid email.");
+
+/**
+ * Sets a draft to be emailed to the client on a later day, by the morning
+ * run (src/lib/scheduled-invoices.ts).
+ *
+ * The invoice is dated that day and its due date moves with it, so the client
+ * gets an invoice dated the morning it arrives and owed as many days later as
+ * it was written to be. It also means a repeat set up afterwards counts its
+ * next invoice from the day this one goes, not from the day it was typed.
+ *
+ * Refused without an email account: somebody pressing Send is told when it was
+ * only saved to the outbox, but on the day nobody is watching.
+ */
+export async function scheduleInvoiceSend(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { user, org } = await requirePermission("invoices:send");
+  const zone = await viewerTimeZone();
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return failed("Missing invoice id.");
+
+  const day = String(formData.get("sendOn") ?? "").trim();
+  const sendOn = /^\d{4}-\d{2}-\d{2}$/.test(day) ? parseDate(day) : null;
+  if (!sendOn) return { ok: false, fieldErrors: { sendOn: "Pick a date." } };
+
+  // Compared as yyyy-MM-dd in the viewer's own time zone, where "tomorrow" is.
+  const now = new Date();
+  if (day <= formatIn(now, "yyyy-MM-dd", zone)) {
+    return {
+      ok: false,
+      fieldErrors: { sendOn: "Pick a day after today. To send it today, use Send invoice." },
+    };
+  }
+  const furthest = new Date(now.getTime() + SEND_LATER_DAYS * 24 * 60 * 60 * 1000);
+  if (day > formatIn(furthest, "yyyy-MM-dd", zone)) {
+    return { ok: false, fieldErrors: { sendOn: "Pick a day within the next year." } };
+  }
+
+  const invoice = await prisma.invoice.findFirst({
+    where: { id, organizationId: org.id },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      issueDate: true,
+      dueDate: true,
+      client: { select: { email: true } },
+      _count: { select: { lineItems: true } },
+    },
+  });
+  if (!invoice) return failed("That invoice no longer exists.");
+  if (invoice.status === "CANCELLED") return failed("This invoice has been cancelled.");
+  if (invoice.status !== "DRAFT") {
+    return failed("This invoice has already been sent. Use Send again to send it now.");
+  }
+  if (invoice._count.lineItems === 0) return failed("Add at least one line first.");
+
+  const to = text(formData, "email") ?? invoice.client.email;
+  if (!to) {
+    return {
+      ok: false,
+      fieldErrors: { email: "This client has no email address. Add one, or enter one here." },
+    };
+  }
+  const address = sendLaterEmail.safeParse(to);
+  if (!address.success) return { ok: false, fieldErrors: { email: "Enter a valid email." } };
+
+  if (!(await resolveEmailAccount(org.id))) {
+    return failed(
+      "Connect an email account under Settings → Email first. Without one, nothing can go out on its own.",
+    );
+  }
+
+  const dueDate = invoice.dueDate
+    ? new Date(sendOn.getTime() + (invoice.dueDate.getTime() - invoice.issueDate.getTime()))
+    : null;
+
+  const { count } = await prisma.invoice.updateMany({
+    where: { id, organizationId: org.id, status: "DRAFT" },
+    data: {
+      sendOn,
+      // The client's own address is followed if it changes before the day.
+      sendTo: address.data === invoice.client.email ? null : address.data,
+      sendScheduledById: user.id,
+      issueDate: sendOn,
+      dueDate,
+    },
+  });
+  if (count === 0) return failed("This invoice has just been sent.");
+
+  const when = formatIn(sendOn, "MMM d, yyyy", zone);
+
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "invoice.send-later",
+    entityType: "INVOICE",
+    entityId: id,
+    summary: `Invoice ${invoice.number} set to send to ${address.data} on ${when}`,
+  });
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+  return saved(`Set to send to ${address.data} on the morning of ${when}.`);
+}
+
+/** Takes the day off a draft, so it waits for somebody to send it. */
+export async function cancelInvoiceSend(formData: FormData) {
+  const { user, org } = await requirePermission("invoices:send");
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const invoice = await prisma.invoice.findFirst({
+    where: { id, organizationId: org.id, sendOn: { not: null } },
+    select: { id: true, number: true },
+  });
+  if (!invoice) return;
+
+  await prisma.invoice.updateMany({
+    where: { id, organizationId: org.id },
+    data: { sendOn: null, sendTo: null, sendScheduledById: null },
+  });
+
+  await record({
+    organizationId: org.id,
+    userId: user.id,
+    action: "invoice.send-later",
+    entityType: "INVOICE",
+    entityId: id,
+    summary: `Invoice ${invoice.number} will no longer send on its own`,
+  });
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
 }
 
 // ---------------------------------------------------------------- payments ---
@@ -1099,7 +1134,9 @@ export async function setInvoiceCancelled(formData: FormData) {
     await tx.invoice.update({
       where: { id },
       data: cancel
-        ? { status: "CANCELLED", cancelledAt: new Date() }
+        ? // Nor sent on its day, nor the morning after it is reinstated
+          // once that day has gone by.
+          { status: "CANCELLED", cancelledAt: new Date(), sendOn: null, sendTo: null, sendScheduledById: null }
         : {
             status: invoice.sentAt
               ? invoice.viewedAt
