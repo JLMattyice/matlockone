@@ -1,6 +1,6 @@
 import "server-only";
 
-import { endOfDay, startOfDay, subDays } from "date-fns";
+import { endOfDay } from "date-fns";
 
 import { record } from "./activity";
 import { entitlement } from "./billing/entitlement";
@@ -17,14 +17,10 @@ import type { Prisma } from "@/generated/prisma/client";
  *
  * A schedule says how often; the invoices in its series say what. Each period
  * the next invoice is made as a DRAFT, copied from the latest invoice in the
- * series, and whoever set the repeat up is told it is waiting. Drafts to
- * review are the default, so a wrong amount is caught by a person before a
- * customer ever sees it.
- *
- * A repeat set to send itself (autoSend) gives each draft its own issue date
- * as the day to go out, and the Send later run (src/lib/scheduled-invoices.ts)
- * emails it straight after — nothing is emailed from this file. Nobody is
- * asked to check those; they hear only if one cannot be sent.
+ * series, and whoever set the repeat up is told it is waiting. Nothing is
+ * emailed from here. The business chose drafts to review over invoices that
+ * send themselves, so a wrong amount is caught by a person before a customer
+ * ever sees it.
  *
  * Copying the latest invoice rather than the first is what lets a price change
  * carry forward: edit next month's draft and every month after it follows. A
@@ -48,9 +44,6 @@ export const MAX_DRAFTS_PER_RUN = 12;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** How late a repeat that sends itself may still send; older ones wait as drafts. */
-export const SEND_ITSELF_DAYS = 7;
-
 export type DraftedInvoice = {
   id: string;
   number: string;
@@ -65,7 +58,6 @@ type Schedule = {
   anchorDate: Date;
   nextIssueDate: Date;
   endDate: Date | null;
-  autoSend: boolean;
   createdById: string | null;
 };
 
@@ -122,18 +114,6 @@ async function draftNext(
     return null;
   }
 
-  // Auto-pay collects it: there is nothing for anybody to send or check, and
-  // the payment landing is what they hear about instead.
-  const charging =
-    (await prisma.autopaySubscription.count({
-      where: { scheduleId: schedule.id, status: { in: ["ACTIVE", "APPROVED"] } },
-    })) > 0;
-  // A run catching up on more than a week — a desktop that was off, a
-  // business that was locked — leaves those for somebody to check, rather
-  // than emailing a customer a stack of old invoices in one morning.
-  const sendsItself =
-    schedule.autoSend && !charging && issueDate >= startOfDay(subDays(now, SEND_ITSELF_DAYS));
-
   const following = nextInSeries(
     issueDate,
     schedule.frequency as RecurrenceFrequency,
@@ -185,11 +165,6 @@ async function draftNext(
         balanceCents: source.totalCents,
         notes: source.notes,
         terms: source.terms,
-        // Sent on the morning it is dated, or this morning when the run is
-        // a day or two late.
-        ...(sendsItself
-          ? { sendOn: issueDate, sendScheduledById: schedule.createdById }
-          : {}),
         // Whoever set the repeat up raised this, in effect — and it is who
         // hears when it is paid.
         createdById: schedule.createdById,
@@ -215,7 +190,7 @@ async function draftNext(
 
   if (!made) return null;
 
-  if (!charging && !sendsItself) await tellReviewers(schedule, made, actorId);
+  await tellReviewers(schedule, made, actorId);
 
   await record({
     organizationId: schedule.organizationId,
@@ -242,6 +217,13 @@ async function tellReviewers(
   draft: { id: string; number: string; clientName: string },
   actorId?: string,
 ) {
+  // Auto-pay collects it: there is nothing for anybody to send, and the
+  // payment landing is what they hear about instead.
+  const collecting = await prisma.autopaySubscription.count({
+    where: { scheduleId: schedule.id, status: { in: ["ACTIVE", "APPROVED"] } },
+  });
+  if (collecting > 0) return;
+
   await notify({
     organizationId: schedule.organizationId,
     userIds: await whoHandlesBilling(schedule.organizationId, schedule.createdById),

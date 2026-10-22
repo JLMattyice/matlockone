@@ -9,7 +9,6 @@ import { sweepPayLinks } from "@/lib/payments/reconcile";
 import { sweepQuickBooks } from "@/lib/quickbooks/sync";
 import { recordDueExpenses } from "@/lib/recurring-expenses";
 import { draftDueInvoices } from "@/lib/recurring-invoices";
-import { sendScheduledInvoices } from "@/lib/scheduled-invoices";
 import { sweepEveryBusiness } from "@/lib/workflows/run";
 
 /**
@@ -77,8 +76,6 @@ export async function GET(request: Request) {
   const payLinks = await sweepPayLinks();
   const result = await sweepEveryBusiness();
   const repeating = await draftDueInvoices();
-  // After the drafts, so a repeat that sends itself goes out the same morning.
-  const sendLater = await sendScheduledInvoices();
   const autopay = await syncAutopay();
   const bills = await recordDueExpenses();
   const freeMonths = await remindFreeMonths();
@@ -93,8 +90,6 @@ export async function GET(request: Request) {
       (result.failed.length > 0 ? `, ${result.failed.length} failed` : "") +
       `; ${repeating.drafted.length} repeating invoices drafted` +
       (repeating.failed.length > 0 ? `, ${repeating.failed.length} schedules failed` : "") +
-      `; send later: ${sendLater.sent.length} invoices sent` +
-      (sendLater.failed.length > 0 ? `, ${sendLater.failed.length} not sent` : "") +
       `; auto-pay: ${autopay.checked} checked, ${autopay.collected} payments recorded` +
       (autopay.unmatched > 0 ? `, ${autopay.unmatched} waiting for their invoice` : "") +
       (autopay.failed.length > 0 ? `, ${autopay.failed.length} failed` : "") +
@@ -116,8 +111,6 @@ export async function GET(request: Request) {
     payLinksFailed: payLinks.failed,
     drafted: repeating.drafted.length,
     draftFailed: repeating.failed,
-    scheduledSent: sendLater.sent.length,
-    scheduledNotSent: sendLater.failed.length,
     autopayCollected: autopay.collected,
     autopayFailed: autopay.failed,
     expensesRecorded: billsRecorded,

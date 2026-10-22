@@ -11,18 +11,15 @@ import { COLLECTING_STATUSES, turnOffAutopay } from "@/lib/autopay";
 import { INVOICE_REPEAT_FREQUENCIES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { describeRecurrence } from "@/lib/recurrence";
-import { resolveEmailAccount } from "@/lib/messaging";
 import { draftDueInvoices } from "@/lib/recurring-invoices";
-import { sendScheduledInvoices } from "@/lib/scheduled-invoices";
 import type { Prisma } from "@/generated/prisma/client";
 
 /**
  * Setting an invoice to repeat, changing how, and stopping it.
  *
  * The drafts themselves are made by src/lib/recurring-invoices.ts. Saving a
- * repeat whose next date is today makes that draft straight away — and sends
- * it, for a repeat that sends itself — rather than leaving somebody to wonder
- * until tomorrow morning whether it worked.
+ * repeat whose next date is today makes that draft straight away, rather
+ * than leaving somebody to wonder until tomorrow morning whether it worked.
  */
 
 const repeatSchema = z.object({
@@ -35,8 +32,6 @@ const repeatSchema = z.object({
     .max(24, "At most 24."),
   nextIssueDate: z.string().trim().min(1, "Pick the date of the next invoice."),
   endDate: z.string().trim().nullish(),
-  /** Email each one to the client on its day, rather than draft it for checking. */
-  autoSend: z.boolean(),
 });
 
 /** Noon, like every other date typed into a form here, so no timezone moves it a day. */
@@ -58,7 +53,6 @@ export async function saveInvoiceRepeat(
     interval: formData.get("interval"),
     nextIssueDate: formData.get("nextIssueDate"),
     endDate: text(formData, "endDate"),
-    autoSend: formData.get("autoSend") === "SEND",
   });
   if (!parsed.success) return invalid(parsed.error);
 
@@ -88,31 +82,11 @@ export async function saveInvoiceRepeat(
 
   const invoice = await prisma.invoice.findFirst({
     where: { id: input.invoiceId, organizationId: org.id },
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      scheduleId: true,
-      client: { select: { email: true } },
-    },
+    select: { id: true, number: true, status: true, scheduleId: true },
   });
   if (!invoice) return failed("That invoice no longer exists.");
   if (invoice.status === "CANCELLED") {
     return failed("This invoice has been cancelled. Repeat one that is not.");
-  }
-
-  // Refused now rather than found out on the day, when nobody is watching.
-  if (input.autoSend) {
-    if (!invoice.client.email) {
-      return failed(
-        "This client has no email address. Add one to the client, or make drafts to send yourself.",
-      );
-    }
-    if (!(await resolveEmailAccount(org.id))) {
-      return failed(
-        "Connect an email account under Settings → Email first, or make drafts to send yourself.",
-      );
-    }
   }
 
   // PayPal is charging on the rhythm it was given. Moving this one out from
@@ -129,7 +103,6 @@ export async function saveInvoiceRepeat(
     anchorDate: next,
     nextIssueDate: next,
     endDate: end,
-    autoSend: input.autoSend,
     isActive: true,
     // Whoever saves it last is who hears about each draft.
     createdById: user.id,
@@ -168,19 +141,13 @@ export async function saveInvoiceRepeat(
     action: "invoice.repeat",
     entityType: "INVOICE",
     entityId: invoice.id,
-    summary:
-      `Invoice ${invoice.number} set to repeat ${rhythm}, next on ${format(next, "MMM d, yyyy")}` +
-      (input.autoSend ? ", sent to the client by itself" : ""),
+    summary: `Invoice ${invoice.number} set to repeat ${rhythm}, next on ${format(next, "MMM d, yyyy")}`,
   });
 
-  const dueNow = next <= endOfDay(new Date());
-  const made = dueNow
-    ? await draftDueInvoices({ organizationId: org.id, scheduleId, actorId: user.id })
-    : { drafted: [], failed: [] };
-  const sending =
-    dueNow && input.autoSend
-      ? await sendScheduledInvoices({ organizationId: org.id, scheduleId })
-      : { sent: [], failed: [] };
+  const made =
+    next <= endOfDay(new Date())
+      ? await draftDueInvoices({ organizationId: org.id, scheduleId, actorId: user.id })
+      : { drafted: [], failed: [] };
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${invoice.id}`);
@@ -188,33 +155,15 @@ export async function saveInvoiceRepeat(
 
   if (made.failed.length > 0) {
     return saved(
-      `Repeating ${rhythm}, but today's invoice could not be made. It will be tried again on the next morning run.`,
+      `Repeating ${rhythm}, but today's draft could not be made. It will be tried again on the next morning run.`,
     );
   }
 
   const first = made.drafted[0];
-  const when = format(next, "MMM d, yyyy");
-
-  if (input.autoSend) {
-    const sent = sending.sent[0];
-    const notSent = sending.failed[0];
-    // Saved either way: the repeat stands, and the draft is there to send.
-    if (notSent) {
-      return saved(
-        `Repeating ${rhythm}. Today's invoice, ${notSent.number}, was made but not sent: ${notSent.error}`,
-      );
-    }
-    return saved(
-      sent
-        ? `Repeating ${rhythm}. Today's invoice, ${sent.number}, was sent to ${sent.to}.`
-        : `Repeating ${rhythm}. The next one is sent to the client on ${when}.`,
-    );
-  }
-
   return saved(
     first
       ? `Repeating ${rhythm}. Today's draft, ${first.number}, is ready to check.`
-      : `Repeating ${rhythm}. The next draft is made on ${when}.`,
+      : `Repeating ${rhythm}. The next draft is made on ${format(next, "MMM d, yyyy")}.`,
   );
 }
 

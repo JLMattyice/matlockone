@@ -848,18 +848,6 @@ model Invoice {
   paidAt           DateTime?
   cancelledAt      DateTime?
 
-  /// Send later: the day the morning run emails this draft to the client.
-  /// Set by somebody choosing a date, or by a repeat that sends itself.
-  /// Cleared as the run claims it, so it goes out once however many runs
-  /// overlap; sending it by hand first clears it too.
-  sendOn            DateTime?
-  /// Who it goes to on that day; null is the client's address at the time.
-  sendTo            String?
-  /// Who chose the day, and so who hears if it cannot go. A plain id rather
-  /// than a relation: once that person has gone, everyone who can send
-  /// invoices hears instead.
-  sendScheduledById String?
-
   subtotalCents   Int    @default(0)
   discountType    String @default("NONE")
   discountValue   Int    @default(0)
@@ -918,16 +906,14 @@ model Invoice {
   @@index([organizationId, status])
   @@index([organizationId, dueDate])
   @@index([scheduleId])
-  @@index([sendOn])
 }
 
 /// An invoice that repeats.
 ///
 /// Each period the morning run makes the next invoice in the series as a
 /// DRAFT, copied from the most recent one that was not cancelled, so a price
-/// changed on one carries forward. Unless the repeat is set to send itself,
-/// nothing is emailed: a person checks each draft and sends it, the same as
-/// any other invoice.
+/// changed on one carries forward. Nothing is emailed: a person checks each
+/// draft and sends it, the same as any other invoice.
 ///
 /// The schedule holds no line items of its own. The series is the pattern,
 /// which is why deleting every invoice in it stops the schedule.
@@ -950,9 +936,6 @@ model InvoiceSchedule {
   endDate       DateTime?
   isActive      Boolean   @default(true)
   lastRunAt     DateTime?
-  /// Email each invoice to the client on its day, instead of leaving a draft
-  /// for somebody to check and send. Off unless somebody chooses it.
-  autoSend      Boolean   @default(false)
 
   /// Auto-pay: the customer approves once at PayPal and is charged each
   /// period. The token is the whole credential in the invite link sent to the

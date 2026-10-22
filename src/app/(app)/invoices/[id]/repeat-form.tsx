@@ -50,7 +50,6 @@ export function RepeatForm({
     interval: number;
     nextIssueDate: string;
     endDate: string | null;
-    autoSend: boolean;
   } | null;
   openLabel: string;
   /** Shown beside the button while the form is closed — the Stop button. */
@@ -64,7 +63,6 @@ export function RepeatForm({
     initial?.frequency ?? "MONTHLY",
   );
   const [every, setEvery] = useState(String(initial?.interval ?? 1));
-  const [autoSend, setAutoSend] = useState(initial?.autoSend ?? false);
   const [dateTouched, setDateTouched] = useState(false);
 
   const suggested = (f: InvoiceRepeatFrequency, n: string) =>
@@ -83,21 +81,11 @@ export function RepeatForm({
     if (state.ok) setOpen(false);
   }, [state]);
 
-  // Read from the props as they are when the form opens, not when the page
-  // first drew it: Send later moves this invoice's date without leaving the
-  // page, and the suggested next date has to follow it.
-  function openForm() {
-    setNext(initial?.nextIssueDate ?? suggested(frequency, every));
-    setAutoSend(initial?.autoSend ?? false);
-    setDateTouched(false);
-    setOpen(true);
-  }
-
   if (!open) {
     return (
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={openForm}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
             {openLabel}
           </Button>
           {aside}
@@ -150,33 +138,11 @@ export function RepeatForm({
         </Field>
       </div>
 
-      <fieldset className="space-y-2">
-        <legend className="mb-1.5 text-sm font-medium text-ink">Each time</legend>
-        <Choice
-          value="DRAFT"
-          checked={!autoSend}
-          onChange={() => setAutoSend(false)}
-          title="Make a draft for me to check"
-          detail="You're told when it's ready. Nothing goes to the client until you send it."
-        />
-        <Choice
-          value="SEND"
-          checked={autoSend}
-          onChange={() => setAutoSend(true)}
-          title="Send it to the client"
-          detail="Emailed with its PDF and pay link on the morning of its date. You hear only if it can't go."
-        />
-      </fieldset>
-
       <Field
-        label={autoSend ? "Next one on" : "Next draft on"}
+        label="Next draft on"
         htmlFor="repeat-next"
         error={state.fieldErrors?.nextIssueDate}
-        hint={
-          autoSend
-            ? "The new invoice's issue date, and the day it's sent. Today sends it now."
-            : "The new invoice's issue date. Today makes it now."
-        }
+        hint="The new invoice's issue date. Today makes it now."
       >
         <Input
           id="repeat-next"
@@ -207,8 +173,8 @@ export function RepeatForm({
       </Field>
 
       <p className="text-xs text-ink-subtle">
-        Each one copies the latest invoice in the series, so a change you make
-        to one carries forward.
+        Each draft copies the latest invoice in the series, so a change you make
+        to one carries forward. Nothing is sent until you send it.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -222,36 +188,5 @@ export function RepeatForm({
 
       <ActionStatus state={state} className="text-xs" />
     </form>
-  );
-}
-
-function Choice({
-  value,
-  checked,
-  onChange,
-  title,
-  detail,
-}: {
-  value: "DRAFT" | "SEND";
-  checked: boolean;
-  onChange: () => void;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <label className="flex cursor-pointer gap-2.5 rounded-lg border border-line px-3 py-2.5 transition-colors hover:border-line-strong has-checked:border-brand has-checked:bg-brand/10 has-focus-visible:ring-2 has-focus-visible:ring-brand/40">
-      <input
-        type="radio"
-        name="autoSend"
-        value={value}
-        checked={checked}
-        onChange={onChange}
-        className="mt-1 accent-brand"
-      />
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-ink">{title}</span>
-        <span className="block text-xs text-ink-muted">{detail}</span>
-      </span>
-    </label>
   );
 }

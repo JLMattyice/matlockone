@@ -271,11 +271,6 @@ export default async function InvoicesPage({
 
                       <Td>
                         <Badge tone={meta.tone}>{meta.label}</Badge>
-                        {invoice.status === "DRAFT" && invoice.sendOn ? (
-                          <span className="mt-0.5 block whitespace-nowrap text-xs text-brand">
-                            Sends {formatIn(invoice.sendOn, "MMM d", zone)}
-                          </span>
-                        ) : null}
                       </Td>
                     </Tr>
                   );
