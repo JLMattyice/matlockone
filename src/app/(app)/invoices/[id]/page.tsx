@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { addDays } from "date-fns";
 import { FileText,
   ArrowLeft,
   Ban,
   Briefcase,
+  CalendarClock,
   Copy,
   Pencil,
   Repeat,
@@ -14,6 +16,7 @@ import { FileText,
 
 import { MarkPaid, PaymentForm, SendInvoice } from "./payment-form";
 import {
+  cancelInvoiceSend,
   deleteInvoice,
   deletePayment,
   duplicateInvoice,
@@ -22,6 +25,7 @@ import {
 import { getInvoice, getInvoiceSeries } from "../queries";
 import { AutopayCard } from "./autopay-card";
 import { RepeatCard } from "./repeat-card";
+import { SendLater } from "./send-later";
 import { CopyLink } from "../../estimates/[id]/estimate-actions";
 import { DocumentView } from "@/components/documents/document-view";
 import { PrintButton } from "@/components/documents/print-button";
@@ -99,6 +103,20 @@ export default async function InvoiceDetailPage({
   const cancelled = invoice.status === "CANCELLED";
   const isDraft = invoice.status === "DRAFT";
 
+  // Send later: the day it goes, if one is set, and the days it can be given.
+  const scheduled = isDraft && invoice.sendOn ? invoice.sendOn : null;
+  const ymd = (date: Date) => formatIn(date, "yyyy-MM-dd", zone);
+  const tomorrow = ymd(addDays(new Date(), 1));
+  const sendLater = {
+    defaultDate: scheduled
+      ? ymd(scheduled)
+      : ymd(invoice.issueDate) > tomorrow
+        ? ymd(invoice.issueDate)
+        : tomorrow,
+    minDate: tomorrow,
+    maxDate: ymd(addDays(new Date(), 366)),
+  };
+
   // What deleting this one would actually cost, so the confirmation can say so
   // rather than the button simply being missing and unexplained.
   const deletion = invoiceDeletion({
@@ -172,6 +190,10 @@ export default async function InvoiceDetailPage({
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
               {invoice.sentAt ? (
                 <span>Sent {formatIn(invoice.sentAt, "MMM d, h:mm a", zone)}</span>
+              ) : scheduled ? (
+                <span className="text-brand">
+                  Set to send {formatIn(scheduled, "MMM d, yyyy", zone)}
+                </span>
               ) : (
                 <span>Not sent yet</span>
               )}
@@ -309,6 +331,13 @@ export default async function InvoiceDetailPage({
                   alreadySent={Boolean(invoice.sentAt)}
                 />
               ) : null}
+              {sendable && isDraft && !scheduled ? (
+                <SendLater
+                  invoiceId={invoice.id}
+                  defaultEmail={invoice.client.email}
+                  {...sendLater}
+                />
+              ) : null}
               {canRecord && !cancelled && invoice.balanceCents > 0 ? (
                 <MarkPaid
                   invoiceId={invoice.id}
@@ -319,6 +348,34 @@ export default async function InvoiceDetailPage({
                 />
               ) : null}
             </div>
+
+            {sendable && scheduled ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2.5">
+                <p className="flex min-w-0 flex-1 items-center gap-2 text-sm text-ink">
+                  <CalendarClock className="h-4 w-4 shrink-0 text-brand" strokeWidth={2} />
+                  <span>
+                    Goes to{" "}
+                    <span className="font-medium">
+                      {invoice.sendTo ?? invoice.client.email ?? "the client"}
+                    </span>{" "}
+                    on the morning of{" "}
+                    <span className="font-medium">{formatIn(scheduled, "MMM d, yyyy", zone)}</span>.
+                  </span>
+                </p>
+                <SendLater
+                  invoiceId={invoice.id}
+                  defaultEmail={invoice.sendTo ?? invoice.client.email}
+                  label="Change"
+                  {...sendLater}
+                />
+                <form action={cancelInvoiceSend}>
+                  <input type="hidden" name="id" value={invoice.id} />
+                  <ConfirmButton variant="ghost" size="md" confirmLabel="Don't send it?">
+                    Don’t send
+                  </ConfirmButton>
+                </form>
+              </div>
+            ) : null}
 
             {!isDraft && !cancelled ? (
               <div>

@@ -25,7 +25,10 @@ export function repeatSummary(series: InvoiceSeries): string {
   const rhythm = describeRecurrence(series);
 
   if (series.isActive) {
-    return `${rhythm} · next draft ${format(series.nextIssueDate, "MMM d, yyyy")}`;
+    const next = format(series.nextIssueDate, "MMM d, yyyy");
+    return series.autoSend
+      ? `${rhythm} · next sent to the client ${next}`
+      : `${rhythm} · next draft ${next}`;
   }
 
   if (series.endDate && series.nextIssueDate > endOfDay(series.endDate)) {
@@ -102,7 +105,7 @@ export function RepeatCard({
         description={
           series
             ? repeatSummary(series)
-            : "Make the next one as a draft on a schedule, for you to check and send."
+            : "Make the next one on a schedule, as a draft for you to check or sent to the client by itself."
         }
       />
 
@@ -157,7 +160,7 @@ export function RepeatCard({
 
       {series?.isActive && series.endDate ? (
         <p className="border-b border-line px-5 py-3 text-xs text-ink-muted">
-          No drafts after {format(series.endDate, "MMM d, yyyy")}.
+          None after {format(series.endDate, "MMM d, yyyy")}.
         </p>
       ) : null}
 
@@ -180,6 +183,7 @@ export function RepeatCard({
                     interval: series.interval,
                     nextIssueDate: day(nextDate ?? today),
                     endDate: series.endDate ? day(series.endDate) : null,
+                    autoSend: series.autoSend,
                   }
                 : null
             }
