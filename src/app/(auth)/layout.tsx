@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SiteAnalytics } from "@/components/site-analytics";
 import { MatlockMark } from "@/components/ui/matlock-mark";
 
 export default function AuthLayout({
@@ -33,6 +34,8 @@ export default function AuthLayout({
           </a>
         </p>
       </footer>
+
+      {process.env.VERCEL ? <SiteAnalytics /> : null}
     </div>
   );
 }

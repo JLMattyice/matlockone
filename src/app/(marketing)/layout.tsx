@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Inter, Playfair_Display } from "next/font/google";
 import { ArrowRight } from "lucide-react";
 
+import { SiteAnalytics } from "@/components/site-analytics";
 import { buttonClasses } from "@/components/ui/button";
 import { getContext } from "@/lib/auth";
 import { demoAvailable } from "@/lib/demo";
@@ -223,6 +224,8 @@ export default async function MarketingLayout({
           </p>
         </div>
       </footer>
+
+      {process.env.VERCEL ? <SiteAnalytics /> : null}
     </div>
   );
 }

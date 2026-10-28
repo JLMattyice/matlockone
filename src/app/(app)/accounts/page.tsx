@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Building2, CircleDollarSign, UserPlus, Users } from "lucide-react";
 
-import { allBusinesses, allTrialCodes, newestPeople, type BusinessRow } from "./queries";
+import { FunnelCard } from "./funnel-card";
+import { allBusinesses, allTrialCodes, newestPeople, signupFunnel, type BusinessRow } from "./queries";
 import { TrialCodesCard } from "./trial-codes-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +22,10 @@ import {
 import { PLAN_ORDER, PLANS } from "@/lib/checkout/plans";
 import { resolveAppUrl } from "@/lib/config";
 import { asStatus, ROLE_META, ROLES, type Role } from "@/lib/constants";
+import { demoAvailable } from "@/lib/demo";
 import { formatMoney } from "@/lib/money";
 import { requireOperator } from "@/lib/operator";
+import { summarizeFunnel } from "@/lib/signup-funnel";
 import { formatIn, todayIn } from "@/lib/time-zone";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
@@ -45,14 +48,17 @@ export default async function AccountsPage({
   const filter: Standing | null = isStanding(show) ? show : null;
 
   const now = new Date();
-  const [businesses, people, codes, zone] = await Promise.all([
+  const [businesses, people, codes, zone, funnel, demo] = await Promise.all([
     allBusinesses(),
     newestPeople(),
     allTrialCodes(),
     viewerTimeZone(),
+    signupFunnel(),
+    demoAvailable(),
   ]);
 
   const summary = summarizeAccounts(businesses, now);
+  const funnelColumns = summarizeFunnel(funnel.businesses, funnel.demoSignIns, now);
   const rows = businesses
     .map((business) => ({ business, standing: standingOf(business, now) }))
     .filter((row) => !filter || row.standing === filter);
@@ -104,6 +110,8 @@ export default async function AccountsPage({
         />
       </div>
 
+      <FunnelCard columns={funnelColumns} showDemo={demo} />
+
       <Card>
         <CardHeader
           title="Businesses"
@@ -150,6 +158,7 @@ export default async function AccountsPage({
                   key={business.id}
                   business={business}
                   standing={standing}
+                  wentToPayPalAt={funnel.wentToPayPal.get(business.id) ?? null}
                   day={day}
                   lastSeen={lastSeen}
                 />
@@ -218,11 +227,14 @@ export default async function AccountsPage({
 function BusinessLine({
   business,
   standing,
+  wentToPayPalAt,
   day,
   lastSeen,
 }: {
   business: BusinessRow;
   standing: Standing;
+  /** The first time it left for PayPal, if it ever did. */
+  wentToPayPalAt: Date | null;
   day: (date: Date) => string;
   lastSeen: (date: Date | null) => string;
 }) {
@@ -242,6 +254,8 @@ function BusinessLine({
         <span className="block text-xs text-ink-subtle">
           Signed up {day(business.createdAt)}
           {business.trialCode ? ` · code ${business.trialCode.code}` : null}
+          {/* Who got as far as paying and stopped — the ones worth an email. */}
+          {standing === "unpaid" && wentToPayPalAt ? ` · stopped at PayPal ${day(wentToPayPalAt)}` : null}
         </span>
       </Td>
       <Td>

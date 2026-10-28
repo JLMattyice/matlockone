@@ -352,6 +352,24 @@ exempt in the Supabase SQL editor:
 UPDATE "Organization" SET "billingExempt" = true WHERE "slug" = '<its slug>';
 ```
 
+## Counting visits and sign-ups
+
+Two halves, both seen only by the operator:
+
+- **Visits** — how many people open the website, sign-up, sign-in and billing
+  screens, where they came from, on what device — are counted by Vercel Web
+  Analytics. Turn it on once in the Vercel dashboard: the project → Analytics
+  → Enable. Until then the counter's script finds nothing to report to, and
+  nothing breaks. It runs only on Vercel, never inside a workspace, sets no
+  cookies, and drops everything from an address except the path and any
+  `utm_` tags. Read the numbers in the same Analytics tab. Links you share can
+  carry `?utm_source=facebook` (or a campaign name) to show up there by name.
+- **How far each business gets** after the sign-up form — picked a plan,
+  paid or started a free month, started using it — is the "Sign-up funnel"
+  card on the Accounts page (`OPERATOR_EMAILS` only). Trips to PayPal that
+  were never finished, and demo sign-ins, are counted from the day this
+  shipped; everything else goes back to the first sign-up.
+
 ## Forgot password
 
 "Forgot password?" on the sign-in screen emails a link to choose a new

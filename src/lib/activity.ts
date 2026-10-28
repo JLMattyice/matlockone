@@ -4,6 +4,7 @@ import { subDays } from "date-fns";
 
 import { prisma } from "./db";
 import { can, type Actor } from "./permissions";
+import { FUNNEL_PREFIX } from "./signup-funnel";
 import { formatIn, inZone } from "./time-zone";
 
 /**
@@ -339,6 +340,9 @@ function visibleTo(viewer: Actor) {
   return {
     ...(actions.length ? { action: { notIn: actions } } : {}),
     ...(entities.length ? { entityType: { notIn: entities } } : {}),
+    // The operator's sign-up counts share this table but are nobody's news
+    // inside the business, whatever their role (see signup-funnel.ts).
+    NOT: { action: { startsWith: FUNNEL_PREFIX } },
   };
 }
 

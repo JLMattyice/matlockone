@@ -13,6 +13,7 @@ import {
 } from "@/lib/business-types";
 import { dataStaysOnThisMachine, signupOpen } from "@/lib/config";
 import { prisma } from "@/lib/db";
+import { noteDemoSignIn } from "@/lib/funnel-events";
 import { hashPassword, passwordProblem } from "@/lib/password";
 import { requestReset, userForResetToken } from "@/lib/password-reset";
 import { forgetRememberedEmail, rememberEmail } from "@/lib/remembered-email";
@@ -136,6 +137,9 @@ export async function loginAction(
   // waiting on the screen next time.
   if (remember) await rememberEmail(result.user.email);
   else await forgetRememberedEmail();
+
+  // For the operator's sign-up counts: trying the demo is a step on the way.
+  await noteDemoSignIn(result.user);
 
   // Only a path on this site, so ?next= cannot bounce somebody to a
   // look-alike site the moment they have signed in.

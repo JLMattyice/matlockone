@@ -18,10 +18,11 @@ import { middleware } from "@/middleware";
  *
  * Words cannot be tested for being right, but they can be tested for drifting
  * away from the code they describe. The policy states the grace period, so it
- * must state the one billing uses; it names three cookies and no tracking, so
- * a fourth cookie or an analytics package fails here until the page is
- * updated to say so. And somebody about to sign up has to be able to read
- * them without an account.
+ * must state the one billing uses; it names three cookies and one visit
+ * counter on the public pages, so a fourth cookie, another analytics package
+ * or the counter inside a workspace fails here until the page is updated to
+ * say so. And somebody about to sign up has to be able to read them without
+ * an account.
  */
 
 const render = (page: () => React.ReactElement) =>
@@ -104,7 +105,7 @@ describe("what the Privacy Policy promises", () => {
     ]);
   });
 
-  it("is still true about tracking: no analytics or advertising packages", () => {
+  it("is still true about tracking: Vercel's visit counter and nothing else", () => {
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../package.json"), "utf8"));
     const names = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
 
@@ -113,6 +114,26 @@ describe("what the Privacy Policy promises", () => {
         name,
       ),
     );
-    expect(trackers).toEqual([]);
+    expect(trackers).toEqual(["@vercel/analytics"]);
+    expect(render(PrivacyPage)).toContain("counts visits to the website");
+  });
+
+  it("is still true that nothing inside a workspace is counted", () => {
+    // The policy says Vercel counts the website, signing up and in, and the
+    // billing screen. Mounted in any other layout, it would count more.
+    const files = sourceFiles(SRC).map((file) => ({
+      name: path.relative(SRC, file).replace(/\\/g, "/"),
+      text: fs.readFileSync(file, "utf8"),
+    }));
+
+    expect(files.filter((file) => file.text.includes("@vercel/analytics")).map((file) => file.name)).toEqual([
+      "components/site-analytics.tsx",
+    ]);
+    expect(
+      files
+        .filter((file) => /<SiteAnalytics\b/.test(file.text))
+        .map((file) => file.name)
+        .sort(),
+    ).toEqual(["app/(auth)/layout.tsx", "app/(billing)/layout.tsx", "app/(marketing)/layout.tsx"]);
   });
 });

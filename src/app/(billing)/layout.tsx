@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { logoutAction } from "@/app/(auth)/actions";
+import { SiteAnalytics } from "@/components/site-analytics";
 import { MatlockMark } from "@/components/ui/matlock-mark";
 
 /**
@@ -29,6 +30,8 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
       <main className="flex flex-1 justify-center px-4 pb-12">
         <div className="w-full max-w-4xl">{children}</div>
       </main>
+
+      {process.env.VERCEL ? <SiteAnalytics /> : null}
     </div>
   );
 }

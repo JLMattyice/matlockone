@@ -19,6 +19,7 @@ import { isPlan } from "@/lib/checkout/plans";
 import { cancelSubscription, paypalConfig, revisePlan } from "@/lib/checkout/paypal";
 import { dataStaysOnThisMachine, resolveAppUrl } from "@/lib/config";
 import { prisma } from "@/lib/db";
+import { noteCheckout } from "@/lib/funnel-events";
 
 /**
  * Choosing a plan: off to PayPal to approve it, and back to the billing
@@ -75,8 +76,9 @@ export async function choosePlan(formData: FormData) {
   const config = paypalConfig();
   const appUrl = resolveAppUrl();
 
+  const revising = Boolean(config && org.subscriptionId && org.subscriptionStatus === "ACTIVE");
   const result =
-    config && org.subscriptionId && org.subscriptionStatus === "ACTIVE"
+    config && revising && org.subscriptionId
       ? await revisePlan(config, {
           subscriptionId: org.subscriptionId,
           plan,
@@ -100,6 +102,10 @@ export async function choosePlan(formData: FormData) {
     console.error(`[billing] Could not start checkout for ${org.id}: ${result.error}`);
     redirect(`${BILLING_PATH}?error=${config ? "paypal" : "setup"}`);
   }
+
+  // The one step of signing up that leaves no trace when it is abandoned. A
+  // paying business changing plans is past it already.
+  if (!revising) await noteCheckout(org, user.id, { plan, interval });
 
   redirect(result.approveUrl);
 }

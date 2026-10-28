@@ -18,6 +18,8 @@ import {
   type ActivityEvent,
 } from "@/lib/activity";
 import { prisma } from "@/lib/db";
+import { noteCheckout } from "@/lib/funnel-events";
+import { CHECKOUT_ACTION, FUNNEL_PREFIX } from "@/lib/signup-funnel";
 
 /**
  * The activity timeline.
@@ -276,6 +278,15 @@ describe("recentActivity", () => {
     const events = await recentActivity(organizationId, OWNER, 2);
     expect(events).toHaveLength(2);
     expect(events[0].summary).toBe("Three");
+  });
+
+  it("never shows the operator's sign-up counts, even to the owner", async () => {
+    await noteCheckout({ id: organizationId }, userId, { plan: "business", interval: "monthly" });
+
+    const events = await recentActivity(organizationId, OWNER, 50);
+    expect(events.some((event) => event.action.startsWith(FUNNEL_PREFIX))).toBe(false);
+    // Written all the same, for the Accounts page to read.
+    expect(await prisma.auditLog.count({ where: { organizationId, action: CHECKOUT_ACTION } })).toBe(1);
   });
 });
 

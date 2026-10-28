@@ -18,9 +18,12 @@ export const metadata: Metadata = {
  * (password.ts), AES-256-GCM for connection secrets (secret-box.ts), what a
  * session records (Session.userAgent, Session.ipAddress), what a pay link
  * sends a processor (payments/providers.ts PaymentRequest), and what a
- * calendar feed contains (calendar-feed.ts — no amounts). There is no
- * analytics or advertising code anywhere in the app; adding any means
- * changing this page in the same commit.
+ * calendar feed contains (calendar-feed.ts — no amounts). The only analytics
+ * is Vercel Web Analytics, mounted by the website, sign-in and billing
+ * layouts alone (site-analytics.tsx, with what it sends trimmed by
+ * visit-url.ts), plus the sign-up steps noted in funnel-events.ts. There is no
+ * advertising code; any more of either means changing this page in the same
+ * commit.
  */
 export default function PrivacyPage() {
   return (
@@ -31,7 +34,7 @@ export default function PrivacyPage() {
         "We keep what you put into Matlock One so we can run it for you. We don’t sell it, advertise with it, or track you around the web.",
         "Your customers’ details belong to your business. We look after them on your behalf.",
         "It’s stored with Vercel and Supabase in the United States, and goes to other services only to do a job you asked for.",
-        "Three cookies, all needed to sign you in. No analytics or advertising cookies.",
+        "Three cookies, all needed to sign you in. No analytics or advertising cookies. We count visits to our website without them, and nothing inside your workspace is counted.",
         `Ending a plan deletes nothing. To have your data deleted, email ${LEGAL_EMAIL}.`,
       ]}
     >
@@ -91,6 +94,14 @@ export default function PrivacyPage() {
               dates.
             </>,
             <>
+              <strong>Visits to our website:</strong> Vercel counts visits to matlockone.com, the
+              sign-up and sign-in screens and the billing screen — which page, the site or link
+              that sent you, and your country, browser and kind of device. It sets no cookies and
+              can’t follow you to other websites, and nothing you do inside your workspace is
+              counted. We also note when a business leaves for PayPal to choose a plan, and when
+              someone signs in to the demo, so we can see how far people get through signing up.
+            </>,
+            <>
               <strong>Time on the clock:</strong> when each team member clocks in and out, and
               when they start and stop work on a job. No location is recorded.
             </>,
@@ -132,6 +143,7 @@ export default function PrivacyPage() {
             "run Matlock One and the features you use,",
             "keep accounts and data secure and stop abuse,",
             "take payment for your plan,",
+            "see how many people visit and how far they get through signing up, so we can make it easier,",
             "send you the emails the service needs, such as password resets and billing notices,",
             "help you when you ask for support, and",
             "meet our legal obligations.",
@@ -147,7 +159,8 @@ export default function PrivacyPage() {
         <LegalList
           items={[
             <>
-              <strong>Vercel</strong> hosts the website and the app (United States).
+              <strong>Vercel</strong> hosts the website and the app, and counts visits to the
+              website (United States).
             </>,
             <>
               <strong>Supabase</strong> stores the database and your files and photos (United

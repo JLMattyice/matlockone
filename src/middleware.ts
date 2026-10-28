@@ -74,7 +74,9 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except Next internals, the API surface, and static files.
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Everything except Next internals, the API surface, and static files —
+    // and Vercel's own paths, where the visit counter's script and reports go
+    // (see components/site-analytics.tsx); sent to sign-in, it counts nobody.
+    "/((?!api|_next/static|_next/image|_vercel|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
