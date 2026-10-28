@@ -36,6 +36,46 @@ export async function allBusinesses() {
 
 export type BusinessRow = Awaited<ReturnType<typeof allBusinesses>>[number];
 
+/**
+ * What the sign-up funnel needs (see src/lib/signup-funnel.ts): how far each
+ * business got, when each first left for PayPal, and every demo sign-in.
+ */
+export async function signupFunnel() {
+  const [orgs, checkouts, demo] = await Promise.all([
+    prisma.organization.findMany({
+      where: { isDemo: false },
+      select: {
+        id: true,
+        createdAt: true,
+        billingExempt: true,
+        licenseKey: true,
+        paidThrough: true,
+        trialEndsAt: true,
+        _count: { select: { clients: true, jobs: true, estimates: true, invoices: true } },
+      },
+    }),
+    prisma.auditLog.findMany({
+      where: { action: CHECKOUT_ACTION },
+      orderBy: { createdAt: "asc" },
+      select: { organizationId: true, createdAt: true },
+    }),
+    prisma.auditLog.findMany({ where: { action: DEMO_ACTION }, select: { createdAt: true } }),
+  ]);
+
+  const wentToPayPal = new Map<string, Date>();
+  for (const row of checkouts) {
+    if (!wentToPayPal.has(row.organizationId)) wentToPayPal.set(row.organizationId, row.createdAt);
+  }
+
+  const businesses: FunnelFields[] = orgs.map(({ _count, ...org }) => ({
+    ...org,
+    wentToPayPalAt: wentToPayPal.get(org.id) ?? null,
+    records: _count.clients + _count.jobs + _count.estimates + _count.invoices,
+  }));
+
+  return { businesses, wentToPayPal, demoSignIns: demo.map((row) => row.createdAt) };
+}
+
 /** The people who most recently made an account, in any business. */
 export async function newestPeople(take = 50) {
   return prisma.user.findMany({
@@ -79,43 +119,3 @@ export async function allTrialCodes() {
 }
 
 export type TrialCodeRow = Awaited<ReturnType<typeof allTrialCodes>>[number];
-
-/**
- * What the sign-up funnel needs (see src/lib/signup-funnel.ts): how far each
- * business got, when each first left for PayPal, and every demo sign-in.
- */
-export async function signupFunnel() {
-  const [orgs, checkouts, demo] = await Promise.all([
-    prisma.organization.findMany({
-      where: { isDemo: false },
-      select: {
-        id: true,
-        createdAt: true,
-        billingExempt: true,
-        licenseKey: true,
-        paidThrough: true,
-        trialEndsAt: true,
-        _count: { select: { clients: true, jobs: true, estimates: true, invoices: true } },
-      },
-    }),
-    prisma.auditLog.findMany({
-      where: { action: CHECKOUT_ACTION },
-      orderBy: { createdAt: "asc" },
-      select: { organizationId: true, createdAt: true },
-    }),
-    prisma.auditLog.findMany({ where: { action: DEMO_ACTION }, select: { createdAt: true } }),
-  ]);
-
-  const wentToPayPal = new Map<string, Date>();
-  for (const row of checkouts) {
-    if (!wentToPayPal.has(row.organizationId)) wentToPayPal.set(row.organizationId, row.createdAt);
-  }
-
-  const businesses: FunnelFields[] = orgs.map(({ _count, ...org }) => ({
-    ...org,
-    wentToPayPalAt: wentToPayPal.get(org.id) ?? null,
-    records: _count.clients + _count.jobs + _count.estimates + _count.invoices,
-  }));
-
-  return { businesses, wentToPayPal, demoSignIns: demo.map((row) => row.createdAt) };
-}
