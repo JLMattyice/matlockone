@@ -124,3 +124,17 @@ export function clockMinutes(entry: { clockedInAt: Date; clockedOutAt: Date | nu
   const end = entry.clockedOutAt ?? now;
   return Math.max(0, Math.round((end.getTime() - entry.clockedInAt.getTime()) / MINUTE));
 }
+
+/**
+ * Minutes of time on a job: what a finished entry stored, or what a running
+ * timer has counted so far — capped where stopping it would cap it, so a
+ * timesheet read while it runs agrees with the one read after.
+ */
+export function timerMinutes(
+  entry: { startedAt: Date; endedAt: Date | null; minutes: number },
+  now = new Date(),
+) {
+  if (entry.endedAt) return entry.minutes;
+  const running = Math.round((now.getTime() - entry.startedAt.getTime()) / MINUTE);
+  return Math.min(TIMER_MAX_MINUTES, Math.max(0, running));
+}

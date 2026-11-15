@@ -23,10 +23,28 @@ export type ClockRow = {
   inValue: string;
   outValue: string;
   editedBy: string | null;
+  /** Still open from an earlier day: nobody clocked out. */
+  forgotten?: boolean;
 };
 
-/** One stretch on the clock, which a manager can open and correct. */
-export function ClockEntryRow({ row, canFix }: { row: ClockRow; canFix: boolean }) {
+/**
+ * One stretch on the clock, which a manager can open and correct.
+ *
+ * `compact` is for a timesheet that has already said whose it is and which
+ * day: the row then gives only the times. `hideHours` is for the only stretch
+ * of its day there, whose hours the day's own total has just said.
+ */
+export function ClockEntryRow({
+  row,
+  canFix,
+  compact = false,
+  hideHours = false,
+}: {
+  row: ClockRow;
+  canFix: boolean;
+  compact?: boolean;
+  hideHours?: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [state, save] = useActionState<ActionState, FormData>(fixClockEntry, IDLE);
   const keep = useKeepTyped(state);
@@ -35,18 +53,43 @@ export function ClockEntryRow({ row, canFix }: { row: ClockRow; canFix: boolean 
     if (state.ok) setEditing(false);
   }, [state]);
 
+  const times = `${row.inLabel} – ${row.outLabel ?? "now"}`;
+  const fixedBy = row.editedBy ? `fixed by ${row.editedBy}` : null;
+
   return (
-    <li className="px-5 py-3">
+    <li className={compact ? "py-2" : "px-5 py-3"}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-ink">{row.person}</p>
-          <p className="tabular text-xs text-ink-muted">
-            {row.day} · {row.inLabel} – {row.outLabel ?? "now"}
-            {row.editedBy ? ` · fixed by ${row.editedBy}` : ""}
-          </p>
+          {compact ? (
+            <p className="tabular text-sm text-ink">
+              {times}
+              {fixedBy ? <span className="text-xs text-ink-muted"> · {fixedBy}</span> : null}
+            </p>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-ink">{row.person}</p>
+              <p className="tabular text-xs text-ink-muted">
+                {row.day} · {times}
+                {fixedBy ? ` · ${fixedBy}` : ""}
+              </p>
+            </>
+          )}
         </div>
-        {row.outLabel ? null : <Badge tone="success" dot>On the clock</Badge>}
-        <span className="tabular text-sm font-semibold text-ink">{row.hours}</span>
+        {row.outLabel ? null : row.forgotten ? (
+          <Badge tone="warning" dot>
+            Never clocked out
+          </Badge>
+        ) : (
+          <Badge tone="success" dot>
+            On the clock
+          </Badge>
+        )}
+        {/* On a timesheet the day's total stands above; one stretch of it reads quieter. */}
+        {hideHours ? null : (
+          <span className={compact ? "tabular text-sm text-ink-muted" : "tabular text-sm font-semibold text-ink"}>
+            {row.hours}
+          </span>
+        )}
         {canFix ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => setEditing((open) => !open)} aria-expanded={editing}>
             <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />

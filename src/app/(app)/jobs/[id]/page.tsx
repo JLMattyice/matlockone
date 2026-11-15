@@ -20,6 +20,7 @@ import {
 
 import { CancelJob } from "./cancel-job";
 import { JobChecklist } from "./checklist";
+import { JobTimer } from "./job-timer";
 import { CategoryMark } from "../category-mark";
 import { MaterialForm } from "./material-form";
 import { TimeForm } from "./time-form";
@@ -144,6 +145,8 @@ export default async function JobDetailPage({
       }))
     : [];
   const checklistOpen = job.checklistItems.filter((item) => !item.doneAt).length;
+  // This person's own timer, if it is the one running on this job.
+  const myTimer = job.timeEntries.find((entry) => !entry.endedAt && entry.user.id === user.id) ?? null;
 
   // Cancel gets its own control, since it asks for a reason.
   const nextStatuses = (JOB_STATUS_FLOW[status] ?? []).filter(
@@ -420,6 +423,17 @@ export default async function JobDetailPage({
                 </span>
               }
             />
+
+            {/* The timer is for work still to do; one already running here can
+                always be stopped, whatever the job has become since. */}
+            {canLogTime && (myTimer || status === "SCHEDULED" || status === "CONFIRMED" || status === "IN_PROGRESS") ? (
+              <div className="border-b border-line bg-surface-2 px-5 py-3">
+                <JobTimer
+                  jobId={job.id}
+                  runningSince={myTimer ? formatIn(myTimer.startedAt, "h:mm a", zone) : null}
+                />
+              </div>
+            ) : null}
 
             {canLogTime ? (
               <div className="border-b border-line p-5">

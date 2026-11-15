@@ -107,7 +107,11 @@ partly paid, a payment recorded twice.
 - My Day: one person's day on a phone — the day clock, a per-job timer, and
   today's visits with Navigate, Call, Start, Photo, Note and Complete. The
   crew land on it; the crew may start and complete visits they are assigned
-  to. No location is recorded.
+  to. No location is recorded. Clocking in needs no job. The clock offers
+  one — any open job the person can see, not only today's visits — and the
+  timer can be moved to another mid-shift, or started from a job's own page;
+  naming a job this way does not mark a visit started. My hours is the crew's
+  own timesheet for a week or a pay period, read-only.
 - Estimates & Invoices: shared line-item editor with discounts and tax, a
   client-facing link to accept or decline, estimate-to-job conversion, partial
   payments, printable documents. A customer accepts by typing their name to
@@ -133,8 +137,14 @@ partly paid, a payment recorded twice.
   estimate follow-up, invoice reminders before and after the due date, a
   visit reminder the day before, and a review request once per customer.
 - Team: roles and permissions, workload, hours, deactivation that preserves
-  history. Time clock: who is on the clock now and each person's week, which
-  whoever schedules the crews can correct.
+  history. Time clock: who is on the clock now, and timesheets — everybody's
+  hours a day at a time for a week, a pay period or any two dates (two months
+  at most), with each person's total and how much of it went on jobs. A name
+  opens that person's sheet: each day's stretches on the clock, the jobs the
+  time went on, and the split by job. A shift counts on the day it started.
+  Whoever schedules the crews can correct a stretch or enter one nobody
+  clocked; two stretches of one person's cannot overlap, and closing a
+  stretch stops a timer left running. No payroll export or overtime rules yet.
 - Messages: team conversations inside the app, direct or group, with an
   unread badge that follows you around the app. Internal only — nothing in a
   thread is ever sent to a client — and a direct or group thread is readable

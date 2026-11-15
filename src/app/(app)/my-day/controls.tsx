@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useActionState, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
-import { Camera, CheckCircle2, Navigation, NotebookPen, Phone, Play, Square } from "lucide-react";
+import { Camera, CheckCircle2, Navigation, NotebookPen, Phone, Play, Square, Timer } from "lucide-react";
 
-import { clockInNow, clockOutNow, completeVisit, startVisit, stopVisitTimer } from "./actions";
+import { clockInNow, clockOutNow, completeVisit, startVisit, stopVisitTimer, workOnJob } from "./actions";
+import type { JobChoiceGroup } from "./queries";
 import { sendFiles } from "@/components/files/send-files";
-import { Input } from "@/components/ui/form";
+import { Input, Select } from "@/components/ui/form";
 import { ActionStatus, SubmitButton } from "@/components/ui/submit";
 import { IDLE, type ActionState } from "@/lib/action-state";
 import { downscaleImage } from "@/lib/downscale-image";
@@ -15,24 +16,70 @@ import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------- clock ---
 
+/**
+ * The jobs the clock offers, in a list a thumb can work: the phone's own
+ * picker, grouped by how near the work is. Tall, and in type big enough that
+ * an iPhone does not zoom the page to show it.
+ */
+function JobSelect({
+  id,
+  groups,
+  none,
+  required,
+}: {
+  id: string;
+  groups: JobChoiceGroup[];
+  /** What the empty choice says. */
+  none: string;
+  required?: boolean;
+}) {
+  return (
+    <Select id={id} name="jobId" defaultValue="" required={required} className="h-12 min-w-0 text-base">
+      <option value="">{none}</option>
+      {groups.map((group) => (
+        <optgroup key={group.label} label={group.label}>
+          {group.jobs.map((job) => (
+            <option key={job.id} value={job.id}>
+              {job.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </Select>
+  );
+}
+
+const OPTIONAL = <span className="font-normal text-ink-subtle">(optional)</span>;
+
 export function ClockButtons({
   clockedIn,
   fromEarlier,
   defaultOutAt,
   maxOutAt,
+  jobs,
 }: {
   clockedIn: boolean;
   /** Still clocked in from an earlier day: ask when they actually stopped. */
   fromEarlier: boolean;
   defaultOutAt: string;
   maxOutAt: string;
+  /** Every open job this person may put time on. Picking one is never required. */
+  jobs: JobChoiceGroup[];
 }) {
-  const [inState, clockIn] = useActionState<ActionState>(clockInNow, IDLE);
+  const [inState, clockIn] = useActionState<ActionState, FormData>(clockInNow, IDLE);
   const [outState, clockOut] = useActionState<ActionState, FormData>(clockOutNow, IDLE);
 
   if (!clockedIn) {
     return (
-      <form action={clockIn} className="space-y-2">
+      <form action={clockIn} className="space-y-3">
+        {jobs.length > 0 ? (
+          <div className="space-y-1.5">
+            <label htmlFor="clock-in-job" className="block text-sm font-medium text-ink">
+              Working on {OPTIONAL}
+            </label>
+            <JobSelect id="clock-in-job" groups={jobs} none="Nothing in particular — just clock in" />
+          </div>
+        ) : null}
         <SubmitButton size="lg" className="h-12 w-full text-base" pendingLabel="Clocking in…">
           <Play className="h-4 w-4" strokeWidth={2.25} />
           Clock in
@@ -58,6 +105,42 @@ export function ClockButtons({
         Clock out
       </SubmitButton>
       <ActionStatus state={outState} className="text-xs" />
+    </form>
+  );
+}
+
+/**
+ * Says what the time is going on, once on the clock: any open job, not only
+ * today's visits. Starting one stops the timer on another. Nobody has to use
+ * it — a day on the clock with no job named is still a day on the clock.
+ *
+ * Draws nothing when there is no other job to offer.
+ */
+export function WorkOnJob({ jobs, timerJobId }: { jobs: JobChoiceGroup[]; timerJobId: string | null }) {
+  const [state, start] = useActionState<ActionState, FormData>(workOnJob, IDLE);
+
+  // Everything but the job already being timed.
+  const groups = jobs
+    .map((group) => ({ ...group, jobs: group.jobs.filter((job) => job.id !== timerJobId) }))
+    .filter((group) => group.jobs.length > 0);
+  if (groups.length === 0) return null;
+
+  return (
+    <form action={start} className="space-y-1.5">
+      <label htmlFor="work-on-job" className="block text-sm font-medium text-ink">
+        {timerJobId ? "Switch to something else" : "Working on"} {OPTIONAL}
+      </label>
+      {/* Stacked on a phone: beside its button the list showed only the
+          first few letters of a job. */}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <JobSelect id="work-on-job" groups={groups} none="Pick what you are working on…" required />
+        <SubmitButton variant="outline" size="lg" className="h-12 shrink-0 justify-center" pendingLabel="Starting…">
+          <Timer className="h-4 w-4" strokeWidth={2} />
+          {timerJobId ? "Switch" : "Start timer"}
+        </SubmitButton>
+      </div>
+      {state.fieldErrors?.jobId ? <p className="text-xs text-danger">{state.fieldErrors.jobId}</p> : null}
+      <ActionStatus state={state} className="text-xs" />
     </form>
   );
 }

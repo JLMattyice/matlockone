@@ -126,56 +126,63 @@ export default async function TeamMemberPage({
             </div>
           </div>
 
-          {manageable || canMessage ? (
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {canMessage ? (
-                <form action={openDirectMessage}>
-                  <input type="hidden" name="userId" value={member.id} />
-                  <button type="submit" className={buttonClasses("outline", "md")}>
-                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
-                    Message
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {/* Their days on the clock: the timesheet, a week or a pay period at a time. */}
+            <Link
+              href={`/team/time-clock/${member.id}`}
+              className={buttonClasses("outline", "md")}
+            >
+              <Clock className="h-3.5 w-3.5" strokeWidth={2} />
+              Timesheet
+            </Link>
+
+            {canMessage ? (
+              <form action={openDirectMessage}>
+                <input type="hidden" name="userId" value={member.id} />
+                <button type="submit" className={buttonClasses("outline", "md")}>
+                  <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
+                  Message
+                </button>
+              </form>
+            ) : null}
+
+            {manageable ? (
+              <Link
+                href={`/team/${member.id}/edit`}
+                className={buttonClasses("outline", "md")}
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                Edit
+              </Link>
+            ) : null}
+
+            {manageable && !isSelf ? (
+              <form action={setTeamMemberActive}>
+                <input type="hidden" name="id" value={member.id} />
+                <input
+                  type="hidden"
+                  name="active"
+                  value={member.isActive ? "false" : "true"}
+                />
+                {member.isActive ? (
+                  <ConfirmButton
+                    variant="ghost"
+                    size="md"
+                    confirmLabel="Deactivate?"
+                  >
+                    Deactivate
+                  </ConfirmButton>
+                ) : (
+                  <button
+                    type="submit"
+                    className={buttonClasses("outline", "md")}
+                  >
+                    Reactivate
                   </button>
-                </form>
-              ) : null}
-
-              {manageable ? (
-                <Link
-                  href={`/team/${member.id}/edit`}
-                  className={buttonClasses("outline", "md")}
-                >
-                  <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
-                  Edit
-                </Link>
-              ) : null}
-
-              {manageable && !isSelf ? (
-                <form action={setTeamMemberActive}>
-                  <input type="hidden" name="id" value={member.id} />
-                  <input
-                    type="hidden"
-                    name="active"
-                    value={member.isActive ? "false" : "true"}
-                  />
-                  {member.isActive ? (
-                    <ConfirmButton
-                      variant="ghost"
-                      size="md"
-                      confirmLabel="Deactivate?"
-                    >
-                      Deactivate
-                    </ConfirmButton>
-                  ) : (
-                    <button
-                      type="submit"
-                      className={buttonClasses("outline", "md")}
-                    >
-                      Reactivate
-                    </button>
-                  )}
-                </form>
-              ) : null}
-            </div>
-          ) : null}
+                )}
+              </form>
+            ) : null}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 divide-line border-t border-line sm:grid-cols-4 sm:divide-x">

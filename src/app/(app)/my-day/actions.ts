@@ -21,9 +21,12 @@ import { viewerTimeZone } from "@/lib/viewer-time-zone";
  * at the finished work is the one who knows it is done.
  */
 
-function refresh(jobId?: string) {
+/** Everywhere this person's clock and timer show: their day, their sheet, the team's. */
+function refresh(userId: string, jobId?: string) {
   revalidatePath("/my-day");
+  revalidatePath("/my-day/hours");
   revalidatePath("/team/time-clock");
+  revalidatePath(`/team/time-clock/${userId}`);
   if (jobId) {
     revalidatePath(`/jobs/${jobId}`);
     revalidatePath("/jobs");
@@ -31,11 +34,63 @@ function refresh(jobId?: string) {
   }
 }
 
-export async function clockInNow(_prev: ActionState): Promise<ActionState> {
+/**
+ * A job this person may put time on: one they can see that is still open.
+ * Wider than today's visits — the job from last week that needs an hour more,
+ * the one nobody booked — and it moves no status: saying what you are working
+ * on is not saying a visit has begun.
+ */
+async function timeableJob(org: { id: string }, user: SessionUser, jobId: string) {
+  return prisma.job.findFirst({
+    where: {
+      id: jobId,
+      organizationId: org.id,
+      status: { notIn: ["CANCELLED", "COMPLETED"] },
+      ...jobVisibilityWhere(user),
+    },
+    select: { id: true },
+  });
+}
+
+/**
+ * Clocks in. A job may be named with it — the clock asks, and nobody has to
+ * answer — and then its timer starts in the same tap.
+ */
+export async function clockInNow(_prev: ActionState, formData?: FormData): Promise<ActionState> {
   const { user, org } = await requirePermission("jobs:log-time");
-  await clockIn({ organizationId: org.id, userId: user.id });
-  refresh();
+  const who = { organizationId: org.id, userId: user.id };
+
+  const jobId = formData ? text(formData, "jobId") : null;
+  if (jobId) {
+    const job = await timeableJob(org, user, jobId);
+    if (!job) return failed("That job is not open to you any more. Pick another, or clock in without one.");
+    // Starting a timer clocks in first.
+    await startTimer(who, job.id);
+    refresh(user.id, job.id);
+    return saved("Clocked in.");
+  }
+
+  await clockIn(who);
+  refresh(user.id);
   return saved("Clocked in.");
+}
+
+/**
+ * Puts the timer on a job picked from the clock or pressed on the job's own
+ * page: any open job this person can see, not only today's visits. Whatever
+ * was running stops, and it clocks in somebody who was not.
+ */
+export async function workOnJob(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { user, org } = await requirePermission("jobs:log-time");
+
+  const jobId = text(formData, "jobId");
+  if (!jobId) return { ok: false, fieldErrors: { jobId: "Pick what you are working on." } };
+  const job = await timeableJob(org, user, jobId);
+  if (!job) return failed("That job is not open to you any more.");
+
+  await startTimer({ organizationId: org.id, userId: user.id }, job.id);
+  refresh(user.id, job.id);
+  return saved("Timer started.");
 }
 
 /**
@@ -48,7 +103,7 @@ export async function clockOutNow(_prev: ActionState, formData: FormData): Promi
 
   const open = await openClock(who);
   if (!open) {
-    refresh();
+    refresh(user.id);
     return saved("You were not clocked in.");
   }
 
@@ -65,7 +120,7 @@ export async function clockOutNow(_prev: ActionState, formData: FormData): Promi
   }
 
   await clockOut(who, at);
-  refresh();
+  refresh(user.id);
   return saved("Clocked out.");
 }
 
@@ -110,7 +165,7 @@ export async function startVisit(_prev: ActionState, formData: FormData): Promis
     });
   }
 
-  refresh(job.id);
+  refresh(user.id, job.id);
   return saved("Started.");
 }
 
@@ -118,7 +173,7 @@ export async function stopVisitTimer(_prev: ActionState): Promise<ActionState> {
   const { user, org } = await requirePermission("jobs:log-time");
   const running = await runningTimer({ organizationId: org.id, userId: user.id });
   await stopTimer({ organizationId: org.id, userId: user.id });
-  refresh(running?.job.id);
+  refresh(user.id, running?.job.id);
   return saved("Timer stopped.");
 }
 
@@ -150,6 +205,6 @@ export async function completeVisit(_prev: ActionState, formData: FormData): Pro
     });
   }
 
-  refresh(job.id);
+  refresh(user.id, job.id);
   return saved("Marked complete.");
 }

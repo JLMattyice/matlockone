@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarCheck, Clock, ListChecks, MapPin, Timer } from "lucide-react";
 
-import { ClockButtons, StopTimerButton, VisitButtons } from "./controls";
-import { myDay, type Visit } from "./queries";
+import { ClockButtons, StopTimerButton, VisitButtons, WorkOnJob } from "./controls";
+import { jobChoices, myDay, type Visit } from "./queries";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import { can } from "@/lib/permissions";
 import { pushKeys } from "@/lib/push";
 import { daysCovered, entryDays } from "@/lib/schedule-span";
 import { formatIn, nowIn, toDateTimeLocal, todayIn } from "@/lib/time-zone";
-import { directionsUrl, formatMinutes } from "@/lib/utils";
+import { cn, directionsUrl, formatMinutes } from "@/lib/utils";
 import { viewerTimeZone } from "@/lib/viewer-time-zone";
 
 export const metadata: Metadata = { title: "My day" };
@@ -24,12 +24,19 @@ export const metadata: Metadata = { title: "My day" };
  * My Day: one person's day on one screen, made for a phone on site — the
  * clock, the timer, and today's visits with the buttons a tech reaches for.
  * The crew's home: the dashboard is the business's view, this is theirs.
+ *
+ * The clock stands by itself: clocking in needs no job. It offers one — any
+ * open job this person can see, not only today's visits — and takes no for an
+ * answer.
  */
 export default async function MyDayPage() {
   const { user, org } = await requirePermission("jobs:log-time");
   const zone = await viewerTimeZone();
   const now = new Date();
-  const day = await myDay(org.id, user.id, zone, now);
+  const [day, jobs] = await Promise.all([
+    myDay(org.id, user.id, zone, now),
+    jobChoices(org.id, user, zone, now),
+  ]);
   const pushOffered = !dataStaysOnThisMachine() && Boolean(pushKeys());
 
   const hour = nowIn(zone).getHours();
@@ -41,6 +48,14 @@ export default async function MyDayPage() {
   const guessOut = day.clock
     ? new Date(Math.min(day.clock.clockedInAt.getTime() + 8 * 60 * 60 * 1000, now.getTime()))
     : now;
+
+  // Once on the clock, any open job can take the timer. Somebody still clocked
+  // in from an earlier day closes that first.
+  const timerJobId = day.timer?.job.id ?? null;
+  const offersJobs =
+    Boolean(day.clock) &&
+    !day.clockFromEarlier &&
+    jobs.some((group) => group.jobs.some((job) => job.id !== timerJobId));
 
   const visitProps = (visit: Visit) => ({
     visit,
@@ -69,7 +84,7 @@ export default async function MyDayPage() {
             >
               <Clock className="h-5 w-5" strokeWidth={1.75} />
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               {day.clock ? (
                 <p className="text-base font-semibold text-ink">
                   {day.clockFromEarlier
@@ -87,6 +102,10 @@ export default async function MyDayPage() {
                     : "Nothing clocked today yet"}
               </p>
             </div>
+            {/* The week and the pay period behind today's number. */}
+            <Link href="/my-day/hours" className="shrink-0 text-sm font-medium text-brand hover:underline">
+              My hours
+            </Link>
           </div>
 
           <ClockButtons
@@ -94,20 +113,29 @@ export default async function MyDayPage() {
             fromEarlier={day.clockFromEarlier}
             defaultOutAt={toDateTimeLocal(guessOut, zone)}
             maxOutAt={toDateTimeLocal(now, zone)}
+            jobs={jobs}
           />
         </div>
 
-        {day.timer ? (
-          <div className="flex flex-wrap items-center gap-3 border-t border-line bg-brand/5 px-5 py-3">
-            <Timer className="h-4 w-4 text-brand" strokeWidth={2} />
-            <p className="min-w-0 flex-1 text-sm text-ink">
-              Timer on{" "}
-              <Link href={`/jobs/${day.timer.job.id}`} className="font-medium hover:text-brand">
-                {day.timer.job.number} · {day.timer.job.title}
-              </Link>{" "}
-              <span className="text-ink-muted">since {time(day.timer.startedAt)}</span>
-            </p>
-            <StopTimerButton />
+        {/* What the time is going on: the timer if one runs, and the way to
+            put it on a job or move it. Never required, so it sits under the
+            clock rather than in its way. */}
+        {day.timer || offersJobs ? (
+          <div className={cn("space-y-3 border-t border-line px-5 py-4", day.timer && "bg-brand/5")}>
+            {day.timer ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Timer className="h-4 w-4 text-brand" strokeWidth={2} />
+                <p className="min-w-0 flex-1 text-sm text-ink">
+                  Timer on{" "}
+                  <Link href={`/jobs/${day.timer.job.id}`} className="font-medium hover:text-brand">
+                    {day.timer.job.number} · {day.timer.job.title}
+                  </Link>{" "}
+                  <span className="text-ink-muted">since {time(day.timer.startedAt)}</span>
+                </p>
+                <StopTimerButton />
+              </div>
+            ) : null}
+            {offersJobs ? <WorkOnJob jobs={jobs} timerJobId={timerJobId} /> : null}
           </div>
         ) : null}
       </Card>

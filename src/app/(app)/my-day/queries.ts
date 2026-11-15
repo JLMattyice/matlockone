@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { jobVisibilityWhere, type Actor } from "@/lib/permissions";
 import { overlapsWhere } from "@/lib/schedule-span";
 import { clockMinutes, openClock, runningTimer } from "@/lib/time-clock";
 import { formatIn, parseDateTimeLocal } from "@/lib/time-zone";
@@ -93,3 +94,82 @@ export async function myDay(organizationId: string, userId: string, zone: string
 
 export type MyDay = Awaited<ReturnType<typeof myDay>>;
 export type Visit = MyDay["today"][number];
+
+export type JobChoice = { id: string; label: string };
+export type JobChoiceGroup = { label: string; jobs: JobChoice[] };
+
+/** Statuses a job is still open in: work can be done on it and timed. */
+const OPEN = ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"];
+
+const CHOICE_SELECT = {
+  id: true,
+  number: true,
+  title: true,
+  scheduledStart: true,
+  client: { select: { displayName: true } },
+} as const;
+
+/**
+ * What the clock offers to put time on: any open job this person can see,
+ * nearest first — today's, what is coming, what is still open from before,
+ * and what was never booked. An employee sees their own jobs, as everywhere.
+ *
+ * Bounded on purpose. A repeating visit is sixty real jobs made up front, so
+ * "every open job" can be a year of them; a job too far out to be offered
+ * here is timed from its own page instead.
+ */
+export async function jobChoices(
+  organizationId: string,
+  actor: Actor,
+  zone: string,
+  now = new Date(),
+): Promise<JobChoiceGroup[]> {
+  const { start, end } = dayBounds(now, zone);
+  const open = { organizationId, status: { in: OPEN }, ...jobVisibilityWhere(actor) };
+
+  const [today, coming, before, unbooked] = await Promise.all([
+    prisma.job.findMany({
+      where: { ...open, ...overlapsWhere(start, new Date(end.getTime() - 1)) },
+      orderBy: [{ allDay: "desc" }, { scheduledStart: "asc" }],
+      take: 100,
+      select: CHOICE_SELECT,
+    }),
+    prisma.job.findMany({
+      where: { ...open, scheduledStart: { gte: end } },
+      orderBy: { scheduledStart: "asc" },
+      take: 40,
+      select: CHOICE_SELECT,
+    }),
+    prisma.job.findMany({
+      where: { ...open, scheduledStart: { lt: start } },
+      orderBy: { scheduledStart: "desc" },
+      take: 60,
+      select: CHOICE_SELECT,
+    }),
+    prisma.job.findMany({
+      where: { ...open, scheduledStart: null },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      select: CHOICE_SELECT,
+    }),
+  ]);
+
+  // A job over several days began before today and is on today's list too.
+  const onToday = new Set(today.map((job) => job.id));
+
+  const choice = (dated: boolean) => (job: (typeof today)[number]) => ({
+    id: job.id,
+    label:
+      `${job.number} · ${job.title}` +
+      (job.client ? ` — ${job.client.displayName}` : "") +
+      // The date tells apart the visits of a repeat, which share a title.
+      (dated && job.scheduledStart ? ` (${formatIn(job.scheduledStart, "MMM d", zone)})` : ""),
+  });
+
+  return [
+    { label: "Today", jobs: today.map(choice(false)) },
+    { label: "Coming up", jobs: coming.map(choice(true)) },
+    { label: "Still open from before", jobs: before.filter((job) => !onToday.has(job.id)).map(choice(true)) },
+    { label: "Not booked yet", jobs: unbooked.map(choice(false)) },
+  ].filter((group) => group.jobs.length > 0);
+}
